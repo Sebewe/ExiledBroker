@@ -165,7 +165,6 @@ def load(settings):
     server = FakeExchange(pages_for_launch(), now=T0 + 3 * 3600)
     with client_for(settings, server) as client:
         result = cx.sync_league(client, settings, "Mirage", date(2026, 3, 6), days=1)
-    cx.extract_league(settings, result.window)
     con = db.connect(settings.db_path)
     db.init_schema(con)
     index = parse_index(

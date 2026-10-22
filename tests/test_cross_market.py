@@ -32,7 +32,6 @@ def con(tmp_path):
     c = register(settings)
     with client_for(settings, FakeExchange(pages, now=T0 + 7200)) as client:
         r = cx.sync_league(client, settings, "Mirage", date(2026, 3, 6), days=1)
-    cx.extract_league(settings, r.window)
     exchange_loader.load_league(c, settings, r.window, NAMES)
     yield c
     c.close()

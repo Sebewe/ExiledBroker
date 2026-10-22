@@ -60,7 +60,7 @@ nohup scripts/ingest.sh all >/dev/null 2>&1 &
 tail -f data/logs/latest.log
 ```
 
-- **Stop it any time** (Ctrl-C, closing the terminal, sleep, a crash) and run the same command again to continue. A run started in the background with `nohup … &` ignores Ctrl-C, so stop it with `pkill -f "eb "`. That's safe at any point. Hourly pages, zips and Parquet files are written to a temporary name and renamed when complete. Database loads are one transaction per league. Nothing that's finished is fetched or rewritten again.
+- **Stop it any time** (Ctrl-C, closing the terminal, sleep, a crash) and run the same command again to continue. A run started in the background with `nohup … &` ignores Ctrl-C, so stop it with `pkill -f "eb "`. That's safe at any point. Hourly pages, zips and Parquet files are written to a temporary name and renamed when complete. Database loads are one transaction per league, and exchange loads are incremental: they add new hours and remove ones that left the window, nothing else. Nothing that's finished is fetched or rewritten again.
 - On macOS it keeps the machine awake (`caffeinate`) while running. Each run logs to `data/logs/ingest-<time>.log`, and `latest.log` points at the newest.
 - Rough cost: the hourly exchange for the four challenge leagues since Settlers is ~1.5k requests (~30 min, ~150 MB on disk). The daily dumps for all ~30 challenge leagues are about 1 GB of zips.
 - While a run is loading, the demo may briefly fail to open the database (DuckDB allows one writer). Refresh the page.
@@ -122,6 +122,8 @@ The site's default page. It shows what's best to arbitrage **right now** in the 
 | 2026-10-22 | **One scoring method** (`services/scoring.rank_score`) for card flips and cross-market loops: percentile rank per factor, weighted mean, weights tunable on the page. Cross-market factors: edge when paying, share of paying hours, worst league's share, and volume traded in both markets. |
 | 2026-10-22 | **Trading pages put the money first.** On Card turn-ins and Arbitrage trading, the ranked table is full width at the top, its columns lead with score and chaos figures (score, set cost, reward, margin, margin %, sets traded, profitable hours; what the card gives comes last), and charts sit at the bottom. |
 | 2026-10-22 | **Group timing defaults to Chaos.** Priced in Divines, almost every group sinks below its day-1 price, because the Divine itself inflates fastest at launch (86 → 266c in Mirage). That read as "currency loses value", which is wrong from a player's view. The Divine view is still available, with an explanation. |
+| 2026-10-22 | **Incremental exchange loads; the database is never wiped to add data.** Loads used to delete a league's hourly rows and re-insert all of them (about 454k for Allflame) on every update. Now `exchange_hour_loaded` tracks loaded hours; a load inserts only new hours and deletes only hours leaving the window. The Divine rate is carried forward from rows already in the database (an ASOF join), and the curated tables (`tracked_item`, `divination_card`) are updated by difference. Verified: loading hour by hour gives exactly the same rows as one full load, and on Allflame a one-hour window slide removes and re-adds exactly 531 rows. The per-league processed Parquet files are no longer used. |
+| 2026-10-22 | **Hosting will launch with live-league data only.** Past leagues' history is for building and testing (proof of concept, analysis) and stays local; anyone after old prices has poe.ninja. Hosted data is the running league's launch fortnight plus recent hours, a few hundred MB at most. |
 | 2026-10-22 | **Live market is the landing page**, because it's what will be used most. The live feed is a separate process (`eb live watch`) and the page only reads, the same split as the rest of the app, so hosting means one web service plus one worker. |
 | 2026-10-22 | **Launch views stay on the launch fortnight.** The Launch market only uses each league's first 14 days. A live league whose loaded hours are all later (e.g. Allflame, months in) shows a "past the launch window" note pointing to the Live page, instead of a misleading chart. |
 | 2026-10-22 | **The running league keeps its launch fortnight.** A live window is the launch's first 14 days *plus* the latest 14 days, loaded together. Loading one window doesn't replace the other, so a league like Allflame (launched 2026-07-24 22:00 UTC) feeds both the Launch market / analysis tools and the Live view. While a new league is under two weeks old, the two windows are the same. A running league has no daily dump until it ends, so the Unique moves tool says so instead of leaving it out silently. |
@@ -197,8 +199,7 @@ Example, Mirage: the league launched at 20:00 UTC on 2026-03-06. The first Divin
 
 1. **Find the launch.** Starting 12 hours before the league's first dump date, fetch hourly pages until the league first appears. That hour is `league.launched_at`.
 2. **Fetch the window** (default 14 days after launch): one page per hour, gzipped to `data/raw/ggg/currency_exchange/<unix-hour>.json.gz`. Each page is checked against the hour requested, because a timestamp before the history starts silently returns the first page. If the league is still running, the fetch stops at the current hour.
-3. **Extract:** flatten that league's markets to `data/processed/ggg/currency_exchange/<league>.parquet`, one row per market per hour with volume, stock and ratio for both sides. It's rebuilt only when the set of hours changes. This file keeps every pair, for the arbitrage add-on later.
-4. **Load** into `price_observation` with `source = 'ggg-exchange-hourly'`, in one transaction per league:
+3. **Load incrementally** into `price_observation` (`source = 'ggg-exchange-hourly'`) and `cross_market_hour`. `exchange_hour_loaded` records which hours each league has, including hours where nothing traded. A load reads only the pages of hours that aren't loaded yet (flattened to a temporary Parquet file), inserts them, and deletes only loaded hours that left the window, all in one transaction. A live update therefore touches one hour's rows (~500 for Allflame), not the league's ~450k. A full rebuild happens only when `LOADER_VERSION` changes or with `--force`. Pricing:
    - Divine rate per hour = Chaos traded ÷ Divines traded in the Chaos/Divine market, carried forward through hours with no Divine trades.
    - For each item and hour, every market against Chaos or Divine contributes. `volume` = units of the item traded. `chaos_volume` = Chaos traded, plus Divines traded × the Divine rate. `chaos_value` = chaos_volume ÷ volume. `chaos_low` / `chaos_high` = the lowest and highest traded ratio, in chaos. `divine_value` = chaos_value ÷ Divine rate.
    - Hours with no trades for an item have no row. Chaos is 1 by definition.
@@ -241,7 +242,7 @@ We looked at Ancestors (an event league, 21 days) before dropping event leagues.
 The upcoming league is what the tool is for, and its data starts empty:
 - **Before launch** it isn't in poe.ninja's dumps. Register it with `eb exchange sync -l "<Name>" --start <launch date>`. The league row is created right away (`exchange_tracked`), the demo shows "waiting for the first hour of trades", and later runs remember the start date.
 - **First hours:** GGG publishes each exchange hour only after it ends, so the first prices appear about an hour after launch. Many items have no trades for hours, and the Divine rate is unknown until the first Chaos/Divine trade. Prices in divines are then null, and averages leave those hours out of both the sum and the weight.
-- **Each re-run** of the sync adds the newly published hours (finished hours are never re-fetched), rebuilds that league's Parquet and reloads its hourly rows in one transaction.
+- **Each re-run** of the sync adds the newly published hours (finished hours are never re-fetched or rewritten) and drops hours that slid out of the window, in one transaction.
 - **Every view** must handle: no data, one hour, items that haven't traded, days with gaps. The demo's tests (`tests/test_dashboard.py`) run the app headlessly in each of those states.
 
 
@@ -280,7 +281,7 @@ ExiledBroker/
 │   │   └── schema.sql          # ✔
 │   ├── normalize/
 │   │   ├── dump_loader.py      # ✔ dump Parquet → item / price_observation (currency + uniques)
-│   │   ├── exchange_loader.py  # ✔ exchange Parquet → hourly prices (one transaction per league)
+│   │   ├── exchange_loader.py  # ✔ incremental hourly loads: add new hours, drop ones leaving the window
 │   │   ├── tracked.py          # ✔ price mapping groups: currency, essences, scarabs, divination cards
 │   │   ├── divination.py       # ✔ card set size + reward parsing
 │   │   ├── mappings.py         # ✔ rebuild tracked_item + divination_card after each load

@@ -103,7 +103,6 @@ def test_first_hours_with_gaps(settings):
     server = FakeExchange(pages, now=T0 + 2 * 3600)
     with client_for(settings, server) as client:
         result = cx.sync_league(client, settings, "Mirage", date(2026, 3, 6), days=14)
-    cx.extract_league(settings, result.window)
     exchange_loader.load_league(con, settings, result.window, NAMES)
     con.close()
 

@@ -168,3 +168,11 @@ CREATE TABLE IF NOT EXISTS cross_market_hour (
     divine_rate_high DOUBLE PRECISION,
     PRIMARY KEY (league_id, item_id, observed_at)
 );
+
+-- Which exchange hours each league has loaded (including hours where nothing traded),
+-- so updates insert only new hours and remove only hours that left the window.
+CREATE TABLE IF NOT EXISTS exchange_hour_loaded (
+    league_id VARCHAR NOT NULL REFERENCES league (id),
+    hour      TIMESTAMP NOT NULL,
+    PRIMARY KEY (league_id, hour)
+);

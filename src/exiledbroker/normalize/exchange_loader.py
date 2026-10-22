@@ -8,11 +8,14 @@ For each hour and item X, every market pairing X with Chaos or Divine contribute
 The Divine rate is the Chaos/Divine market's volume-weighted price, carried forward
 through hours with no Divine trades. Hours with no trades for X have no row.
 
-Like the dump loader, each league loads in one transaction and is skipped when its
-inputs are unchanged.
+Loads are incremental. `exchange_hour_loaded` records which hours a league has, and
+each load only inserts hours that are new and deletes hours that left the window,
+in one transaction. Nothing else is rewritten, so an hourly live update touches
+one hour's rows. The Divine rate for new hours is carried forward from the rows
+already in the database. A full rebuild happens only when LOADER_VERSION changes
+or with `force`.
 """
 
-import json
 from collections import Counter
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -21,11 +24,11 @@ import duckdb
 
 from exiledbroker.config import Settings
 from exiledbroker.ingest import currency_exchange as cx
-from exiledbroker.ingest.files import read_json
 from exiledbroker.ingest.item_names import BaseItem
 from exiledbroker.normalize.mappings import refresh_mappings
 from exiledbroker.normalize.tracked import (
     CHAOS_METADATA,
+    DIVINE,
     DIVINE_METADATA,
     GROUPS,
     currency_item_id,
@@ -33,16 +36,20 @@ from exiledbroker.normalize.tracked import (
 from exiledbroker.storage import db
 
 SOURCE = "ggg-exchange-hourly"
-LOADER_VERSION = 3
+LOADER_VERSION = 4
 CATEGORY_BY_CLASS = {"StackableCurrency": "currency", "MapFragment": "fragment"}
 
 
 @dataclass
 class LoadResult:
     league_id: str
-    skipped: bool
-    items: int = 0
-    rows: int = 0
+    skipped: bool  # nothing to add or remove
+    items: int = 0  # items with rows for the league, after the load
+    rows: int = 0  # price rows for the league, after the load
+    hours_added: int = 0
+    hours_removed: int = 0
+    rows_added: int = 0
+    rebuilt: bool = False
 
 
 def _category(name: str, item_class: str) -> str:
@@ -137,14 +144,20 @@ def _stage_prices(con: duckdb.DuckDBPyConnection, parquet: str, lid: str) -> Non
         CREATE OR REPLACE TEMP TABLE stage_price AS
         WITH {_legs_sql(parquet)},
         hours AS (SELECT DISTINCT hour FROM m),
+        -- Divine rates known so far: this batch's, plus those already loaded (the
+        -- Divine's own hourly price) from hours outside the batch.
+        known_rates AS (
+            SELECT hour, ref_vol / x_vol AS rate FROM traded
+            WHERE x = '{DIVINE_METADATA}' AND ref = '{CHAOS_METADATA}'
+            UNION ALL
+            SELECT observed_at, chaos_value FROM price_observation
+            WHERE league_id = '{lid}' AND source = '{SOURCE}'
+              AND item_id = '{currency_item_id(DIVINE)}'
+              AND observed_at NOT IN (SELECT hour FROM hours)
+        ),
+        -- Each hour uses the latest rate at or before it (carried forward).
         divine AS (
-            SELECT h.hour,
-                   last_value(d.rate IGNORE NULLS) OVER (ORDER BY h.hour) AS rate
-            FROM hours h
-            LEFT JOIN (
-                SELECT hour, ref_vol / x_vol AS rate FROM traded
-                WHERE x = '{DIVINE_METADATA}' AND ref = '{CHAOS_METADATA}'
-            ) d ON d.hour = h.hour
+            SELECT h.hour, k.rate FROM hours h ASOF LEFT JOIN known_rates k ON h.hour >= k.hour
         ),
         priced AS (
             SELECT t.hour, t.x, t.x_vol,
@@ -180,11 +193,18 @@ def _stage_prices(con: duckdb.DuckDBPyConnection, parquet: str, lid: str) -> Non
     )
 
 
-def fingerprint(settings: Settings, league_name: str) -> str:
-    meta = read_json(cx.sidecar_path(settings, league_name))
-    if meta is None:
-        raise FileNotFoundError(f"{league_name} has no extracted exchange data")
-    return json.dumps({"loader_version": LOADER_VERSION, "extract": meta}, sort_keys=True)
+def _hours_table(con: duckdb.DuckDBPyConnection, name: str, hours: list[int]) -> None:
+    con.execute(f"CREATE OR REPLACE TEMP TABLE {name} (hour TIMESTAMP)")
+    if hours:
+        con.executemany(
+            f"INSERT INTO {name} VALUES (?)",
+            [(cx.from_ts(h).replace(tzinfo=None),) for h in hours],
+        )
+
+
+def _loaded_hours(con: duckdb.DuckDBPyConnection, lid: str) -> set[int]:
+    rows = db.rows(con, "SELECT hour FROM exchange_hour_loaded WHERE league_id = ?", [lid])
+    return {cx.to_ts(r[0].replace(tzinfo=UTC)) for r in rows}
 
 
 def load_league(
@@ -194,54 +214,93 @@ def load_league(
     names: dict[str, BaseItem],
     force: bool = False,
 ) -> LoadResult:
+    """Bring a league's hourly rows in line with `window`, touching only what changed:
+    hours with pages on disk that aren't loaded yet are added, loaded hours outside
+    the window are removed."""
     lid = cx.league_id(cx.GAME, window.league_name)
-    fp = fingerprint(settings, window.league_name)
+    version = f"loader_version={LOADER_VERSION}"
     q = "SELECT fingerprint FROM ingest_load WHERE league_id = ? AND source = ?"
     previous = db.rows(con, q, [lid, SOURCE])
-    if previous and previous[0][0] == fp and not force:
+    rebuild = force or not previous or previous[0][0] != version
+
+    wanted = set(window.hours)
+    loaded = set() if rebuild else _loaded_hours(con, lid)
+    add = sorted(h for h in wanted - loaded if cx.page_path(settings, h).exists())
+    remove = sorted(loaded - wanted)
+    if not (add or remove or rebuild):
         return LoadResult(lid, skipped=True)
 
-    parquet = cx.processed_path(settings, window.league_name).resolve().as_posix()
+    batch = settings.data_dir / "tmp" / f"{lid}-load.parquet"
+    markets = cx.write_markets(settings, window.league_name, add, batch) if add else 0
+    parquet = batch.resolve().as_posix()
+    rows_added = 0
     con.execute("BEGIN TRANSACTION")
     try:
         con.execute(
             "UPDATE league SET launched_at = ? WHERE id = ?",
             [window.launched_at.replace(tzinfo=None), lid],
         )
-        metadata_ids = [
-            r[0]
-            for r in db.rows(
-                con,
-                f"SELECT DISTINCT a FROM read_parquet('{parquet}') "
-                f"UNION SELECT DISTINCT b FROM read_parquet('{parquet}')",
+        if rebuild:
+            for table in ("price_observation", "cross_market_hour", "exchange_hour_loaded"):
+                extra = " AND source = ?" if table == "price_observation" else ""
+                params = [lid, SOURCE] if extra else [lid]
+                con.execute(f"DELETE FROM {table} WHERE league_id = ?{extra}", params)
+        # Only the hours leaving the window, and (to make a retry safe) the new ones.
+        _hours_table(con, "touched_hours", remove + add)
+        con.execute(
+            "DELETE FROM price_observation WHERE league_id = ? AND source = ? "
+            "AND observed_at IN (SELECT hour FROM touched_hours)",
+            [lid, SOURCE],
+        )
+        con.execute(
+            "DELETE FROM cross_market_hour WHERE league_id = ? "
+            "AND observed_at IN (SELECT hour FROM touched_hours)",
+            [lid],
+        )
+        con.execute(
+            "DELETE FROM exchange_hour_loaded WHERE league_id = ? "
+            "AND hour IN (SELECT hour FROM touched_hours)",
+            [lid],
+        )
+        if markets:
+            metadata_ids = [
+                r[0]
+                for r in db.rows(
+                    con,
+                    f"SELECT DISTINCT a FROM read_parquet('{parquet}') "
+                    f"UNION SELECT DISTINCT b FROM read_parquet('{parquet}')",
+                )
+            ]
+            _stage_names(con, metadata_ids, names)
+            _stage_prices(con, parquet, lid)
+            _stage_cross(con, parquet, lid)
+            con.execute(
+                """
+                INSERT INTO item (id, game, canonical_name, category, metadata_id)
+                SELECT DISTINCT n.item_id, 'poe1', n.name, n.category, n.metadata_id
+                FROM stage_names n WHERE n.item_id IN (SELECT item_id FROM stage_price)
+                ON CONFLICT (id) DO UPDATE SET metadata_id = excluded.metadata_id
+                """
             )
-        ]
-        _stage_names(con, metadata_ids, names)
-        _stage_prices(con, parquet, lid)
-        _stage_cross(con, parquet, lid)
-        con.execute(
-            """
-            INSERT INTO item (id, game, canonical_name, category, metadata_id)
-            SELECT DISTINCT n.item_id, 'poe1', n.name, n.category, n.metadata_id
-            FROM stage_names n WHERE n.item_id IN (SELECT item_id FROM stage_price)
-            ON CONFLICT (id) DO UPDATE SET metadata_id = excluded.metadata_id
-            """
-        )
-        con.execute(
-            "DELETE FROM price_observation WHERE league_id = ? AND source = ?", [lid, SOURCE]
-        )
-        con.execute(
-            """
-            INSERT INTO price_observation (item_id, league_id, observed_at, day_offset,
-                chaos_value, divine_value, source, volume, chaos_volume, chaos_low, chaos_high)
-            SELECT * FROM stage_price
-            """
-        )
-        con.execute("DELETE FROM cross_market_hour WHERE league_id = ?", [lid])
-        con.execute("INSERT INTO cross_market_hour SELECT * FROM stage_cross")
+            con.execute(
+                """
+                INSERT INTO price_observation (item_id, league_id, observed_at, day_offset,
+                    chaos_value, divine_value, source, volume, chaos_volume, chaos_low,
+                    chaos_high)
+                SELECT * FROM stage_price
+                """
+            )
+            con.execute("INSERT INTO cross_market_hour SELECT * FROM stage_cross")
+            rows_added = db.scalar(con, "SELECT count(*) FROM stage_price")
+        _hours_table(con, "added_hours", add)
+        con.execute("INSERT INTO exchange_hour_loaded SELECT ?, hour FROM added_hours", [lid])
         refresh_mappings(con, settings)
-        items = db.scalar(con, "SELECT count(DISTINCT item_id) FROM stage_price")
-        rows = db.scalar(con, "SELECT count(*) FROM stage_price")
+        items, rows = db.rows(
+            con,
+            "SELECT count(DISTINCT item_id), count(*) FROM price_observation "
+            "WHERE league_id = ? AND source = ?",
+            [lid, SOURCE],
+        )[0]
         con.execute(
             """
             INSERT INTO ingest_load (league_id, source, fingerprint, item_count, row_count,
@@ -251,14 +310,23 @@ def load_league(
                 item_count = excluded.item_count, row_count = excluded.row_count,
                 loaded_at = excluded.loaded_at
             """,
-            [lid, SOURCE, fp, items, rows, datetime.now(UTC).replace(tzinfo=None)],
+            [lid, SOURCE, version, items, rows, datetime.now(UTC).replace(tzinfo=None)],
         )
         con.execute("COMMIT")
     except BaseException:
         con.execute("ROLLBACK")
         raise
     finally:
-        con.execute("DROP TABLE IF EXISTS stage_names")
-        con.execute("DROP TABLE IF EXISTS stage_price")
-        con.execute("DROP TABLE IF EXISTS stage_cross")
-    return LoadResult(lid, skipped=False, items=items, rows=rows)
+        for t in ("stage_names", "stage_price", "stage_cross", "touched_hours", "added_hours"):
+            con.execute(f"DROP TABLE IF EXISTS {t}")
+        batch.unlink(missing_ok=True)
+    return LoadResult(
+        lid,
+        skipped=False,
+        items=items,
+        rows=rows,
+        hours_added=len(add),
+        hours_removed=len(remove),
+        rows_added=rows_added,
+        rebuilt=rebuild,
+    )

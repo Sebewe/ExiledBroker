@@ -328,39 +328,49 @@ def exchange_sync(
                 f"{prefix}: launched {w.launched_at:%Y-%m-%d %H:%M} UTC, "
                 f"{result.fetched} hour(s) fetched, {result.cached} already on disk{note}"
             )
-            if force:
-                cx.sidecar_path(settings, dump.league_name).unlink(missing_ok=True)
-            cx.extract_league(settings, w)
             with db.session() as con:
                 loaded = exchange_loader.load_league(con, settings, w, names, force=force)
                 # The pool can change without the league's inputs changing.
                 mappings.refresh_mappings(con, settings)
-            if loaded.skipped:
-                typer.echo(f"{prefix}: already loaded")
-            else:
-                typer.echo(f"{prefix}: {loaded.items:,} items, {loaded.rows:,} hourly price rows")
+            typer.echo(f"{prefix}: {_load_summary(loaded)}")
+
+
+def _load_summary(loaded) -> str:
+    if loaded.skipped:
+        return "already loaded"
+    how = "rebuilt" if loaded.rebuilt else "updated"
+    return (
+        f"{how}: +{loaded.hours_added} hour(s), -{loaded.hours_removed} hour(s), "
+        f"+{loaded.rows_added:,} rows; {loaded.items:,} items, {loaded.rows:,} hourly rows"
+    )
 
 
 @exchange_app.command("status")
 def exchange_status() -> None:
     """Show how much hourly history is on disk and loaded, per league."""
     settings = get_settings()
-    index = dumps_mod.cached_index(settings) or []
     pages = len(list(settings.exchange_raw_dir.glob("*.json.gz")))
     typer.echo(f"{pages:,} hourly pages on disk in {settings.exchange_raw_dir}")
-    rows = {}
-    if settings.db_path.exists():
-        with db.session(read_only=True) as con:
-            q = "SELECT league_id, row_count, loaded_at FROM ingest_load WHERE source = ?"
-            rows = {r[0]: r[1:] for r in db.rows(con, q, [exchange_loader.SOURCE])}
-    for d in index:
-        if d.kind != CHALLENGE or d.max_date < cx.HISTORY_START.date():
-            continue
-        w = cx.extracted_window(settings, d.league_name)
-        span = f"{w.launched_at:%Y-%m-%d %H:%M} → {w.end:%Y-%m-%d %H:%M}" if w else "-"
-        n, at = rows.get(d.league_id, (0, None))
-        loaded = f"{n:,} rows (loaded {at:%Y-%m-%d %H:%M})" if at else "not loaded"
-        typer.echo(f"{d.league_name:<14} {span:<36} {loaded}")
+    if not settings.db_path.exists():
+        return
+    with db.session(read_only=True) as con:
+        rows = db.rows(
+            con,
+            """
+            SELECT l.name, min(h.hour), max(h.hour), count(*), il.row_count, il.loaded_at
+            FROM exchange_hour_loaded h
+            JOIN league l ON l.id = h.league_id
+            LEFT JOIN ingest_load il ON il.league_id = h.league_id AND il.source = ?
+            GROUP BY l.name, il.row_count, il.loaded_at, l.start_at
+            ORDER BY l.start_at
+            """,
+            [exchange_loader.SOURCE],
+        )
+    for name, first, last, hours, n, at in rows:
+        typer.echo(
+            f"{name:<14} {first:%Y-%m-%d %H:%M} → {last:%Y-%m-%d %H:%M}  {hours:>4} hours, "
+            f"{n or 0:,} rows (loaded {at:%Y-%m-%d %H:%M})"
+        )
 
 
 live_app = typer.Typer(

@@ -21,14 +21,12 @@ from pathlib import Path
 import polars as pl
 
 from exiledbroker.config import Settings
-from exiledbroker.ingest.files import read_json, tmp_path_for, write_json_atomic
+from exiledbroker.ingest.files import tmp_path_for
 from exiledbroker.ingest.http import PoliteClient
-from exiledbroker.normalize.leagues import league_id, slugify
+from exiledbroker.normalize.leagues import league_id
 
 HOUR = 3600
 GAME = "poe1"
-# Bump when the Parquet layout changes so existing files are rebuilt.
-EXTRACT_VERSION = 1
 # The exchange (and its history) started with Settlers.
 HISTORY_START = datetime(2024, 7, 26, 20, tzinfo=UTC)
 # How long after a league's first dump date we look for its first exchange hour.
@@ -166,24 +164,16 @@ def sync_league(
     return SyncResult(window, fetched, cached, reached_end=False)
 
 
-def processed_path(settings: Settings, league_name: str) -> Path:
-    return settings.exchange_processed_dir / f"{slugify(league_name)}.parquet"
-
-
-def sidecar_path(settings: Settings, league_name: str) -> Path:
-    path = processed_path(settings, league_name)
-    return path.with_name(path.name + ".meta.json")
-
-
-def _market_rows(settings: Settings, window: Window) -> Iterator[dict]:
-    lid = league_id(GAME, window.league_name)
-    for ts in window.hours:
+def market_rows(settings: Settings, league_name: str, hours: list[int]) -> Iterator[dict]:
+    """The league's markets in the given hours (pages on disk), one dict per market."""
+    lid = league_id(GAME, league_name)
+    for ts in hours:
         page = read_page(settings, ts)
         if page is None:
             continue
         hour = from_ts(ts).replace(tzinfo=None)
         for m in page["markets"]:
-            if m["league"] != window.league_name:
+            if m["league"] != league_name:
                 continue
             a, b = m["market_pair"]
             row = {"league_id": lid, "hour": hour, "market_id": m["market_id"], "a": a, "b": b}
@@ -200,42 +190,40 @@ def _market_rows(settings: Settings, window: Window) -> Iterator[dict]:
             yield row
 
 
-def extract_league(settings: Settings, window: Window) -> bool:
-    """Flatten the league's markets into one Parquet file. Returns False if up to date."""
-    present = [ts for ts in window.hours if page_path(settings, ts).exists()]
-    fingerprint = {
-        "extract_version": EXTRACT_VERSION,
-        "league": window.league_name,
-        "launched_at": window.launched_at.isoformat(),
-        "hours": len(present),
-        "first": present[0] if present else None,
-        "last": present[-1] if present else None,
-    }
-    out = processed_path(settings, window.league_name)
-    if out.exists() and read_json(sidecar_path(settings, window.league_name)) == fingerprint:
-        return False
+MARKET_SCHEMA = {
+    "league_id": pl.String,
+    "hour": pl.Datetime,
+    "market_id": pl.String,
+    "a": pl.String,
+    "b": pl.String,
+    **{
+        f"{field}_{side}": pl.Int64
+        for field in (
+            "volume_traded",
+            "lowest_stock",
+            "highest_stock",
+            "lowest_ratio",
+            "highest_ratio",
+        )
+        for side in ("a", "b")
+    },
+}
+
+
+def write_markets(settings: Settings, league_name: str, hours: list[int], out: Path) -> int:
+    """Write the league's markets for `hours` to a Parquet file; returns the row count.
+
+    Only the hours being loaded are read, so an hourly live update reads one page."""
     out.parent.mkdir(parents=True, exist_ok=True)
-    tmp = tmp_path_for(out)
-    try:
-        df = pl.DataFrame(list(_market_rows(settings, window)), infer_schema_length=None)
-        df.write_parquet(tmp)
-        os.replace(tmp, out)
-    finally:
-        tmp.unlink(missing_ok=True)
-    write_json_atomic(sidecar_path(settings, window.league_name), fingerprint)
-    return True
-
-
-def extracted_window(settings: Settings, league_name: str) -> Window | None:
-    meta = read_json(sidecar_path(settings, league_name))
-    if not meta or not meta.get("hours"):
-        return None
-    return Window(
-        league_name,
-        datetime.fromisoformat(meta["launched_at"]),
-        from_ts(meta["last"] + HOUR),
-        start=from_ts(meta["first"]),
+    df = pl.DataFrame(
+        list(market_rows(settings, league_name, hours)),
+        schema=MARKET_SCHEMA,
+        strict=False,
     )
+    tmp = tmp_path_for(out)
+    df.write_parquet(tmp)
+    os.replace(tmp, out)
+    return df.height
 
 
 # --- Live ----------------------------------------------------------------------------

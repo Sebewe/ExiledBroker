@@ -26,7 +26,10 @@ class LiveStatus:
     state: str  # "updated" | "unchanged" | "not_running" | "no_hours"
     latest_hour: datetime | None = None
     fetched: int = 0
-    rows: int = 0
+    rows: int = 0  # the league's hourly rows after the update
+    hours_added: int = 0
+    hours_removed: int = 0
+    rows_added: int = 0
 
     def __str__(self) -> str:
         if self.state == "not_running":
@@ -37,7 +40,12 @@ class LiveStatus:
         if self.state == "no_hours":
             return f"{self.league}: no published hours in the window yet."
         latest = f"{self.latest_hour:%Y-%m-%d %H:00} UTC" if self.latest_hour else "–"
-        loaded = "unchanged" if self.state == "unchanged" else f"{self.rows:,} hourly rows"
+        loaded = (
+            "unchanged"
+            if self.state == "unchanged"
+            else f"+{self.hours_added} hour(s), -{self.hours_removed} hour(s), "
+            f"+{self.rows_added:,} rows ({self.rows:,} hourly rows in total)"
+        )
         return (
             f"{self.league}: latest published hour {latest}; "
             f"{self.fetched} new hour(s) fetched; {loaded}."
@@ -104,7 +112,6 @@ def sync_live(
     hours = list(result.window.hours)
     if not hours:
         return LiveStatus(league, "no_hours")
-    cx.extract_league(settings, result.window)
     with db.session() as con:
         db.init_schema(con)
         con.execute("UPDATE league SET exchange_tracked = TRUE WHERE id = ?", [lid])
@@ -117,4 +124,7 @@ def sync_live(
         # check fetch pages too, so the sync alone would undercount).
         fetched=_page_count(settings) - pages_before,
         rows=loaded.rows,
+        hours_added=loaded.hours_added,
+        hours_removed=loaded.hours_removed,
+        rows_added=loaded.rows_added,
     )

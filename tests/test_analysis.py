@@ -126,7 +126,6 @@ def test_launch_curve_baseline_is_day1_median(tmp_path):
     con = register(settings)
     with client_for(settings, FakeExchange(pages, now=T0 + 86400 + 3600)) as client:
         r = cx.sync_league(client, settings, "Mirage", date(2026, 3, 6), days=2)
-    cx.extract_league(settings, r.window)
     exchange_loader.load_league(con, settings, r.window, NAMES)
     curves = lp.launch_curves(con, ["currency:divine-orb"], ["Mirage"], "chaos", bucket_hours=24)
     day2 = curves.filter(bucket_day=1.0).row(0, named=True)
