@@ -65,7 +65,7 @@ Where ExiledBroker's data comes from, how it becomes rows, and the rules that de
 - Every market an item has against Chaos or Divine contributes. `volume` is units traded; `chaos_volume` is Chaos traded plus Divines × the rate; `chaos_value = chaos_volume / volume`; `chaos_low` / `chaos_high` are the extreme traded ratios in chaos; `divine_value = chaos_value / rate`. Chaos is 1 by definition. Hours with no trades have no row.
 - Before the first Chaos/Divine trade the rate is unknown, so prices in divines are null, and averages leave those hours out of the sum and the weight.
 
-**Cross-market rows** (`cross_market_hour`): every item-hour that traded against both Chaos and Divines, with that same hour's Divine rate (not carried forward, since a loop needs both trades in one hour). This is the arbitrage universe, so it's stored complete.
+**Cross-market rows** (`cross_market_hour`): every item-hour that traded against Chaos, with the Divine leg and that same hour's Divine rate when it also traded against Divines (not carried forward, since a loop needs both trades in one hour). Loops and the Arbitrage summary use only the hours with both legs (`cross_market.BOTH_LEGS`); the Chaos-only hours keep the charts' Chaos price line unbroken (most items trade against Divines in only a minority of hours). This is the arbitrage universe, so it's stored complete.
 
 **What's kept.** Hourly price rows are stored only for what the site reads: price-mapping items, followed cards' rewards, and Chaos and Divine (`exchange_loader._keep_used_items`). An item that joins the pool later has no earlier hours until a `--force` rebuild.
 

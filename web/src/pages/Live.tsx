@@ -163,7 +163,7 @@ export default function Live() {
           </div>
           <Section
             title="Best loops right now"
-            description={`Chaos ↔ Divine: the range the item traded at in its latest published hour, the edge at that hour's worst prices, and how often it paid over the last 6 hours. Select a row for its last 3 days: the gap between the two price lines is the margin, the bars how much traded in both markets.`}
+            description={`Chaos ↔ Divine: the range the item traded at in its latest published hour, the edge at that hour's worst prices, and how often it paid over the last 6 hours. Select a row for its last 3 days: the Chaos price line has every hour it traded; the via-Divines line and the bars only the hours it traded in both markets, where the gap between the lines is the margin.`}
           >
             {queryFallback(loops) ??
               (loops.data!.length ? (

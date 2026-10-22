@@ -147,8 +147,8 @@ CREATE TABLE IF NOT EXISTS divination_card (
 -- Only decided for currency and card rewards for now; null for uniques, gems, etc.
 ALTER TABLE divination_card ADD COLUMN IF NOT EXISTS reward_fixed BOOLEAN;
 
--- Cross-market: every item-hour that traded against both Chaos and Divine, with the
--- hour's Divine rate. Each leg has its volume-weighted price, units traded, and the
+-- Cross-market: every item-hour that traded against Chaos, with the Divine leg and the
+-- hour's Divine rate when it also traded against Divine (else null; loops need both). Each leg has its volume-weighted price, units traded, and the
 -- lowest/highest traded price that hour, all in the leg's reference currency.
 CREATE TABLE IF NOT EXISTS cross_market_hour (
     league_id        VARCHAR NOT NULL REFERENCES league (id),

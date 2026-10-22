@@ -34,7 +34,8 @@ export interface paths {
         };
         /**
          * Arbitrage Hourly
-         * @description One item's latest `hours` hours in both markets, for its chart.
+         * @description One item's latest `hours` hours, for its chart: every hour it traded against
+         *     Chaos, with the Divine side null in hours it didn't also trade against Divine.
          */
         get: operations["arbitrage_hourly_api_arbitrage_hourly_get"];
         put?: never;

@@ -1,6 +1,7 @@
 """Cross-market loops: the same item priced in Chaos and in Divines.
 
-For each item-hour traded in both markets (table cross_market_hour), two loops are
+For each item-hour traded in both markets (table cross_market_hour; its hours traded
+against Chaos only are there for the charts, and BOTH_LEGS leaves them out), two loops are
 priced at the *worst* prices seen that hour on every leg:
 
     Chaos → item → Divines → Chaos
@@ -71,18 +72,22 @@ def hourly(
     item_ids: list[str] | None = None,
     direction: str = "chaos_first",
     since: datetime | None = None,
+    chaos_only_hours: bool = False,
 ) -> pl.DataFrame:
     """Per item-hour: direct Chaos price, price via Divines, the VWAP gap, the
     worst-price loop edge, and the chaos value traded in both markets.
 
     `since` (exclusive) limits it to recent hours in SQL, so the live view doesn't
-    pull a league's whole history."""
+    pull a league's whole history. `chaos_only_hours` adds the hours the item traded
+    against Chaos only (charts), with the Divine-side columns null."""
     if not leagues or item_ids == []:
         return pl.DataFrame(schema=HOURLY_SCHEMA)
     params: list = league_ids.ids(con, leagues)
     if not params:
         return pl.DataFrame(schema=HOURLY_SCHEMA)
     where = f"x.league_id IN ({league_ids.marks(params)})"
+    if not chaos_only_hours:
+        where += f" AND {BOTH_LEGS}"
     if item_ids is not None:
         where += f" AND x.item_id IN ({', '.join('?' for _ in item_ids)})"
         params += item_ids
@@ -110,8 +115,10 @@ def hourly(
             via_divines=pl.col("divine_price") * pl.col("divine_rate"),
             edge=_edge(direction),
             # The smaller side bounds how much could have gone through both markets.
-            overlap_chaos=pl.min_horizontal("chaos_volume", "divine_volume")
-            * pl.col("chaos_price"),
+            # (min_horizontal skips nulls: a Chaos-only hour has no overlap.)
+            overlap_chaos=pl.when(pl.col("divine_volume").is_not_null()).then(
+                pl.min_horizontal("chaos_volume", "divine_volume") * pl.col("chaos_price")
+            ),
         )
         .with_columns(gap=pl.col("via_divines") / pl.col("chaos_price") - 1)
         .select(list(HOURLY_SCHEMA))
@@ -119,6 +126,9 @@ def hourly(
         .sort("observed_at", "league", "item_id")
     )
 
+
+# An hour a loop can go through: traded against Divine too, with a Divine rate that hour.
+BOTH_LEGS = "x.divine_price IS NOT NULL AND x.divine_rate IS NOT NULL"
 
 EDGE_SQL = {
     "chaos_first": "x.divine_low * x.divine_rate_low / x.chaos_high - 1",
@@ -156,7 +166,7 @@ def summarize(
             FROM cross_market_hour x
             JOIN league l ON l.id = x.league_id
             JOIN item i ON i.id = x.item_id
-            WHERE x.league_id IN ({league_ids.marks(ids)})
+            WHERE x.league_id IN ({league_ids.marks(ids)}) AND {BOTH_LEGS}
         )
         SELECT league, item_id, name,
                count(*) AS hours,

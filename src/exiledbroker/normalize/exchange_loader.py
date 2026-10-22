@@ -38,7 +38,8 @@ from exiledbroker.storage import db
 
 SOURCE = "ggg-exchange-hourly"
 # 6: a name shared only with legacy (non-stackable) or Tencent-realm ids isn't ambiguous.
-LOADER_VERSION = 6
+# 7: cross_market_hour keeps hours traded against Chaos only (Divine leg null).
+LOADER_VERSION = 7
 CATEGORY_BY_CLASS = {"StackableCurrency": "currency", "MapFragment": "fragment"}
 
 
@@ -136,7 +137,9 @@ def _legs_sql(parquet: str) -> str:
 
 
 def _stage_cross(con: duckdb.DuckDBPyConnection, parquet: str, lid: str) -> None:
-    """Item-hours traded against both Chaos and Divine, with that hour's Divine rate.
+    """Item-hours traded against Chaos, with the Divine leg and that hour's Divine rate
+    when the item also traded against Divine (else null). Loops need both legs; the
+    Chaos-only hours keep the charts' Chaos price line unbroken.
 
     Unlike the hourly prices, the rate isn't carried forward: a loop through both
     markets needs the Divine/Chaos trade to happen in the same hour."""
@@ -159,8 +162,8 @@ def _stage_cross(con: duckdb.DuckDBPyConnection, parquet: str, lid: str) -> None
                d.price, d.x_vol, d.lo, d.hi,
                r.price, r.lo, r.hi
         FROM c
-        JOIN d ON d.hour = c.hour AND d.x = c.x
-        JOIN r ON r.hour = c.hour
+        LEFT JOIN d ON d.hour = c.hour AND d.x = c.x
+        LEFT JOIN r ON r.hour = c.hour
         JOIN stage_names n ON n.metadata_id = c.x
         JOIN league l ON l.id = '{lid}'
         """

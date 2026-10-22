@@ -104,7 +104,7 @@ export default function Arbitrage() {
               <Stat label="Top score" value={score(top?.score)} hint={top?.name} />
               <Stat label="Leagues compared" value={count(leagues.length)} />
             </div>
-            <Section title="Ranked loops" description="Select a row for its last 3 days in both markets: the gap between the price lines is the margin, the bars how much traded in both.">
+            <Section title="Ranked loops" description="Select a row for its last 3 days. The Chaos price line has every hour it traded; the via-Divines line and the bars only the hours it traded in both markets, where the gap between the lines is the margin.">
               {queryFallback(items) ??
                 (items.data!.length ? (
                   <>

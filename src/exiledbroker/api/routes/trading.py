@@ -66,7 +66,11 @@ def arbitrage_hourly_view(
         for league in leagues:  # each league's own latest hours
             since = _latest_hours(con, league, hours)
             if since is not None:
-                frames.append(cross_market.hourly(con, [league], [item_id], direction, since=since))
+                frames.append(
+                    cross_market.hourly(
+                        con, [league], [item_id], direction, since=since, chaos_only_hours=True
+                    )
+                )
         return pl.concat(frames) if frames else pl.DataFrame(schema=cross_market.HOURLY_SCHEMA)
 
     return View(
@@ -128,7 +132,8 @@ def arbitrage_hourly(
     direction: Direction = "chaos_first",
     hours: Annotated[int, Query(ge=1, le=MAX_CHART_HOURS)] = CHART_HOURS,
 ) -> Response:
-    """One item's latest `hours` hours in both markets, for its chart."""
+    """One item's latest `hours` hours, for its chart: every hour it traded against
+    Chaos, with the Divine side null in hours it didn't also trade against Divine."""
     for name in league:
         deps.require_league(name)
     return deps.respond(request, arbitrage_hourly_view(item_id, league, direction, hours))

@@ -9,13 +9,16 @@ const VOLUME_SHARE = 0.25
 /** An item's loop, hour by hour: what it costs in Chaos against what it fetches via
  *  Divines (converted to Chaos at that hour's rate), so the gap between the lines is the
  *  margin; with the Chaos value traded in both markets as bars along the bottom, so the
- *  margin can be weighed against how much could actually go through. */
+ *  margin can be weighed against how much could actually go through. The Chaos line has
+ *  every hour the item traded against Chaos; the Divine line and the bars only the hours
+ *  it traded in both markets. */
 export function loopChart(rows: CrossMarketHour[]): EChartsCoreOption {
   const base = baseOptions('Chaos')
   const leagues = [...new Set(rows.map((r) => r.league))]
   const maxVolume = Math.max(0, ...rows.map((r) => r.overlap_chaos ?? 0))
   const series = leagues.flatMap((league) => {
     const mine = rows.filter((r) => r.league === league)
+    const both = mine.filter((r) => r.via_divines != null)
     const suffix = leagues.length > 1 ? ` (${league})` : ''
     return [
       {
@@ -25,11 +28,11 @@ export function loopChart(rows: CrossMarketHour[]): EChartsCoreOption {
         barMaxWidth: 10,
         itemStyle: { color: 'rgba(148, 163, 184, 0.28)' },
         emphasis: { itemStyle: { color: 'rgba(148, 163, 184, 0.5)' } },
-        data: mine.map((r) => [r.observed_at, r.overlap_chaos]),
+        data: both.map((r) => [r.observed_at, r.overlap_chaos]),
         z: 1,
       },
       { ...line(`Price in Chaos${suffix}`, mine.map((r) => [r.observed_at, r.chaos_price])), z: 3 },
-      { ...line(`Via Divines, in Chaos${suffix}`, mine.map((r) => [r.observed_at, r.via_divines])), z: 3 },
+      { ...line(`Via Divines, in Chaos${suffix}`, both.map((r) => [r.observed_at, r.via_divines])), z: 3 },
     ]
   })
   const priceAxis = base.yAxis as object

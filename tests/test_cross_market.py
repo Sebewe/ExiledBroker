@@ -27,7 +27,7 @@ def con(tmp_path):
     settings = Settings(data_dir=tmp_path, request_min_interval=0)
     # Hour 0: Divine 100c (range 90–110). Alchemy: 1c in the Chaos market (range 0.9–1.2),
     # 0.015 div in the Divine market (range 0.014–0.016) = 1.5c via Divines.
-    # Hour 1: Alchemy trades against Chaos only, so it isn't a cross-market hour.
+    # Hour 1: Alchemy trades against Chaos only: kept for charts, not a loop hour.
     pages = {
         T0: [
             market("Mirage", CHAOS, DIVINE, 1000, 10, lo=(90, 1), hi=(110, 1)),
@@ -51,12 +51,25 @@ def test_loader_fills_cross_market_hours(con):
     rows = db.rows(
         con,
         "SELECT item_id, chaos_price, chaos_low, chaos_high, divine_price, divine_low, "
-        "divine_high, divine_rate, divine_rate_low, divine_rate_high FROM cross_market_hour",
+        "divine_high, divine_rate, divine_rate_low, divine_rate_high FROM cross_market_hour "
+        "ORDER BY observed_at",
     )
-    assert len(rows) == 1  # only hour 0 traded in both markets
-    item, *values = rows[0]
+    assert len(rows) == 2
+    item, *values = rows[0]  # hour 0: both markets
     assert item == "currency:orb-of-alchemy"
     assert values == pytest.approx([1.0, 0.9, 1.2, 0.015, 0.014, 0.016, 100, 90, 110])
+    item, *values = rows[1]  # hour 1: Chaos only, the Divine side null
+    assert item == "currency:orb-of-alchemy" and values[0] == pytest.approx(1.0)
+    assert values[3:6] == [None, None, None]
+
+
+def test_chaos_only_hours_are_for_charts_not_loops(con):
+    assert xm.hourly(con, ["Mirage"]).height == 1  # loops: both markets only
+    chart = xm.hourly(con, ["Mirage"], chaos_only_hours=True)
+    assert chart["chaos_price"].to_list() == pytest.approx([1.0, 1.0])
+    last = chart.row(1, named=True)
+    assert (last["via_divines"], last["edge"], last["overlap_chaos"]) == (None, None, None)
+    assert xm.summarize(con, ["Mirage"], min_hours=1)["hours"].to_list() == [1]
 
 
 def test_loop_edges_at_worst_prices(con):
