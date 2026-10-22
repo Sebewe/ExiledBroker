@@ -9,9 +9,7 @@ is wiped. Data: the replay fixture (Mirage's first 30 hours) loaded into DuckDB 
 real pipeline, then copied over."""
 
 import os
-import re
 from datetime import timedelta
-from importlib import resources
 
 import polars as pl
 import pytest
@@ -22,7 +20,7 @@ from exiledbroker.config import Settings
 from exiledbroker.ingest import currency_exchange as cx
 from exiledbroker.ingest.live import sync_live
 from exiledbroker.services import cross_market, divination, live, market, overview, prices
-from exiledbroker.storage import db
+from exiledbroker.storage import db, site
 from test_currency_exchange import FakeExchange, client_for
 from test_live_pipeline import LAUNCH, PAGES, store_reference_data
 
@@ -30,12 +28,6 @@ PG_URL = os.environ.get("EB_TEST_POSTGRES_URL")
 pytestmark = pytest.mark.skipif(not PG_URL, reason="EB_TEST_POSTGRES_URL is not set")
 LEAGUE = "Mirage"
 BIG_TABLES = {"price_observation", "cross_market_hour"}
-
-
-def _tables() -> list[str]:
-    """Every table, in schema order (so references are created first)."""
-    sql = resources.files("exiledbroker.storage").joinpath("schema.sql").read_text()
-    return re.findall(r"CREATE TABLE IF NOT EXISTS (\w+)", sql)
 
 
 @pytest.fixture(scope="module")
@@ -52,15 +44,9 @@ def engines(tmp_path_factory):
     pg = psycopg.connect(PG_URL, autocommit=True)
     pg.execute("DROP SCHEMA public CASCADE")
     pg.execute("CREATE SCHEMA public")
-    db.init_schema(pg)  # the schema itself must run on Postgres
     duck = db.connect(s.db_path, read_only=True)
-    for table in _tables():
-        cols = [r[0] for r in db.rows(duck, f"DESCRIBE {table}")]
-        data = db.rows(duck, f"SELECT {', '.join(cols)} FROM {table}")
-        with pg.cursor() as cur, cur.copy(f"COPY {table} ({', '.join(cols)}) FROM STDIN") as cp:
-            for row in data:
-                cp.write_row(row)
-    pg.execute("ANALYZE")
+    # The same copy `eb site seed` makes; it also builds the schema on Postgres.
+    site.seed(duck, pg, [LEAGUE])
     yield duck, pg
     duck.close()
     pg.close()
@@ -210,3 +196,64 @@ def test_live_queries_can_use_an_index(engines, name):
                     assert leading[index] in cond, (name, index, cond, q.sql)
     finally:
         pg.execute("SET enable_seqscan = on")
+
+
+# The site's tables, ordered so rows compare engine-neutrally.
+WORKER_TABLES = {
+    "price_observation": "item_id, observed_at",
+    "cross_market_hour": "item_id, observed_at",
+    "exchange_hour_loaded": "hour",
+    "tracked_item": "item_id, group_id",
+    "divination_card": "item_id",
+}
+
+
+def _contents(con, table: str, order: str) -> pl.DataFrame:
+    return _normalized(db.frame(con, f"SELECT * FROM {table} ORDER BY {order}"))
+
+
+def test_live_worker_writes_postgres_like_duckdb(engines, tmp_path):
+    """The hosted worker: `sync_live` with EB_DATABASE_URL set loads hour by hour into
+    Postgres (DuckDB attached to it). The tables must end up as the DuckDB pipeline's."""
+    import psycopg
+    from psycopg.conninfo import conninfo_to_dict, make_conninfo
+
+    duck, _ = engines
+    with psycopg.connect(PG_URL, autocommit=True) as admin:
+        admin.execute("DROP DATABASE IF EXISTS eb_worker_test")
+        admin.execute("CREATE DATABASE eb_worker_test")
+    url = make_conninfo(**(conninfo_to_dict(PG_URL) | {"dbname": "eb_worker_test"}))
+    s = Settings(data_dir=tmp_path, request_min_interval=0, database_url=url)
+    store_reference_data(s)  # local file: the reference rows the worker would have
+    with db.session(s.db_path, read_only=True) as local, psycopg.connect(url) as pg:
+        db.init_schema(pg)
+        for key, content, source in db.rows(
+            local, "SELECT key, content, source_url FROM reference_data"
+        ):
+            pg.execute(
+                "INSERT INTO reference_data (key, fetched_at, content, source_url, checked_at) "
+                "VALUES (%s, now(), %s, %s, now())",
+                [key, content, source],
+            )
+    server = FakeExchange(PAGES, now=LAUNCH)
+    for hours_in in (1, 2, 3, 6, 12, 24, 30):
+        server.now = LAUNCH + hours_in * 3600
+        now = cx.from_ts(server.now) + timedelta(minutes=10)
+        with client_for(s, server) as client:
+            status = sync_live(client, s, LEAGUE, now=now, earliest=cx.from_ts(LAUNCH - 72 * 3600))
+        assert status.state == "updated", status
+
+    with psycopg.connect(url) as pg:
+        for table, order in WORKER_TABLES.items():
+            (
+                assert_frame_equal(
+                    _contents(duck, table, order),
+                    _contents(pg, table, order),
+                    check_dtypes=False,
+                    rel_tol=1e-9,
+                    abs_tol=1e-9,
+                ),
+                table,
+            )
+        runs = db.rows(pg, "SELECT state, requests FROM ingest_run ORDER BY started_at")
+    assert [r[0] for r in runs] == ["updated"] * 7

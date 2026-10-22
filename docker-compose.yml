@@ -1,0 +1,19 @@
+# Local copy of the hosted setup. Postgres stands in for Supabase.
+#   docker compose up -d db
+#   EB_DATABASE_URL=postgresql://eb:eb@localhost:55432/exiledbroker eb site seed
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: eb
+      POSTGRES_PASSWORD: eb
+      POSTGRES_DB: exiledbroker
+    ports: ["55432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "eb", "-d", "exiledbroker"]
+      interval: 5s
+      retries: 10
+
+volumes:
+  pgdata:

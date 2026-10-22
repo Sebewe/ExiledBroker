@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     # Manual include/exclude lists for the core drop pool (committed, edit by hand).
     core_pool_file: Path = Field(default_factory=_default_core_pool)
     db_filename: str = "exiledbroker.duckdb"
+    # The site's database (Supabase Postgres when hosted, the compose `db` service
+    # locally). Unset: the site reads the local DuckDB file instead.
+    database_url: str | None = None
     # Only PoE1 for now; every league row still carries its game.
     default_game: str = "poe1"
     # Origins allowed to call the API from a browser (the future public frontend).

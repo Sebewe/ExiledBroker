@@ -462,3 +462,39 @@ def perf_report(
     typer.echo(perf.render(rep, prev))
     if save:
         typer.echo(f"\nSaved {perf.save(settings, rep)}")
+
+
+site_app = typer.Typer(
+    help="The site's database (Postgres at EB_DATABASE_URL): what the hosted site reads.",
+    no_args_is_help=True,
+)
+app.add_typer(site_app, name="site")
+
+
+@site_app.command("seed")
+def site_seed(
+    league: Annotated[
+        list[str] | None,
+        typer.Option("--league", "-l", help="Repeatable. Default: the newest exchange league."),
+    ] = None,
+) -> None:
+    """Copy leagues' site rows from the local DuckDB into Postgres (development only).
+    Replaces those leagues' rows there; other leagues are left alone."""
+    import psycopg
+
+    from exiledbroker.services.live import live_leagues
+    from exiledbroker.storage import site
+
+    settings = get_settings()
+    if not settings.database_url:
+        typer.echo("Set EB_DATABASE_URL (see .env.example) to the site's Postgres database.")
+        raise typer.Exit(1)
+    with db.session(read_only=True) as duck:
+        names = league or live_leagues(duck)["name"].head(1).to_list()
+        if not names:
+            typer.echo("No exchange league in the local database.")
+            raise typer.Exit(1)
+        with psycopg.connect(settings.database_url, autocommit=True) as pg:
+            result = site.seed(duck, pg, names)
+    rows = ", ".join(f"{t} {n:,}" for t, n in result.rows.items())
+    typer.echo(f"Seeded {', '.join(result.leagues)}: {rows}")

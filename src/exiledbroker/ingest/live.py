@@ -65,17 +65,14 @@ def current_league(client: PoliteClient, settings: Settings) -> str:
 
 
 def _known_launch(settings: Settings, league_id: str) -> datetime | None:
-    if not settings.db_path.exists():
-        return None
-    with db.session(settings.db_path, read_only=True) as con:
+    with db.site_writer(settings) as con:
         rows = db.rows(con, "SELECT launched_at FROM league WHERE id = ?", [league_id])
     return rows[0][0].replace(tzinfo=UTC) if rows and rows[0][0] else None
 
 
 def _register(settings: Settings, name: str, launched_at: datetime) -> None:
     info = dumps_mod.DumpInfo(name, "", launched_at.date(), None, CHALLENGE)
-    with db.session(settings.db_path) as con:
-        db.init_schema(con)
+    with db.site_writer(settings) as con:
         dump_store.upsert_leagues(con, [info])
         con.execute(
             "UPDATE league SET launched_at = ?, exchange_tracked = TRUE WHERE id = ?",
@@ -99,8 +96,7 @@ def _record_run(
 ) -> None:
     """Write the update's ingest_run row, and drop rows older than RUN_HISTORY."""
     s = status
-    with db.session(settings.db_path) as con:
-        db.init_schema(con)
+    with db.site_writer(settings) as con:
         con.execute(
             "INSERT INTO ingest_run VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT DO NOTHING",
@@ -180,8 +176,7 @@ def _sync_live(
         return LiveStatus(league, "not_running")
     # Reference data from the database, refreshed only when stale (RePoE weekly, the
     # core pool and card tiers daily), so a fresh container doesn't re-download it.
-    with db.session(settings.db_path) as con:
-        db.init_schema(con)
+    with db.site_writer(settings) as con:
         item_names.ensure_base_items(client, settings, con)
         names = item_names.load_base_items(con)
         refresh_pool_if_stale(client, con, settings)
@@ -193,7 +188,7 @@ def _sync_live(
         _register(settings, league, launched_at)
     # Fetch only the hours the database doesn't have yet (all of them on a rebuild),
     # so a worker whose disk is wiped between runs makes one request per new hour.
-    with db.session(settings.db_path, read_only=True) as con:
+    with db.site_writer(settings) as con:
         rebuild = exchange_loader.needs_rebuild(con, lid)
         loaded = set() if rebuild else exchange_loader.loaded_hours(con, lid)
     result = cx.sync_recent(
@@ -208,8 +203,7 @@ def _sync_live(
     hours = list(result.window.hours)
     if not hours:
         return LiveStatus(league, "no_hours")
-    with db.session(settings.db_path) as con:
-        db.init_schema(con)
+    with db.site_writer(settings) as con:
         con.execute("UPDATE league SET exchange_tracked = TRUE WHERE id = ?", [lid])
         loaded = exchange_loader.load_league(con, settings, result.window, names)
     return LiveStatus(

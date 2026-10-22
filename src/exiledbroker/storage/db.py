@@ -32,6 +32,62 @@ def session(
         con.close()
 
 
+@contextmanager
+def site_session(settings=None, *, read_only: bool = True) -> Iterator:
+    """A connection to what the site reads: Postgres when `EB_DATABASE_URL` is set,
+    otherwise the local DuckDB file. The API and the live worker use this; research
+    commands keep `session` (always DuckDB)."""
+    settings = settings or get_settings()
+    if not settings.database_url:
+        with session(settings.db_path, read_only=read_only) as con:
+            yield con
+        return
+    import psycopg
+
+    # Autocommit: each read is its own statement, and writers open their own
+    # transactions. No prepared statements, so Supabase's transaction pooler works.
+    con = psycopg.connect(settings.database_url, autocommit=True, prepare_threshold=None)
+    try:
+        yield con
+    finally:
+        con.close()
+
+
+_schema_ready: set[str] = set()
+
+
+@contextmanager
+def site_writer(settings=None) -> Iterator[duckdb.DuckDBPyConnection]:
+    """A DuckDB connection that writes what the site reads (the live worker's).
+
+    With `EB_DATABASE_URL` set, an in-memory DuckDB with the Postgres database attached
+    and selected (`USE site`): the loaders run unchanged, staging in DuckDB (Parquet,
+    ASOF joins, temp tables) while their tables and transactions are Postgres's.
+    Otherwise the local DuckDB file. Either way the schema is created first."""
+    settings = settings or get_settings()
+    url = settings.database_url
+    if not url:
+        with session(settings.db_path) as con:
+            init_schema(con)
+            yield con
+        return
+    if url not in _schema_ready:
+        import psycopg
+
+        with psycopg.connect(url, autocommit=True) as pg:
+            init_schema(pg)
+        _schema_ready.add(url)
+    con = duckdb.connect()
+    try:
+        con.execute("INSTALL postgres")  # a no-op once installed (the image bakes it in)
+        con.execute("LOAD postgres")
+        con.execute(f"ATTACH '{url.replace(chr(39), chr(39) * 2)}' AS site (TYPE postgres)")
+        con.execute("USE site")
+        yield con
+    finally:
+        con.close()
+
+
 def init_schema(con: duckdb.DuckDBPyConnection) -> None:
     sql = resources.files("exiledbroker.storage").joinpath("schema.sql").read_text()
     con.execute(sql)
