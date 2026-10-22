@@ -5,7 +5,7 @@ import streamlit as st
 
 from exiledbroker.analysis import launch_patterns as lp
 from exiledbroker.config import get_settings
-from exiledbroker.services import divination, market, overview
+from exiledbroker.services import cross_market, divination, market, overview
 from exiledbroker.storage import db
 
 UNIT_SUFFIX = {"chaos": "c", "divine": "div"}
@@ -108,6 +108,21 @@ def turn_ins_across(leagues: tuple[str, ...], half_life: float) -> pl.DataFrame:
         return lp.turn_ins_across_leagues(
             con, list(leagues), lp.recency_weights(list(leagues), half_life)
         )
+
+
+@st.cache_data(ttl="10m", show_spinner="Pricing loops through both markets…")
+def cross_market_per_league(
+    leagues: tuple[str, ...], direction: str, buffer: float, min_hours: int
+) -> pl.DataFrame:
+    with db.session(read_only=True) as con:
+        hours = cross_market.hourly(con, list(leagues), direction=direction)
+    return cross_market.per_league(hours, buffer, min_hours)
+
+
+@st.cache_data(ttl="10m", show_spinner=False, max_entries=64)
+def cross_market_item(leagues: tuple[str, ...], item_id: str, direction: str) -> pl.DataFrame:
+    with db.session(read_only=True) as con:
+        return cross_market.hourly(con, list(leagues), [item_id], direction)
 
 
 @st.cache_data(ttl="10m", show_spinner=False)

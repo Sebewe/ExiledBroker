@@ -33,7 +33,7 @@ from exiledbroker.normalize.tracked import (
 from exiledbroker.storage import db
 
 SOURCE = "ggg-exchange-hourly"
-LOADER_VERSION = 2
+LOADER_VERSION = 3
 CATEGORY_BY_CLASS = {"StackableCurrency": "currency", "MapFragment": "fragment"}
 
 
@@ -81,12 +81,11 @@ def _stage_names(con: duckdb.DuckDBPyConnection, metadata_ids: list[str], names)
         con.executemany("INSERT INTO stage_names VALUES (?, ?, ?, ?)", rows)
 
 
-def _stage_prices(con: duckdb.DuckDBPyConnection, parquet: str, lid: str) -> None:
-    con.execute(
-        f"""
-        CREATE OR REPLACE TEMP TABLE stage_price AS
-        WITH m AS (SELECT * FROM read_parquet('{parquet}')),
-        -- Each market as two legs: X priced in the other currency (the reference).
+def _legs_sql(parquet: str) -> str:
+    """CTEs `m` (the league's markets), `legs` and `traded`: each market as two legs,
+    X priced in the other currency (the reference), keeping legs with trades."""
+    return f"""
+        m AS (SELECT * FROM read_parquet('{parquet}')),
         legs AS (
             SELECT hour, b AS x, a AS ref, volume_traded_b AS x_vol, volume_traded_a AS ref_vol,
                    lowest_ratio_a AS lo_ref, lowest_ratio_b AS lo_x,
@@ -97,7 +96,46 @@ def _stage_prices(con: duckdb.DuckDBPyConnection, parquet: str, lid: str) -> Non
                    lowest_ratio_b, lowest_ratio_a, highest_ratio_b, highest_ratio_a
             FROM m WHERE b IN ('{CHAOS_METADATA}', '{DIVINE_METADATA}')
         ),
-        traded AS (SELECT * FROM legs WHERE x_vol > 0 AND ref_vol > 0),
+        traded AS (SELECT * FROM legs WHERE x_vol > 0 AND ref_vol > 0)"""
+
+
+def _stage_cross(con: duckdb.DuckDBPyConnection, parquet: str, lid: str) -> None:
+    """Item-hours traded against both Chaos and Divine, with that hour's Divine rate.
+
+    Unlike the hourly prices, the rate isn't carried forward: a loop through both
+    markets needs the Divine/Chaos trade to happen in the same hour."""
+    con.execute(
+        f"""
+        CREATE OR REPLACE TEMP TABLE stage_cross AS
+        WITH {_legs_sql(parquet)},
+        p AS (
+            SELECT hour, x, ref, x_vol, ref_vol / x_vol AS price,
+                   least(lo_ref / nullif(lo_x, 0), hi_ref / nullif(hi_x, 0)) AS lo,
+                   greatest(lo_ref / nullif(lo_x, 0), hi_ref / nullif(hi_x, 0)) AS hi
+            FROM traded
+        ),
+        c AS (SELECT * FROM p WHERE ref = '{CHAOS_METADATA}' AND x <> '{DIVINE_METADATA}'),
+        d AS (SELECT * FROM p WHERE ref = '{DIVINE_METADATA}' AND x <> '{CHAOS_METADATA}'),
+        r AS (SELECT * FROM p WHERE x = '{DIVINE_METADATA}' AND ref = '{CHAOS_METADATA}')
+        SELECT '{lid}' AS league_id, n.item_id, c.hour AS observed_at,
+               date_diff('second', l.launched_at, c.hour) / 86400.0 AS day_offset,
+               c.price, c.x_vol, c.lo, c.hi,
+               d.price, d.x_vol, d.lo, d.hi,
+               r.price, r.lo, r.hi
+        FROM c
+        JOIN d ON d.hour = c.hour AND d.x = c.x
+        JOIN r ON r.hour = c.hour
+        JOIN stage_names n ON n.metadata_id = c.x
+        JOIN league l ON l.id = '{lid}'
+        """
+    )
+
+
+def _stage_prices(con: duckdb.DuckDBPyConnection, parquet: str, lid: str) -> None:
+    con.execute(
+        f"""
+        CREATE OR REPLACE TEMP TABLE stage_price AS
+        WITH {_legs_sql(parquet)},
         hours AS (SELECT DISTINCT hour FROM m),
         divine AS (
             SELECT h.hour,
@@ -180,6 +218,7 @@ def load_league(
         ]
         _stage_names(con, metadata_ids, names)
         _stage_prices(con, parquet, lid)
+        _stage_cross(con, parquet, lid)
         con.execute(
             """
             INSERT INTO item (id, game, canonical_name, category, metadata_id)
@@ -198,6 +237,8 @@ def load_league(
             SELECT * FROM stage_price
             """
         )
+        con.execute("DELETE FROM cross_market_hour WHERE league_id = ?", [lid])
+        con.execute("INSERT INTO cross_market_hour SELECT * FROM stage_cross")
         refresh_mappings(con, settings)
         items = db.scalar(con, "SELECT count(DISTINCT item_id) FROM stage_price")
         rows = db.scalar(con, "SELECT count(*) FROM stage_price")
@@ -219,4 +260,5 @@ def load_league(
     finally:
         con.execute("DROP TABLE IF EXISTS stage_names")
         con.execute("DROP TABLE IF EXISTS stage_price")
+        con.execute("DROP TABLE IF EXISTS stage_cross")
     return LoadResult(lid, skipped=False, items=items, rows=rows)

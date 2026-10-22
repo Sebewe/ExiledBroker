@@ -19,6 +19,7 @@ import polars as pl
 
 from exiledbroker.normalize.exchange_loader import SOURCE as HOURLY
 from exiledbroker.services.market import UNIT_COLUMN
+from exiledbroker.services.scoring import rank_score
 from exiledbroker.storage import db
 
 HOURLY_SCHEMA = {
@@ -140,27 +141,9 @@ def score_turn_ins(
 ) -> pl.DataFrame:
     """Add a 0–1 `score` (and a `<factor>_rank` per factor) to a turn-in summary.
 
-    Each factor is turned into a percentile rank among the priced cards (1 = best), so
-    margins, chaos amounts, shares and set counts combine on one scale and a single
-    outlier can't dominate. The score is the weighted mean of those ranks. By default a
-    cheaper set ranks better (less capital, quicker to fill); set
-    `prefer_cheaper_sets=False` to favour bigger sets instead.
+    See services/scoring.py. By default a cheaper set ranks better (less capital,
+    quicker to fill); set `prefer_cheaper_sets=False` to favour bigger sets instead.
     """
-    weights = weights or DEFAULT_WEIGHTS
-    s = summary.filter(pl.col("hours") > 0)
-    if s.is_empty():
-        return s.with_columns(score=pl.lit(None, pl.Float64))
-    rank_cols = []
-    for factor, (col, higher_better) in SCORE_FACTORS.items():
-        if factor == "investment":
-            higher_better = not prefer_cheaper_sets
-        # Rank 1 = best: the highest value when higher is better, else the lowest.
-        rank = pl.col(col).rank("average", descending=higher_better)
-        # Best gets 1, worst 1/n; nulls rank last.
-        rank_cols.append(((s.height + 1 - rank) / s.height).fill_null(0).alias(f"{factor}_rank"))
-    s = s.with_columns(rank_cols)
-    total = sum(max(w, 0.0) for w in weights.values())
-    if total == 0:
-        return s.with_columns(score=pl.lit(None, pl.Float64))
-    score = sum(pl.col(f"{f}_rank") * max(weights.get(f, 0.0), 0.0) for f in SCORE_FACTORS)
-    return s.with_columns(score=score / total).sort("score", descending=True)
+    factors = dict(SCORE_FACTORS)
+    factors["investment"] = ("set_cost", not prefer_cheaper_sets)
+    return rank_score(summary.filter(pl.col("hours") > 0), factors, weights or DEFAULT_WEIGHTS)

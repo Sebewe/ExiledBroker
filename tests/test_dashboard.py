@@ -76,7 +76,7 @@ def test_league_registered_before_first_hour(settings):
     assert at.info[0].value.startswith("Run ")
     # Analysis tools wait for data instead of failing.
     at = run_app("app_pages/analysis.py")
-    for tool in ("Unique moves", "Launch curves", "Group timing", "Card turn-ins"):
+    for tool in ("Unique moves", "Launch curves", "Group timing", "Card turn-ins", "Cross-market"):
         at.get("button_group")[0].set_value(tool).run()
         assert not at.exception, [e.message for e in at.exception]
         assert "No challenge league has" in at.info[0].value
@@ -131,7 +131,7 @@ def test_first_hours_with_gaps(settings):
     st.cache_data.clear()
     # Two hours of one league: every analysis tool still renders.
     at = run_app("app_pages/analysis.py")
-    for tool in ("Unique moves", "Launch curves", "Group timing", "Card turn-ins"):
+    for tool in ("Unique moves", "Launch curves", "Group timing", "Card turn-ins", "Cross-market"):
         at.get("button_group")[0].set_value(tool).run()
         assert not at.exception, [e.message for e in at.exception]
     at = run_app("app_pages/cards.py")

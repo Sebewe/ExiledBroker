@@ -14,7 +14,7 @@ A Path of Exile market speculation tool. It uses historical price data and the n
 |---|---|---|---|
 | 0 | Scaffolding | Package, CLI, DuckDB schema, config, service layer, Streamlit demo + API skeleton | ✅ Done |
 | 1 | Historical ingest | Daily poe.ninja dumps + hourly GGG exchange → `item` / `price_observation`, league calendar, price mappings, core pool, divination cards | ✅ Done. All 32 challenge leagues daily; hourly for the four exchange-era leagues |
-| 2 | Exploration | Recurring launch-week patterns across recent leagues: `analysis/` module + the demo's Analysis tab | 🟨 Tools built (unique moves, launch curves, group timing, card turn-ins across leagues); first finding in §9 |
+| 2 | Exploration | Recurring launch-week patterns across recent leagues: `analysis/` module + the demo's Analysis tab | 🟨 Tools built (unique moves, launch curves, group timing, card turn-ins across leagues, cross-market loops); findings in §9 |
 | 3 | Patch corpus | Scraper, extractor, review tool for past leagues | ⬜ Not started |
 | 4 | Baseline + backtest | First honest accuracy numbers | ⬜ Not started |
 | 5 | Signals | Ranked list: "farm X", "buy Y on day 2, sell day 6" | ⬜ Not started |
@@ -107,6 +107,8 @@ tail -f data/logs/latest.log
 | 2026-10-21 | **Phase 2 analyses favour recent leagues.** The economy changes a lot league by league, and the currency exchange (Settlers, 2024-07) was a structural break. So every tool reports per league, newest first, and summaries are recency-weighted: the newest league counts 1, and each *half-life* leagues back halves it (default 2, adjustable in the Analysis tab). Leagues before Settlers are context only. |
 | 2026-10-21 | Launch curves are compared on a **relative** scale: price ÷ the item's day-1 price in the same league, where the day-1 price is the *median* of its first-24-hour hourly prices (thin early markets, like a few junk Mirror trades, would skew an average). Curves whose baseline rests on fewer than six traded hours are flagged. Turn-in figures are the **typical (median) hour**: set cost, reward value, margin and margin %. Thin card markets have junk hours (The Hoarder averaged 570c a set in Mirage, against a typical hour of about 1c), and averaging hourly percentages blows up for near-worthless sets. |
 | 2026-10-22 | **Card flip score** (`services/divination.score_turn_ins`): margin %, investment (set cost), profitable hours and volume (full sets traded) are each ranked among the priced cards (best = 1), and the score is their weighted mean. Ranks rather than raw values, so chaos amounts, shares and counts combine fairly and one outlier can't dominate. Weights default to 4 / 2 / 3 / 3 and are tunable on the Card turn-ins page, as is whether a cheaper or a bigger set scores better. |
+| 2026-10-22 | **Cross-market loops** (`services/cross_market.py`, Analysis → Cross-market). The exchange loader also writes `cross_market_hour`: every item-hour that traded against both Chaos and Divines, with the same hour's Divine rate (not carried forward, since a loop needs both trades in that hour). Both loops are priced at the worst prices of the hour on every leg. An hour pays only if the loop beats a fee buffer (default 2%), and a league where an item didn't trade in both markets counts as 0 for its worst-league share. Items under 1c are filtered by default: dust-priced bulk items (Rogue's Markers at ~0.001c) show huge gaps that say more about how they trade than about profit. |
+| 2026-10-22 | **One scoring method** (`services/scoring.rank_score`) for card flips and cross-market loops: percentile rank per factor, weighted mean, weights tunable on the page. Cross-market factors: edge when paying, share of paying hours, worst league's share, and volume traded in both markets. |
 | 2026-10-22 | **Charts use linear axes by default**, because they're read by players. Log scale is an opt-in toggle only where values span orders of magnitude (the market chart comparing items, and the card opportunity map). Relative charts say what the numbers mean (1 = the day-1 price). |
 | 2026-10-21 | Demo tables sort by each item's **average price over the window** (volume-weighted, in the selected unit), shown as the "Avg price" column. With nothing selected, the chart shows the five most-traded items. |
 | 2026-10-21 | Exchange item names come from RePoE's base item table. RePoE gives some different items the same name, so an ambiguous name never merges items: each metadata id becomes its own item, labelled `Name (MetadataName)`. None of the tracked items are ambiguous. |
@@ -279,7 +281,7 @@ ExiledBroker/
 │   ├── signals/                # ranking, buy/sell windows, risk
 │   ├── analysis/
 │   │   └── launch_patterns.py  # ✔ phase 2: unique moves by tier, launch curves, group timing, card turn-ins across leagues, recency weights
-│   ├── services/               # ✔ read-side queries shared by the demo and the API (overview, prices, market, divination)
+│   ├── services/               # ✔ read-side queries shared by the demo and the API (overview, prices, market, divination, cross_market, scoring)
 │   ├── api/app.py              # ✔ FastAPI, read-only (/api/leagues, /api/market/<league>/groups/<group>, /api/market/<league>/hourly, ...)
 │   └── cli.py                  # ✔ `eb dumps list|sync|load`, `eb exchange sync|status`, `eb serve`, `eb init-db`
 ├── app/
@@ -304,6 +306,10 @@ Item(id, canonical_name, category, base_type, variant, links, ninja_id, metadata
 TrackedItem(item_id, group_id, group_label, sort_order)   -- price mappings: currency | essence | scarab | divination
 DivinationCard(item_id, name, stack_size, reward_kind, reward_name, reward_quantity,
                reward_item_id, reward_fixed, reward_text, filter_tier, followed)
+CrossMarketHour(league_id, item_id, observed_at, day_offset,
+                chaos_price, chaos_volume, chaos_low, chaos_high,       -- X/Chaos market
+                divine_price, divine_volume, divine_low, divine_high,   -- X/Divine market
+                divine_rate, divine_rate_low, divine_rate_high)         -- same hour
 ItemAlias(alias, item_id, valid_from_league)     -- handles renames/reworks
 PriceObservation(item_id, league_id, observed_at, day_offset,
                  chaos_value, divine_value, listing_count, source,
@@ -371,12 +377,13 @@ Each finding is reproducible from the Analysis tab, with the leagues it rests on
 
 ### 9.2 Items sold for Divines fetch more than the same items sold for Chaos (preliminary)
 
-*Data: the hourly exchange files (every X/Chaos and X/Divine market per hour, with volume and the hour's lowest/highest traded ratio), all four exchange-era leagues. Not yet a tool on the Analysis tab.*
+*Tool: Analysis → Cross-market (table `cross_market_hour`). All four exchange-era leagues.*
 
 - **How common:** in each league, 63k–86k item-hours traded in both the Chaos and the Divine market.
 - **The gap:** the median price via Divines (X/Divine price × the hour's Divine rate) was **13–19% above** the direct Chaos price.
 - **It survives worst-case prices.** Run the loop Chaos → item → Divines → Chaos, buying at the hour's highest Chaos price, selling at its lowest Divine price and converting at its lowest Divine rate. It still came out positive in **15–26% of item-hours** (over +2% in 14–25%). The reverse loop was positive in only about 1%, so the premium runs one way.
 - **Items where it recurred in all four leagues** (share of hours positive in the worst league): Rogue's Marker (66%), Essence Scarab of Stability (47%), Tainted Jeweller's Orb (46%), Timeless Eternal and Karui Emblems (about 36%), Enkindling Orb (26%).
+- **In the tool,** with a 2% buffer and a 1c price floor: the Chaos-first loop paid in 17.2% of all 297,778 cross-market item-hours, and the Divines-first loop in 0.9%. 21 items paid in at least 25% of hours in every league. Even a 50% buffer leaves 6.2% of hours paying, which is the first thing to verify in-game: an edge that size is either a real, persistent mispricing or a quirk of how GGG reports ratios.
 - **Caveats before trusting it:**
   - These are hourly summaries, not an order book, so a gap within an hour doesn't prove one player could have caught both sides.
   - We haven't confirmed whether GGG's lowest/highest ratios are executed trades or listings.
