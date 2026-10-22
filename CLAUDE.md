@@ -26,6 +26,16 @@ docker compose up -d db
 EB_DATABASE_URL=postgresql://eb:eb@localhost:55432/exiledbroker .venv/bin/eb site seed   # copy the live league in
 EB_DATABASE_URL=postgresql://eb:eb@localhost:55432/exiledbroker .venv/bin/eb serve       # API from Postgres
 
+# Frontend (web/). Node 24 is unpacked at ~/.local/node (not Homebrew): export PATH=~/.local/node/bin:$PATH
+cd web && npm install
+npm run dev          # http://localhost:5173, proxies /api to `eb serve` on :8000
+npm run gen:api      # after changing API models: regenerate openapi.json + src/api/schema.d.ts
+npm run typecheck && npm run lint && npm test && npm run build
+
+# The image Railway runs (web: API + built frontend; worker: eb live watch)
+docker compose up -d --build api             # the site as hosted, on http://localhost:8000
+docker compose --profile worker up -d        # also the live worker (makes requests to GGG)
+
 # Data (all resumable; Ctrl-C and re-run continues)
 .venv/bin/eb dumps sync && .venv/bin/eb dumps load   # daily poe.ninja dumps → tables
 .venv/bin/eb exchange sync [-l Mirage]               # hourly GGG exchange, first 14 days per league
@@ -43,6 +53,9 @@ A background run (`nohup … &`) ignores Ctrl-C. Stop it with `pkill -f "eb "`, 
 - `db.site_session()`: the API's reads (pooled psycopg). `db.site_writer()`: the live worker's writes, an in-memory DuckDB with Postgres attached (`USE site`), so the incremental loader runs unchanged and its transaction is Postgres's. Code that takes `settings` uses these or `settings.db_path`, never a default path.
 - `eb site seed` copies leagues' site rows from DuckDB into Postgres (development bootstrap only; production data comes from the worker).
 - **API** (`api/routes/*`): thin wrappers over services with pydantic response models (the frontend's TS types come from the OpenAPI schema). Results are cached in a bounded LRU (`api/cache.py`) keyed on the data version (`max(ingest_load.loaded_at)`), so they're recomputed once per load. Timestamps go out as UTC; NaN/inf as null. Unknown league 404, bad args 422, no data yet 503.
+- **Frontend** (`web/`): React + Vite + TypeScript. Types come from the API (`web/openapi.json` → `src/api/schema.d.ts`; `tests/test_api.py` fails if they drift). Data hooks (`src/api/queries.ts`) key every query on `/api/status`'s `data_version`, which is polled each minute: data refetches when a new hour loads, never on a timer. Controls live in the URL (`useParam`). Pins: TypeScript 5.9 (openapi-typescript needs 5) and TanStack Table v8.
+- **Design rules** (`web/src/index.css` tokens): dark only; green and red mean profit and loss and nothing else; gold (`accent`) is the brand. Money columns first, numbers right-aligned in tabular figures, long names truncated with a tooltip. Charts: ECharts, lazy-loaded, UTC axis, lines break at missing hours (`lib/chartOptions.line`), linear with log as an opt-in. Every page handles no data (503), waiting for first trades and a stale feed. Check phone width (375px) with real device emulation, since headless Chrome won't size a window that narrow.
+- **Deploy:** one `Dockerfile`, two Railway services (web: uvicorn serving `/api` + `web/dist`; worker: `eb live watch`), `railway.json`. The image bakes in DuckDB's postgres extension and runs as a non-root user.
 - **Same answers on both engines:** text sorts happen in polars, not SQL `ORDER BY` (Postgres sorts by locale); rankings break ties by `item_id`. `tests/test_postgres.py` compares every service and endpoint.
 
 - **`services/` SQL must stay Postgres-compatible.** No `GROUP BY ALL`, no DuckDB-only functions. The loaders in `normalize/` run locally on DuckDB (they `read_parquet` etc.), so they're exempt. `storage/schema.sql` must run on both engines (`DOUBLE PRECISION`, `ON CONFLICT`, `ADD COLUMN IF NOT EXISTS`). New columns are appended as `ALTER TABLE … ADD COLUMN IF NOT EXISTS` *after* the table's `CREATE`.
@@ -100,3 +113,4 @@ Target: the web app **and** the live worker (`eb live watch`, or `eb live sync` 
 - All data lives in the gitignored `data/` folder (the default `EB_DATA_DIR`, anchored to the repo root). Never commit it.
 - Settings come from `EB_*` environment variables or `.env` (`config.py`).
 - `.claude/` and `.agents/` (the Streamlit skill; `.claude/skills/...` is a symlink into `.venv`) are intentionally left untracked.
+- The root `.gitignore` is Python's template, which ignores every `lib/`; `!web/src/lib/` re-includes the frontend's. Check `git add -n` for new folders.

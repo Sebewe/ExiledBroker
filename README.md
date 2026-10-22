@@ -19,7 +19,7 @@ A Path of Exile market speculation tool. It uses historical price data and the n
 | 4 | Baseline + backtest | First honest accuracy numbers | ⬜ Not started |
 | 5 | Signals | Ranked list: "farm X", "buy Y on day 2, sell day 6" | ⬜ Not started |
 | 6 | Live mode | Hourly ingest of the running league; live view of what's best to arbitrage; later, alerts when prices drift from prediction | 🟨 Live feed (`eb live watch`) and the Live market page built; prediction alerts not started |
-| 7 | UI | Hosted site: React frontend on the JSON API, Postgres (Supabase) + Railway | 🟨 Site database (Postgres via `EB_DATABASE_URL`, local compose), worker writing Postgres, API for the launch pages done; React frontend next; Streamlit demo retires after parity |
+| 7 | UI | Hosted site: React frontend on the JSON API, Postgres (Supabase) + Railway | 🟨 Site database (Postgres via `EB_DATABASE_URL`, local compose), worker writing Postgres, API, React frontend (Live, Arbitrage, Card turn-ins, Launch market, About) and the Railway image done; not deployed yet; Streamlit demo retires after parity |
 
 Legend: ⬜ Not started · 🟨 In progress · ✅ Done
 
@@ -44,6 +44,12 @@ python3 -m venv .venv && .venv/bin/pip install -e '.[dev,demo]'
 docker compose up -d db
 EB_DATABASE_URL=postgresql://eb:eb@localhost:55432/exiledbroker .venv/bin/eb site seed
 EB_DATABASE_URL=postgresql://eb:eb@localhost:55432/exiledbroker .venv/bin/eb serve
+
+# The frontend (Node 24; web/), against the API above:
+cd web && npm install && npm run dev       # http://localhost:5173
+
+# Or the whole site exactly as Railway runs it (one image: API + built frontend):
+docker compose up -d --build api            # http://localhost:8000
 .venv/bin/pytest          # tests
 ```
 
@@ -185,6 +191,8 @@ Fixed on the way, because Postgres rejected them or answered differently:
 | 2026-10-22 | **The site won't be hosted on Streamlit.** It's a React + Vite + TypeScript frontend on the FastAPI API, with Supabase Postgres and a live worker on Railway: one image, two start commands (web: the API serving the built frontend; worker: `eb live watch`). Locally, Postgres 17 in Docker (`docker-compose.yml`, the same as CI) stands in for Supabase. The Streamlit demo retires once the new UI covers the launch pages. Unique moves and the other Analysis tools aren't in the launch: the focus is investment and trading. |
 | 2026-10-22 | **The worker writes Postgres through DuckDB.** `db.site_writer` attaches Postgres to an in-memory DuckDB (`postgres` extension) and the incremental loader runs unchanged: Parquet, ASOF joins and staging stay in DuckDB, while rows and the transaction are Postgres's. Spike on Mirage: 24 new hours in 1.0 s, identical rows, and a failed load rolls back. The replay test checks the worker's Postgres tables equal the DuckDB pipeline's. |
 | 2026-10-22 | **API results are cached per data version**, not on a timer: the key includes when the latest load finished, so each result is computed once per hourly update for all visitors (bounded LRU, 256 entries). Responses are gzipped. On real Allflame data from Postgres, cached calls take 2–8 ms and the heaviest cold call (arbitrage, 566 loops) about 0.3 s. |
+| 2026-10-22 | **Frontend stack:** React + Vite + TypeScript, TanStack Query and Table (v8), ECharts (lazy-loaded: the first load is 119 KB gzipped), Tailwind with a small token set, Fira Sans self-hosted (no font CDN). Types are generated from the API's OpenAPI schema. Dark only; green/red only for profit/loss, gold as the brand accent. Charts break lines where hours are missing (a live league's launch fortnight and latest days are weeks apart) and mark isolated hours with a dot, rather than drawing a line across the gap. |
+| 2026-10-22 | **One image, two Railway services.** The web service runs uvicorn serving `/api` and the built frontend from one origin (no CORS, one service to pay for); the worker runs `eb live watch` from the same image. Verified locally with compose: the worker container, starting from an empty disk, fetched only the 2 new hours (2 requests, 110 KB) and wrote them to Postgres in 2 s. |
 | 2026-10-22 | **CI on GitHub Actions**, lint plus tests, with a Postgres 17 job. It runs only on the standard `ubuntu-latest` runner, which is free for a public repo, and superseded runs are cancelled. |
 | 2026-10-22 | **Performance measurements stay off the site.** The query meter, the budgets and `eb perf report` are local and CI tools. If live numbers are needed, they'd go into a server-side dev panel later, not a public page. |
 | 2026-10-22 | **Tests never touch `data/`.** `tests/conftest.py` points the default data directory at a temp dir before any fixture runs. It was added after a module-scoped fixture without `EB_DATA_DIR` reached the real database through `sync_live`, which then opened some sessions on the default path instead of `settings.db_path`. That run shrank Mirage's loaded hours to 30. Both are fixed, and Mirage was reloaded from the pages on disk (0 fetched; totals identical to before). |
@@ -372,7 +380,9 @@ ExiledBroker/
 ├── .streamlit/config.toml      # ✔ demo theme
 ├── scripts/ingest.sh           # ✔ unattended, resumable ingest runner
 ├── config/core_pool.toml       # ✔ manual core-pool overrides (exclude / include by name)
-├── web/                        # hosted public frontend (later; framework TBD)
+├── web/                        # ✔ the site's frontend: React + Vite + TS (src/pages, src/components, src/api with generated types)
+├── Dockerfile                  # ✔ one image: frontend build + API; worker runs `eb live watch`
+├── railway.json                # ✔ Railway build/deploy settings
 ├── data/                       # ✔ gitignored: raw/{poe_ninja/{dumps,categories}, ggg/currency_exchange, repoe}, processed/{poe_ninja/dumps, ggg/currency_exchange}, logs/, exiledbroker.duckdb
 ├── .github/workflows/ci.yml    # ✔ lint + tests; Postgres 17 job
 ├── docker-compose.yml          # ✔ local Postgres standing in for Supabase
