@@ -31,13 +31,9 @@ PAGES_TO_RUN = ["live", "market", "cards", "arbitrage", "analysis", "data"]
 ANALYSIS_TOOLS = ["Unique moves", "Launch curves", "Group timing", "Card turn-ins"]
 
 
-@pytest.fixture
-def settings(tmp_path, monkeypatch):
-    monkeypatch.setenv("EB_DATA_DIR", str(tmp_path))
-    st.cache_data.clear()
-    s = Settings(data_dir=tmp_path, request_min_interval=0)
-    # Names (RePoE) and the core pool / loot-filter snapshots, stored in the database
-    # (reference_data) as `eb live` leaves them, fresh so nothing is re-fetched.
+def store_reference_data(s: Settings) -> None:
+    """Names (RePoE) and the core pool / loot-filter snapshots, stored in the database
+    (reference_data) as `eb live` leaves them, fresh so nothing is re-fetched."""
     names = {v["name"] for v in FIXTURE["base_items"].values()}
     cards = sorted(
         v["name"] for v in FIXTURE["base_items"].values() if v.get("item_class") == "DivinationCard"
@@ -60,6 +56,14 @@ def settings(tmp_path, monkeypatch):
             {"tiers": {c: "t1" for c in cards}, "shown": cards},
             s.loot_filter_url.format(strictness=s.loot_filter_strictness),
         )
+
+
+@pytest.fixture
+def settings(tmp_path, monkeypatch):
+    monkeypatch.setenv("EB_DATA_DIR", str(tmp_path))
+    st.cache_data.clear()
+    s = Settings(data_dir=tmp_path, request_min_interval=0)
+    store_reference_data(s)
     return s
 
 

@@ -28,6 +28,10 @@ class PoliteClient:
             transport=transport,
         )
         self._last_request = 0.0
+        # What this client has cost so far (recorded per live update in ingest_run).
+        self.requests = 0
+        self.bytes_received = 0
+        self.not_modified = 0  # conditional requests answered "304 Not Modified"
 
     def __enter__(self) -> Self:
         return self
@@ -74,6 +78,9 @@ class PoliteClient:
             self.throttle()
             try:
                 r = self._client.get(url, headers=headers)
+                self.requests += 1
+                # On the wire (compressed); test transports hand over content without a download.
+                self.bytes_received += r.num_bytes_downloaded or len(r.content)
             except httpx.TransportError:
                 if attempt == self.settings.http_retries:
                     raise
@@ -82,13 +89,16 @@ class PoliteClient:
             if r.status_code in RETRYABLE_STATUS and attempt < self.settings.http_retries:
                 self.backoff(attempt, r)
                 continue
-            if r.status_code != 304:
+            if r.status_code == 304:
+                self.not_modified += 1
+            else:
                 r.raise_for_status()
             return r
         raise RuntimeError("unreachable")
 
     def stream(self, url: str, headers: dict[str, str]):
         self.throttle()
+        self.requests += 1
         return self._client.stream("GET", url, headers=headers)
 
 
@@ -177,6 +187,7 @@ def download(
                     for chunk in r.iter_raw():
                         f.write(chunk)
                         written += len(chunk)
+                        client.bytes_received += len(chunk)
                         if progress:
                             progress(written, total)
                     f.flush()

@@ -87,7 +87,10 @@ def hourly(
     rows = db.frame(
         con,
         f"""
-        SELECT l.name AS league, x.item_id, i.canonical_name AS name, x.*
+        SELECT l.name AS league, x.item_id, i.canonical_name AS name, x.observed_at,
+               x.day_offset, x.chaos_price, x.chaos_volume, x.chaos_low, x.chaos_high,
+               x.divine_price, x.divine_volume, x.divine_low, x.divine_high,
+               x.divine_rate, x.divine_rate_low, x.divine_rate_high
         FROM cross_market_hour x
         JOIN league l ON l.id = x.league_id
         JOIN item i ON i.id = x.item_id

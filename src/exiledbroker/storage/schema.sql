@@ -197,3 +197,24 @@ ALTER TABLE reference_data ADD COLUMN IF NOT EXISTS source_url VARCHAR;
 ALTER TABLE reference_data ADD COLUMN IF NOT EXISTS etag VARCHAR;
 ALTER TABLE reference_data ADD COLUMN IF NOT EXISTS last_modified VARCHAR;
 ALTER TABLE reference_data ADD COLUMN IF NOT EXISTS checked_at TIMESTAMP;  -- last check, changed or not
+
+-- One row per live update (`eb live sync` / `watch`): what it fetched, what it wrote,
+-- how long it took and whether it failed, so the worker's cost can be watched over
+-- time. Ops data, not read by the site; rows older than 90 days are deleted.
+CREATE TABLE IF NOT EXISTS ingest_run (
+    league_id      VARCHAR NOT NULL,
+    started_at     TIMESTAMP NOT NULL,
+    seconds        DOUBLE PRECISION,
+    state          VARCHAR NOT NULL,   -- LiveStatus.state, or 'failed'
+    latest_hour    TIMESTAMP,
+    pages_fetched  INTEGER,            -- new exchange pages
+    requests       INTEGER,            -- every HTTP request, reference checks included
+    bytes_received BIGINT,
+    not_modified   INTEGER,            -- reference checks answered 304
+    hours_added    INTEGER,
+    hours_removed  INTEGER,
+    rows_added     BIGINT,
+    rows_total     BIGINT,             -- the league's hourly price rows afterwards
+    error          VARCHAR,
+    PRIMARY KEY (league_id, started_at)
+);

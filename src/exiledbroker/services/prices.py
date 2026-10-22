@@ -20,9 +20,9 @@ def item_names(con: duckdb.DuckDBPyConnection, leagues: list[str]) -> list[str]:
         JOIN item i ON i.id = p.item_id
         JOIN league l ON l.id = p.league_id
         WHERE l.name IN ({_in_list(leagues)})
-        ORDER BY 1
     """
-    return [r[0] for r in db.rows(con, q, leagues)]
+    # Sorted here: Postgres orders text by locale, DuckDB bytewise.
+    return sorted(r[0] for r in db.rows(con, q, leagues))
 
 
 def item_curve(

@@ -82,13 +82,45 @@ Things that would raise the Railway/Supabase bill, measured on real data where p
 |---|---|---|---|---|
 | 1 | Live page pulled a league's whole cross-market history (135k rows, 15 MB) to show ~85 rows, re-run every minute by auto-refresh | ≈ 650 GB/month Supabase egress (Pro includes 250 GB) | Filter by time in SQL; re-query only when a new hour is loaded | ✅ done: identical results, 596 rows (0.07 MB) instead of 135,532 (15.1 MB), once per new hour instead of every minute; the per-minute league check takes ~10 ms via the index |
 | 2 | Live worker fetched any window page missing from disk: ~672 requests/hour on a server with a throwaway disk | Risk of being blocked by GGG; slow | Use `exchange_hour_loaded` (the database) to decide what to fetch | ✅ done: a worker with a wiped disk fetches only the new hour; a rebuild re-fetches the whole window, so data can't shrink (tested) |
-| 3 | No indexes for the pages' access paths (league + source + time); primary keys start with item id | Full scans on Postgres → bigger paid database | Add league/time indexes | ✅ done (in `schema.sql`; tested on DuckDB only, no local Postgres) |
+| 3 | No indexes for the pages' access paths (league + source + time); primary keys start with item id | Full scans on Postgres → bigger paid database | Add league/time indexes | ✅ done (in `schema.sql`). Checked on Postgres 17 in CI: with sequential scans disabled, the live queries must seek the index on its leading column (`tests/test_postgres.py`), which found finding P1 below |
 | 4 | Arbitrage trading pulls 439k rows (49 MB) per 10-minute cache expiry | High if busy | Aggregate in SQL instead (exact for any fee buffer / direction, which a fixed precomputed table couldn't be) | ✅ done: identical results, 2,086 summary rows (0.23 MB) instead of 438,729 raw rows (49 MB) |
 | 5 | Card turn-ins and Analysis tools pull 1.6–6 MB per load | Moderate | Aggregate in SQL (medians via `percentile_cont`) | ✅ done: identical results. Card turn-ins 57 rows instead of 21,628; group timing 280 rows instead of ~81k. Unique moves still reads daily dump rows, but that's local-only historical data |
 | 6 | Worker re-downloads RePoE (3 MB) and the loot filter every run on a wiped disk | Small, impolite | Store in the database (`reference_data`) and never re-download what we have: sources are checked for changes (RePoE weekly, core pool and filter tiers daily) with conditional requests (ETag / Last-Modified), so an unchanged source answers 304 with no body | ✅ done: RePoE stored trimmed (0.9 MB vs 3 MB); between checks there are no reference requests; a due check of an unchanged source downloads nothing (tested, and confirmed on the live endpoints) |
 | 7 | Every exchange item stored every hour (~1,000 for Allflame); the site uses tracked items + cross-market legs | ~30–50% more rows (estimate) | Store hourly prices only for what the site reads: price-mapping items, followed cards' rewards, Chaos and Divine. Cross-market rows stay complete for arbitrage | ✅ done: 820k hourly rows instead of 1.44M (−43%; Allflame 260k vs 454k); every page shows the same numbers. An item that joins the pool later has no earlier hours until a `--force` rebuild |
 | 8 | Text primary keys (~2× row size vs integer ids) | Matters only at larger scale | Measured, not worth it now | ⏸ decided: integer keys would cut a hosted price row by ~46% (~140 of ~305 B), but at hosted scale (Allflame, 260k rows) that's only ~37 MB, against a refactor touching every service, page and test. Revisit if hosting many leagues or ~10× the rows |
 | 9 | Streamlit memory grows per concurrent visitor; some caches keyed on free-typed numbers (unbounded) | Launch-week traffic | Cap every cache (`max_entries`, enforced by a test); the planned frontend fixes per-visitor overhead | ✅ done: all caches together are bounded at ~59 MB worst case (~37 MB without the local-only Unique moves cache), however many visitors |
+
+### Performance tooling (2026-10-22)
+
+So the effect of a change on cost can be seen, not guessed:
+
+- **CI** (`.github/workflows/ci.yml`, GitHub Actions; free for a public repo): lint and every test on each push to `main` and each pull request, plus a second job against a **Postgres 17** service container.
+- **Query meter** (`storage/db.metered()`): off by default, so no cost in normal use. When it's on, it records each read made through `db.rows` / `db.scalar` / `db.frame`: rows, bytes, time, SQL, and the function that ran it.
+- **Budgets** (`tests/test_performance.py`, on the real-data replay):
+  - each page's rows and bytes read on a cold view;
+  - pages about the running league must not read more as old leagues accumulate (four past leagues are added, and only league-list rows may grow);
+  - each live update makes one request per new hour, writes only the new hours' kept rows, and is recorded in `ingest_run`.
+- **Postgres** (`tests/test_postgres.py`, runs when `EB_TEST_POSTGRES_URL` is set):
+  - `schema.sql` must build;
+  - all 27 service and analysis queries must give the same answers as on DuckDB;
+  - the live pages' queries must be able to seek an index on the big tables.
+- **`ingest_run`**: each live update records requests, bytes received, 304s, pages fetched, hours and rows added or removed, seconds, and its state or error. Rows are kept for 90 days. The site doesn't read it.
+- **`eb perf report`** (local only): page reads on the local database, rows stored overall and for the league that would be hosted, and the worker's last 7 days from `ingest_run`. It is saved to `data/perf/` and compared with the previous report, so growth over 25% or a failing page is flagged. A server-side view, such as a dev panel, can come later if needed. Nothing is on the public site.
+
+### Performance findings to fix (from the tooling, 2026-10-22)
+
+Found while building the tools above. They are recorded here to fix next, not yet changed.
+
+| # | Finding | Measured | Status |
+|---|---|---|---|
+| P1 | Live queries filter the league through a join on `league.name`, so Postgres gets no `league_id` to seek on. It reads the recent part of every league's index range. Affects `cross_market.hourly(since=)` (the Live and Arbitrage pages), `live_card_flips`, `hourly_turn_ins(since=)` and `live_loops`. | Postgres plan: index condition on `observed_at` only. Small while only the live league is hosted, and grows with every league stored. | ⬜ open (strict `xfail` in `test_postgres.py`, so the fix shows up) |
+| P2 | Analysis › Unique moves reads raw daily dump rows and filters and joins them in Python. | 85,723 rows (6 MB) per cold view on the local database. Daily history isn't hosted, but it's the Analysis page's default tool. | ⬜ open |
+| P3 | `followed_cards` (the whole card table, 361 rows) is read again inside several services on one page view. | Card turn-ins tool: 12 queries, 2,115 rows (230 KB); Cards page: 948 rows (100 KB). | ⬜ open |
+| P4 | Every `item` row (8,523, including every past league's uniques) would be hosted, though the live league uses far fewer. | 8,523 rows | ⬜ open (check against "store only what the site reads") |
+
+Fixed on the way, because Postgres rejected them or answered differently:
+- `cross_market.hourly` selected `item_id` twice (`x.item_id, …, x.*`). DuckDB renames the duplicate; Postgres can't build the frame. It now lists the columns it needs.
+- `prices.item_names` sorted in SQL. Postgres sorts text by locale and DuckDB bytewise, so the order differed. It now sorts in Python.
 
 ### Next steps
 
@@ -145,6 +177,9 @@ Things that would raise the Railway/Supabase bill, measured on real data where p
 | 2026-10-22 | **The running league keeps its launch fortnight.** A live window is the launch's first 14 days *plus* the latest 14 days, loaded together. Loading one window doesn't replace the other, so a league like Allflame (launched 2026-07-24 22:00 UTC) feeds both the Launch market / analysis tools and the Live view. While a new league is under two weeks old, the two windows are the same. A running league has no daily dump until it ends, so the Unique moves tool says so instead of leaving it out silently. |
 | 2026-10-22 | Widgets whose range depends on the data (e.g. "seen in at least N leagues") are hidden when there's only one option. With one league loaded, as at a new league's launch, Streamlit rejects a slider with min = max. |
 | 2026-10-22 | **Charts use linear axes by default**, because they're read by players. Log scale is an opt-in toggle only where values span orders of magnitude (the market chart comparing items, and the card opportunity map). Relative charts say what the numbers mean (1 = the day-1 price). |
+| 2026-10-22 | **CI on GitHub Actions**, lint plus tests, with a Postgres 17 job. It runs only on the standard `ubuntu-latest` runner, which is free for a public repo, and superseded runs are cancelled. |
+| 2026-10-22 | **Performance measurements stay off the site.** The query meter, the budgets and `eb perf report` are local and CI tools. If live numbers are needed, they'd go into a server-side dev panel later, not a public page. |
+| 2026-10-22 | **Tests never touch `data/`.** `tests/conftest.py` points the default data directory at a temp dir before any fixture runs. It was added after a module-scoped fixture without `EB_DATA_DIR` reached the real database through `sync_live`, which then opened some sessions on the default path instead of `settings.db_path`. That run shrank Mirage's loaded hours to 30. Both are fixed, and Mirage was reloaded from the pages on disk (0 fetched; totals identical to before). |
 | 2026-10-21 | Demo tables sort by each item's **average price over the window** (volume-weighted, in the selected unit), shown as the "Avg price" column. With nothing selected, the chart shows the five most-traded items. |
 | 2026-10-21 | Exchange item names come from RePoE's base item table. RePoE gives some different items the same name, so an ambiguous name never merges items: each metadata id becomes its own item, labelled `Name (MetadataName)`. None of the tracked items are ambiguous. |
 | 2026-10-21 | A league's `launched_at` is the first hour it trades on the exchange (Mirage: 2026-03-06 20:00 UTC). Hourly `day_offset` is fractional days from then. |
@@ -292,7 +327,7 @@ ExiledBroker/
 │   │   ├── poe_ninja_live.py   # live economy overview (phase 6)
 │   │   └── patch_notes.py      # scrape raw text → store
 │   ├── storage/
-│   │   ├── db.py               # ✔ DuckDB connection (read-only for the API), query helpers
+│   │   ├── db.py               # ✔ DuckDB connection (read-only for the API), query helpers (DuckDB or Postgres), opt-in query meter
 │   │   ├── dumps.py            # ✔ league upsert + Parquet views
 │   │   └── schema.sql          # ✔
 │   ├── normalize/
@@ -317,8 +352,9 @@ ExiledBroker/
 │   ├── analysis/
 │   │   └── launch_patterns.py  # ✔ phase 2: unique moves by tier, launch curves, group timing, card turn-ins across leagues, recency weights
 │   ├── services/               # ✔ read-side queries shared by the demo and the API (overview, prices, market, divination, cross_market, scoring, live)
+│   ├── perf.py                 # ✔ `eb perf report`: page reads, storage, worker cost; dated history in data/perf/
 │   ├── api/app.py              # ✔ FastAPI, read-only (/api/leagues, /api/market/<league>/groups/<group>, /api/market/<league>/hourly, ...)
-│   └── cli.py                  # ✔ `eb dumps list|sync|load`, `eb exchange sync|status`, `eb live sync|watch`, `eb serve`, `eb init-db`
+│   └── cli.py                  # ✔ `eb dumps list|sync|load`, `eb exchange sync|status`, `eb live sync|watch`, `eb perf report`, `eb serve`, `eb init-db`
 ├── app/
 │   ├── dashboard.py            # ✔ Streamlit entry point (navigation, credit)
 │   ├── common.py               # ✔ cached loaders + formatting
@@ -329,7 +365,8 @@ ExiledBroker/
 ├── config/core_pool.toml       # ✔ manual core-pool overrides (exclude / include by name)
 ├── web/                        # hosted public frontend (later; framework TBD)
 ├── data/                       # ✔ gitignored: raw/{poe_ninja/{dumps,categories}, ggg/currency_exchange, repoe}, processed/{poe_ninja/dumps, ggg/currency_exchange}, logs/, exiledbroker.duckdb
-└── tests/                      # ✔ incl. fixtures/ (real exchange pages for the live replay)
+├── .github/workflows/ci.yml    # ✔ lint + tests; Postgres 17 job
+└── tests/                      # ✔ incl. fixtures/ (real exchange pages for the live replay), performance budgets, Postgres checks
 ```
 
 **Stack:** `httpx`, `polars`, DuckDB with Parquet, `pydantic`, `typer`, Streamlit (demo), FastAPI + uvicorn (hosted API), and `scikit-learn`/LightGBM later. DuckDB suits this well: a single file, fast queries over time series, and no server to run.

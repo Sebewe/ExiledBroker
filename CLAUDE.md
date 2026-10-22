@@ -13,6 +13,10 @@ python3 -m venv .venv && .venv/bin/pip install -e '.[dev,demo]'   # Python >=3.1
 .venv/bin/pytest tests/test_live_pipeline.py       # one file
 .venv/bin/pytest tests/test_live.py::test_find_launch   # one test
 .venv/bin/ruff format . && .venv/bin/ruff check .  # format + lint (line length 100)
+# Postgres checks (skipped unless the URL is set; the database is wiped):
+docker run -d --name eb-pg -e POSTGRES_PASSWORD=eb -p 55432:5432 postgres:17
+EB_TEST_POSTGRES_URL=postgresql://postgres:eb@localhost:55432/postgres .venv/bin/pytest tests/test_postgres.py   # needs .[pg]
+.venv/bin/eb perf report   # page reads, storage, worker cost; saved to data/perf/, flags growth vs the last report
 
 .venv/bin/streamlit run app/dashboard.py   # demo; run from the repo root so .streamlit/config.toml (theme) loads
 .venv/bin/eb serve                         # FastAPI (hosted-API skeleton)
@@ -31,7 +35,7 @@ A background run (`nohup … &`) ignores Ctrl-C. Stop it with `pkill -f "eb "`, 
 **Pipeline writes, UI reads.** CLI jobs (`cli.py` → `ingest/` → `normalize/`) fetch data and write a local DuckDB file (`data/exiledbroker.duckdb`) plus Parquet. The Streamlit demo (`app/`) and the FastAPI app (`api/`) only read, and only through `services/`. This split is what lets the site move to **Supabase (Postgres) + Railway** later without rewriting the read side.
 
 - **`services/` SQL must stay Postgres-compatible.** No `GROUP BY ALL`, no DuckDB-only functions. The loaders in `normalize/` run locally on DuckDB (they `read_parquet` etc.), so they're exempt. `storage/schema.sql` must run on both engines (`DOUBLE PRECISION`, `ON CONFLICT`, `ADD COLUMN IF NOT EXISTS`). New columns are appended as `ALTER TABLE … ADD COLUMN IF NOT EXISTS` *after* the table's `CREATE`.
-- **DuckDB 2.0:** an `execute()` result stays open until fully fetched. Use the helpers `db.rows` / `db.scalar` / `db.frame` (`storage/db.py`), never `fetchone()` on a connection. Polars is 2.0 too (e.g. CSVs are read positionally with an explicit header check).
+- **DuckDB 2.0:** an `execute()` result stays open until fully fetched. Use the helpers `db.rows` / `db.scalar` / `db.frame` (`storage/db.py`), never `fetchone()` on a connection. The same helpers take a psycopg (Postgres) connection, translating `?` placeholders, and they feed the opt-in query meter (`db.metered()`). Reads that bypass them are invisible to the performance tests. Polars is 2.0 too (e.g. CSVs are read positionally with an explicit header check).
 - **Resumability is by construction:** every output is written to a temp path and renamed (`ingest/files.py`, `.part` + HTTP Range/If-Range for downloads), so a finished file is its own completion marker. Each league loads in one DB transaction. Exchange loads are **incremental** (`exchange_hour_loaded` tracks loaded hours; a load adds new hours and deletes only hours that left the window), so the database is never wiped to add data. The dump loader skips unchanged inputs via the `ingest_load` fingerprint. Bump a loader's `*_VERSION` constant when its output changes; that triggers one full rebuild.
 
 **Data sources and how they become rows.** The source is in `price_observation.source`.
@@ -59,7 +63,8 @@ Target: the web app **and** the live worker (`eb live watch`, or `eb live sync` 
 - **Every Streamlit cache needs `max_entries`.** `tests/test_app_caches.py` enforces it. Caches are shared by all visitors and some are keyed on free-typed numbers.
 - **Index for the access paths.** `schema.sql` indexes league + source + time, because the primary keys start with item id.
 - **The worker must not depend on a persistent disk.** What to fetch is decided by the database (`exchange_loader.needs_rebuild` / `loaded_hours`), not by which pages are on disk. Reference data (RePoE names, core-pool snapshots, loot-filter tiers) lives in `reference_data` (`ingest/reference.py`). **Never download data we already have:** market hours are immutable and fetched once; reference sources go through `reference.fetch_if_changed`, which checks at most every `max_age` (RePoE weekly, pool and tiers daily; `eb exchange sync --refresh` checks now) using conditional requests (stored ETag / Last-Modified), so an unchanged source answers 304 and nothing is downloaded.
-- **The full list** of known cost issues and their status is in the README ("Hosting cost issues").
+- **The full list** of known cost issues and their status is in the README ("Hosting cost issues", and "Performance findings to fix" from the tooling).
+- **Performance is measured, not guessed.** CI (`.github/workflows/ci.yml`) runs lint, all tests and a Postgres 17 job. `tests/test_performance.py` budgets each page's reads, checks that live pages don't read more as history accumulates, and checks each live update's requests and writes (via `ingest_run`). When a change legitimately needs more, raise the budget in the same change and say why. Perf tooling stays local or in CI; nothing goes on the public site (a server-side dev panel later, if needed).
 - **Planned (user is designing it; don't build yet):** the site will split into a clear **live trading** section and a **historical** section with preloaded data and graphs.
 
 ## Scope rules (decided by the user)
@@ -71,6 +76,9 @@ Target: the web app **and** the live worker (`eb live watch`, or `eb live sync` 
 - Charts default to linear axes (log scale is only an opt-in toggle). Trading tables put the money columns first. Credit poe.ninja (CC BY-SA) on the public site.
 
 ## Testing patterns
+
+- **Tests never touch `data/`.** `tests/conftest.py` points `EB_DATA_DIR` at a temp dir at import. Code that takes `settings` must still use `settings.db_path` for every session, never the default path.
+- **A new service or analysis query goes into `_cases` in `tests/test_postgres.py`**, so it's compared between DuckDB and Postgres. Queries behind the live pages also go into `LIVE_QUERIES`, which checks their index use. Text ordering differs between the engines (Postgres sorts by locale), so sort name lists in Python, and don't select a column twice.
 
 - Exchange behaviour is tested with `FakeExchange` / `market()` / `client_for()` in `tests/test_currency_exchange.py` (other test modules import them). `FakeExchange.now` marks the hour still being traded (end of stream).
 - Pages are tested headlessly with `streamlit.testing.v1.AppTest`, using an **absolute** path to `app/dashboard.py` and `EB_DATA_DIR` pointed at a temp dir. Call `st.cache_data.clear()` between states. The default page is the Live market.

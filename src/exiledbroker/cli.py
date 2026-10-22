@@ -439,3 +439,26 @@ def live_watch(
             )
             typer.echo(f"{now:%H:%M} UTC  {status}  Next update ~{next_run:%H:%M} UTC.")
             time.sleep(max(60.0, (next_run - datetime.now(UTC)).total_seconds()))
+
+
+perf_app = typer.Typer(help="Local performance measurements (not part of the site).")
+app.add_typer(perf_app, name="perf")
+
+
+@perf_app.command("report")
+def perf_report(
+    save: bool = typer.Option(True, help="Keep the report in data/perf/ for comparison."),
+) -> None:
+    """Measure what each page reads, what is stored and what the live worker costs,
+    and flag what grew since the previous report."""
+    from exiledbroker import perf
+
+    settings = get_settings()
+    if not settings.db_path.exists():
+        typer.echo("No database yet.")
+        raise typer.Exit(1)
+    prev = perf.previous(settings)
+    rep = perf.report(settings)
+    typer.echo(perf.render(rep, prev))
+    if save:
+        typer.echo(f"\nSaved {perf.save(settings, rep)}")
