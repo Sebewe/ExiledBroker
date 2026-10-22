@@ -93,23 +93,74 @@ def hourly_turn_ins(
 def turn_in_summary(
     con: duckdb.DuckDBPyConnection, league: str, unit: str = "chaos"
 ) -> pl.DataFrame:
-    """One row per card with an exchange-priced reward, best average margin first."""
+    """One row per card with an exchange-priced reward, best typical margin first.
+
+    set_cost, reward_value, margin and margin_pct are medians over the hours both the
+    card and its reward traded."""
     cards = followed_cards(con).filter(pl.col("reward_item_id").is_not_null())
     hourly = hourly_turn_ins(con, league, unit=unit).drop_nulls("margin")
     stats = hourly.group_by("card").agg(
         pl.len().alias("hours"),
         (pl.col("margin") > 0).mean().alias("profitable_share"),
-        pl.col("margin").mean().alias("avg_margin"),
-        pl.col("margin").max().alias("best_margin"),
-        # Total margin over total set cost: averaging per-hour percentages blows up
-        # when a set costs next to nothing.
-        (pl.col("margin").sum() / pl.col("set_cost").sum()).alias("avg_margin_pct"),
-        pl.col("set_cost").mean().alias("avg_set_cost"),
-        pl.col("reward_value").mean().alias("avg_reward_value"),
+        # The typical (median) hour: thin card markets have junk hours (one card sold
+        # at 100x its price) that would dominate an average.
+        pl.col("margin").median().alias("margin"),
+        (pl.col("margin") / pl.col("set_cost")).median().alias("margin_pct"),
+        pl.col("set_cost").median().alias("set_cost"),
+        pl.col("reward_value").median().alias("reward_value"),
         pl.col("card_volume").sum().alias("cards_traded"),
     )
     return (
         cards.join(stats, left_on="name", right_on="card", how="left")
-        .with_columns(hours=pl.col("hours").fill_null(0))
-        .sort("avg_margin", descending=True, nulls_last=True)
+        .with_columns(
+            hours=pl.col("hours").fill_null(0),
+            # Full sets' worth of cards traded: how quickly a set can be bought.
+            sets_traded=pl.col("cards_traded") / pl.col("stack_size"),
+        )
+        .sort("margin", descending=True, nulls_last=True)
     )
+
+
+# --- Scoring -------------------------------------------------------------------------
+
+# factor -> (column, higher is better)
+SCORE_FACTORS = {
+    "margin": ("margin_pct", True),
+    "investment": ("set_cost", False),  # direction can be flipped
+    "profitable_hours": ("profitable_share", True),
+    "volume": ("sets_traded", True),
+}
+DEFAULT_WEIGHTS = {"margin": 4.0, "investment": 2.0, "profitable_hours": 3.0, "volume": 3.0}
+
+
+def score_turn_ins(
+    summary: pl.DataFrame,
+    weights: dict[str, float] | None = None,
+    prefer_cheaper_sets: bool = True,
+) -> pl.DataFrame:
+    """Add a 0–1 `score` (and a `<factor>_rank` per factor) to a turn-in summary.
+
+    Each factor is turned into a percentile rank among the priced cards (1 = best), so
+    margins, chaos amounts, shares and set counts combine on one scale and a single
+    outlier can't dominate. The score is the weighted mean of those ranks. By default a
+    cheaper set ranks better (less capital, quicker to fill); set
+    `prefer_cheaper_sets=False` to favour bigger sets instead.
+    """
+    weights = weights or DEFAULT_WEIGHTS
+    s = summary.filter(pl.col("hours") > 0)
+    if s.is_empty():
+        return s.with_columns(score=pl.lit(None, pl.Float64))
+    rank_cols = []
+    for factor, (col, higher_better) in SCORE_FACTORS.items():
+        if factor == "investment":
+            higher_better = not prefer_cheaper_sets
+        # Rank 1 = best: the highest value when higher is better, else the lowest.
+        rank = pl.col(col).rank("average", descending=higher_better)
+        # Best gets 1, worst 1/n; nulls rank last.
+        rank_cols.append(((s.height + 1 - rank) / s.height).fill_null(0).alias(f"{factor}_rank"))
+    s = s.with_columns(rank_cols)
+    total = sum(max(w, 0.0) for w in weights.values())
+    if total == 0:
+        return s.with_columns(score=pl.lit(None, pl.Float64))
+    score = sum(pl.col(f"{f}_rank") * max(weights.get(f, 0.0), 0.0) for f in SCORE_FACTORS)
+    return s.with_columns(score=score / total).sort("score", descending=True)

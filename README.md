@@ -105,7 +105,9 @@ tail -f data/logs/latest.log
 | 2026-10-21 | The demo's KPI cards leave out Chaos (it's the unit everything is priced in), and every price column, axis and tooltip names its unit. |
 | 2026-10-21 | Dump rows with no item name (15 Sanctum relics in the Ancestor dump) are skipped by the loader. |
 | 2026-10-21 | **Phase 2 analyses favour recent leagues.** The economy changes a lot league by league, and the currency exchange (Settlers, 2024-07) was a structural break. So every tool reports per league, newest first, and summaries are recency-weighted: the newest league counts 1, and each *half-life* leagues back halves it (default 2, adjustable in the Analysis tab). Leagues before Settlers are context only. |
-| 2026-10-21 | Launch curves are compared on a **relative** scale: price ÷ the item's day-1 price in the same league, where the day-1 price is the *median* of its first-24-hour hourly prices (thin early markets, like a few junk Mirror trades, would skew an average). Curves whose baseline rests on fewer than six traded hours are flagged. Turn-in margin % is total margin ÷ total set cost, not an average of hourly percentages, which blows up for near-worthless sets. |
+| 2026-10-21 | Launch curves are compared on a **relative** scale: price ÷ the item's day-1 price in the same league, where the day-1 price is the *median* of its first-24-hour hourly prices (thin early markets, like a few junk Mirror trades, would skew an average). Curves whose baseline rests on fewer than six traded hours are flagged. Turn-in figures are the **typical (median) hour**: set cost, reward value, margin and margin %. Thin card markets have junk hours (The Hoarder averaged 570c a set in Mirage, against a typical hour of about 1c), and averaging hourly percentages blows up for near-worthless sets. |
+| 2026-10-22 | **Card flip score** (`services/divination.score_turn_ins`): margin %, investment (set cost), profitable hours and volume (full sets traded) are each ranked among the priced cards (best = 1), and the score is their weighted mean. Ranks rather than raw values, so chaos amounts, shares and counts combine fairly and one outlier can't dominate. Weights default to 4 / 2 / 3 / 3 and are tunable on the Card turn-ins page, as is whether a cheaper or a bigger set scores better. |
+| 2026-10-22 | **Charts use linear axes by default**, because they're read by players. Log scale is an opt-in toggle only where values span orders of magnitude (the market chart comparing items, and the card opportunity map). Relative charts say what the numbers mean (1 = the day-1 price). |
 | 2026-10-21 | Demo tables sort by each item's **average price over the window** (volume-weighted, in the selected unit), shown as the "Avg price" column. With nothing selected, the chart shows the five most-traded items. |
 | 2026-10-21 | Exchange item names come from RePoE's base item table. RePoE gives some different items the same name, so an ambiguous name never merges items: each metadata id becomes its own item, labelled `Name (MetadataName)`. None of the tracked items are ambiguous. |
 | 2026-10-21 | A league's `launched_at` is the first hour it trades on the exchange (Mirage: 2026-03-06 20:00 UTC). Hourly `day_offset` is fractional days from then. |
@@ -211,7 +213,8 @@ We looked at Ancestors (an event league, 21 days) before dropping event leagues.
 - **Which cards:** NeverSink's filter lists every card in a tier block (`$type->divination $tier->t1` ... `t5`). Tiers t1–t4 (incl. t4c, t5c) are shown, and t5 is hidden. At Semi-Strict that's 361 shown and 93 hidden (identical up to Strict). Stack-size rules aren't tiers. A card the filter doesn't know yet is shown by its catch-all rule, but we don't follow it until it's tiered. The tiers are fetched with the core pool on each `eb exchange sync` (`data/raw/neversink/divination_tiers.json`).
 - **What a set gives** (RePoE `properties.description` / `stack_size`, parsed in `normalize/divination.py`): followed cards are 67 currency, 5 card, 180 unique, 41 normal, 26 gem, 20 magic and 18 rare rewards (plus 4 disabled). A currency or card reward is *fixed* if its name is exactly one item (`<currencyitem>{10x Exalted Orb}`), or *random* if it's generic (`5x Currency`, `3x Essence`, `Divination Card`). Fixed exchange-priced rewards get `reward_item_id`.
 - **Turn-in margin** (`services/divination.py`): for each hour both the card and its reward traded, set cost = set size × card price, reward value = quantity × reward price, margin = reward value − set cost. This excludes gold fees and the time to buy a full set.
-- **Mirage, first 14 days:** 57 fixed turn-ins priced. 28 were profitable in 90%+ of hours. Examples: The Lake (8 → Reflecting Mist) averaged +18% and was profitable 98% of hours. Seven Years Bad Luck (13 → Mirror Shard) and The Sephirot (11 → 10 Divine) were profitable almost every hour, at thinner margins.
+- **Mirage, first 14 days:** 57 fixed turn-ins priced, 28 profitable in 90%+ of hours. With the default weights and cheaper sets preferred, The Heroic Shot scores highest (a set costs about 0.7c and roughly doubles, profitable 95% of hours, about 44k sets traded). Preferring bigger sets puts steady large-capital flips on top, e.g. The Nurse (about 2,100c a set, +6.7%, profitable every hour) and The Sephirot.
+- **Scoring and the opportunity map:** the Card turn-ins page ranks cards by a tunable score (decision log) and plots the top N as investment vs. margin, sized by sets traded.
 - **Next: expected value.** Random rewards need an EV over what they can roll, and unique rewards need unique prices (daily dumps). Once the EV exists, a card trading below its reward's EV is an arbitrage target.
 
 ### 2.8 Designing for a new league
@@ -365,6 +368,19 @@ Each finding is reproducible from the Analysis tab, with the leagues it rests on
 - It's **stronger in the exchange era:** the median was 0.18–0.22× in Settlers, Mercenaries, Keepers and Mirage, against 0.27–0.33× in Necropolis and Affliction.
 - **Implication:** sell non-chase uniques as early as possible. Holding a 5–50 div unique through week one has been a reliable loss in every recent league. Chase uniques are the exception, but there are too few of them to call it yet.
 - **Caveats:** daily data only (uniques aren't on the exchange); survivorship (an item needs a price on both days); and High-confidence filtering leaves out the thinnest markets.
+
+### 9.2 Items sold for Divines fetch more than the same items sold for Chaos (preliminary)
+
+*Data: the hourly exchange files (every X/Chaos and X/Divine market per hour, with volume and the hour's lowest/highest traded ratio), all four exchange-era leagues. Not yet a tool on the Analysis tab.*
+
+- **How common:** in each league, 63k–86k item-hours traded in both the Chaos and the Divine market.
+- **The gap:** the median price via Divines (X/Divine price × the hour's Divine rate) was **13–19% above** the direct Chaos price.
+- **It survives worst-case prices.** Run the loop Chaos → item → Divines → Chaos, buying at the hour's highest Chaos price, selling at its lowest Divine price and converting at its lowest Divine rate. It still came out positive in **15–26% of item-hours** (over +2% in 14–25%). The reverse loop was positive in only about 1%, so the premium runs one way.
+- **Items where it recurred in all four leagues** (share of hours positive in the worst league): Rogue's Marker (66%), Essence Scarab of Stability (47%), Tainted Jeweller's Orb (46%), Timeless Eternal and Karui Emblems (about 36%), Enkindling Orb (26%).
+- **Caveats before trusting it:**
+  - These are hourly summaries, not an order book, so a gap within an hour doesn't prove one player could have caught both sides.
+  - We haven't confirmed whether GGG's lowest/highest ratios are executed trades or listings.
+  - Exchange gold fees and integer trade ratios aren't modelled, and the overlap volume on many items is small.
 
 ---
 

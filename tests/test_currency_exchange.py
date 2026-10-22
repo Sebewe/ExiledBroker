@@ -366,7 +366,7 @@ def test_turn_in_margins(settings):
         ("Test Card", 60.0, 30.0, -30.0)
     ]
     s = divination.turn_in_summary(con, "Mirage").row(0, named=True)
-    assert (s["name"], s["hours"], s["profitable_share"], s["avg_margin_pct"]) == (
+    assert (s["name"], s["hours"], s["profitable_share"], s["margin_pct"]) == (
         "Test Card",
         1,
         0.0,

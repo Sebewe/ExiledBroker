@@ -136,4 +136,4 @@ def test_first_hours_with_gaps(settings):
         assert not at.exception, [e.message for e in at.exception]
     at = run_app("app_pages/cards.py")
     assert "No hour in Mirage has trades for both" in at.info[0].value
-    assert {m.label: m.value for m in at.metric}["Best average margin"] == "–"
+    assert {m.label: m.value for m in at.metric}["Top score"] == "–"

@@ -174,12 +174,16 @@ picked = (
 with right, st.container(border=True, height="stretch"):
     with st.container(horizontal=True, vertical_alignment="center"):
         st.markdown("**Hourly price**")
-        log_scale = st.toggle("Log scale", value=True)
+        log_scale = st.toggle(
+            "Log scale",
+            value=False,
+            help="Useful when comparing items with very different prices.",
+        )
     if not picked_rows:
         st.caption("Showing the five most-traded items. Select rows in the table to change.")
     series = hourly(league, tuple(picked["item_id"].to_list()), unit)
     # Hours without a price in this unit (e.g. before the first Divine trade) can't be
-    # plotted, and a log scale can't show zero.
+    # plotted, and the optional log scale can't show zero.
     series = series.filter(pl.col("value").is_not_null() & (pl.col("value") > 0))
     if series.is_empty():
         st.caption("No hourly trades to chart yet.")

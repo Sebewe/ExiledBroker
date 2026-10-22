@@ -119,7 +119,7 @@ if tool == "Unique moves":
             .mark_bar()
             .encode(
                 alt.X("league:N", sort=leagues, title=None),
-                alt.Y("median_ratio:Q", title="Median ratio").scale(type="log"),
+                alt.Y("median_ratio:Q", title="Median ratio (1 = unchanged)"),
                 alt.Color("tier:N", sort=order, title=None, legend=alt.Legend(orient="bottom")),
                 alt.XOffset("tier:N", sort=order),
                 tooltip=[
@@ -134,7 +134,9 @@ if tool == "Unique moves":
         )
         rule = alt.Chart(pl.DataFrame({"y": [1.0]})).mark_rule(strokeDash=[4, 4]).encode(y="y:Q")
         st.altair_chart(chart + rule, alt="Unique price ratio by tier and league")
-        st.caption("Below the dashed line = cheaper at the end. Log scale.")
+        st.caption(
+            "Below the dashed line = cheaper at the end. 0.25 = worth a quarter of the start price."
+        )
     with right, st.container(border=True, height="stretch"):
         st.markdown("**Per league**")
         st.dataframe(
@@ -233,7 +235,7 @@ elif tool == "Launch curves":
     )
     with st.container(border=True):
         x = alt.X("bucket_day:Q", title="Days since launch").scale(domain=[0, 14])
-        y = alt.Y(f"{y_col}:Q", title=y_title).scale(type="log", zero=False)
+        y = alt.Y(f"{y_col}:Q", title=y_title).scale(zero=False)
         lines = (
             alt.Chart(curves.drop_nulls(y_col))
             .mark_line(strokeWidth=1.2)
@@ -253,7 +255,7 @@ elif tool == "Launch curves":
         if relative and not avg.is_empty():
             chart = lines + alt.Chart(avg).mark_line(strokeWidth=3, color="#F1F5F9").encode(
                 x,
-                alt.Y("relative:Q").scale(type="log", zero=False),
+                alt.Y("relative:Q").scale(zero=False),
                 tooltip=[
                     alt.Tooltip("bucket_day:Q", title="Day", format=".2f"),
                     alt.Tooltip("relative:Q", title="Weighted", format=".2f"),
@@ -262,7 +264,7 @@ elif tool == "Launch curves":
         st.altair_chart(chart.properties(height=420), alt=f"Launch curves for {pick}")
         if relative:
             st.caption(
-                "Thick line: recency-weighted average across the selected leagues. Log scale."
+                "Thick line: recency-weighted average across the selected leagues. 2 = twice the day-1 price."
             )
 
 # --- Group timing --------------------------------------------------------------------
@@ -310,7 +312,7 @@ elif tool == "Group timing":
     with left, st.container(border=True, height="stretch"):
         st.markdown(f"**Median {group.lower()} price ÷ its day-1 price**")
         x = alt.X("bucket_day:Q", title="Days since launch").scale(domain=[0, 14])
-        y = alt.Y("relative:Q", title="Median relative price").scale(type="log", zero=False)
+        y = alt.Y("relative:Q", title="Median price ÷ day-1 price").scale(zero=False)
         chart = alt.Chart(g).mark_line(strokeWidth=1.2).encode(
             x,
             y,
@@ -322,12 +324,12 @@ elif tool == "Group timing":
                 "items",
             ],
         ) + alt.Chart(avg).mark_line(strokeWidth=3, color="#F1F5F9").encode(
-            x, alt.Y("relative:Q").scale(type="log", zero=False)
+            x, alt.Y("relative:Q").scale(zero=False)
         )
         st.altair_chart(chart.properties(height=400), alt=f"{group} launch timing")
         st.caption(
             "Each item counts once (median), so a few expensive items can't dominate. "
-            "Thick line: recency-weighted. Log scale."
+            "Thick line: recency-weighted. 1 = the day-1 price."
         )
     with right, st.container(border=True, height="stretch"):
         st.markdown("**Low and peak, per league**")

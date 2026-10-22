@@ -284,7 +284,7 @@ def turn_ins_across_leagues(
                     "reward_name",
                     "hours",
                     "profitable_share",
-                    "avg_margin_pct",
+                    "margin_pct",
                 ).with_columns(league=pl.lit(league))
             )
     if not frames:
@@ -301,11 +301,11 @@ def turn_ins_across_leagues(
             ((pl.col("profitable_share") * pl.col("weight")).sum() / pl.col("weight").sum()).alias(
                 "weighted_profitable_share"
             ),
-            ((pl.col("avg_margin_pct") * pl.col("weight")).sum() / pl.col("weight").sum()).alias(
+            ((pl.col("margin_pct") * pl.col("weight")).sum() / pl.col("weight").sum()).alias(
                 "weighted_margin_pct"
             ),
             pl.col("profitable_share").min().alias("worst_league_share"),
-            pl.struct("league", "avg_margin_pct").alias("by_league"),
+            pl.struct("league", "margin_pct").alias("by_league"),
         )
         .sort("weighted_margin_pct", descending=True)
     )
