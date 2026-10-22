@@ -218,3 +218,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ExiledBroker
+data/*
+!data/.gitkeep
+.env
