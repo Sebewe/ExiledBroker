@@ -384,3 +384,28 @@ def test_turn_in_margins(settings):
     )
     assert divination.hourly_turn_ins(con, "Mirage", card_ids=[]).is_empty()
     con.close()
+
+
+# A Mirage dump listing, for tests that need the league registered (as `eb dumps load`
+# would) before any exchange data.
+MIRAGE_INDEX = [
+    {
+        "leagueName": "Mirage",
+        "minDate": "2026-03-06T00:00:00",
+        "maxDate": "2026-07-20T00:00:00",
+        "zipName": "Mirage.zip",
+    }
+]
+
+
+def register(settings):
+    """Register Mirage as an exchange-tracked league; returns an open connection."""
+    from exiledbroker.ingest.poe_ninja_dumps import parse_index
+    from exiledbroker.storage import db
+    from exiledbroker.storage import dumps as dump_store
+
+    con = db.connect(settings.db_path)
+    db.init_schema(con)
+    dump_store.upsert_leagues(con, parse_index(MIRAGE_INDEX))
+    con.execute("UPDATE league SET exchange_tracked = TRUE WHERE name = 'Mirage'")
+    return con

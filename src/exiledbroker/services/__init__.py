@@ -1,5 +1,4 @@
-"""Read-side query functions shared by the Streamlit demo and the FastAPI app.
+"""Read-side query functions: everything the site's API (api/) serves comes from here.
 
-Keep UI code out of here and keep SQL out of the UIs, so the hosted API can
-replace the demo without rewriting any logic.
+Keep web code out of here and SQL out of the API routes.
 """

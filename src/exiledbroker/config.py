@@ -41,6 +41,8 @@ class Settings(BaseSettings):
     database_url: str | None = None
     # The built frontend the API serves (`npm run build` in web/). Not there: API only.
     web_dist: Path = Field(default_factory=_default_web_dist)
+    # Precompute the pages' default tables in the background whenever new data loads.
+    api_warm: bool = True
     # Only PoE1 for now; every league row still carries its game.
     default_game: str = "poe1"
     # Origins allowed to call the API from a browser (the future public frontend).

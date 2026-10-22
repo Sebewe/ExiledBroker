@@ -18,8 +18,8 @@ from test_currency_exchange import (
     FakeExchange,
     client_for,
     market,
+    register,
 )
-from test_dashboard import register
 
 
 @pytest.fixture

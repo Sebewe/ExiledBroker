@@ -22,7 +22,6 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.5"]
-demo = ["streamlit>=1.35"]
 pg = ["psycopg[binary]>=3.2", "psycopg-pool>=3.2"]  # Postgres (the hosted database)
 
 [project.scripts]

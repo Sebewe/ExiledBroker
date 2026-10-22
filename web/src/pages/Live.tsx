@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react'
 import type { CardFlip, Loop } from '../api/client'
 import { useArbitrageHourly, useCardFlips, useLoops, useStatus } from '../api/queries'
 import { LazyChart as Chart } from '../components/LazyChart'
-import { baseOptions, line } from '../lib/chartOptions'
+import { loopChart } from '../lib/loopChart'
 import { NumberField, Segmented, Select, Toolbar } from '../components/Controls'
 import { DIRECTIONS, type Direction } from '../lib/directions'
 import { DataTable, ScoreBar } from '../components/DataTable'
@@ -90,17 +90,7 @@ export default function Live() {
     [unit],
   )
 
-  const chartOption = useMemo(() => {
-    const rows = hourly.data ?? []
-    // The live view opens on the last week; zoom out for the league's whole history.
-    return {
-      ...baseOptions('Chaos', { zoomDays: 7, latest: rows.at(-1)?.observed_at }),
-      series: [
-        line('Bought with Chaos', rows.map((r) => [r.observed_at, r.chaos_price])),
-        line('Via Divines', rows.map((r) => [r.observed_at, r.via_divines])),
-      ],
-    }
-  }, [hourly.data])
+  const chartOption = useMemo(() => loopChart(hourly.data ?? []), [hourly.data])
 
   const header = (
     <PageHeader title="Live market">
@@ -147,7 +137,7 @@ export default function Live() {
           </div>
           <Section
             title="Best loops right now"
-            description={`Chaos ↔ Divine: the edge at the worst prices of the item's latest hour, and how often it paid over the last ${lookback}h. Select a row for its chart.`}
+            description={`Chaos ↔ Divine: the edge at the worst prices of the item's latest hour, and how often it paid over the last ${lookback}h. Select a row for its last 3 days: the gap between the two price lines is the margin, the bars how much traded in both markets.`}
           >
             {queryFallback(loops) ??
               (loops.data!.length ? (

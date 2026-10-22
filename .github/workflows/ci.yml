@@ -27,7 +27,7 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
       - name: Install
-        run: pip install -e '.[dev,demo]'
+        run: pip install -e '.[dev]'
       - name: Lint
         run: |
           ruff format --check .
@@ -58,7 +58,7 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
       - name: Install
-        run: pip install -e '.[dev,demo,pg]'
+        run: pip install -e '.[dev,pg]'
       - name: Test on Postgres
         run: pytest -q tests/test_postgres.py
 

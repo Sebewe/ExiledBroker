@@ -19,7 +19,7 @@ A Path of Exile market speculation tool. It uses historical price data and the n
 | 4 | Baseline + backtest | First honest accuracy numbers | ⬜ Not started |
 | 5 | Signals | Ranked list: "farm X", "buy Y on day 2, sell day 6" | ⬜ Not started |
 | 6 | Live mode | Hourly ingest of the running league; live view of what's best to arbitrage; later, alerts when prices drift from prediction | 🟨 Live feed (`eb live watch`) and the Live market page built; prediction alerts not started |
-| 7 | UI | Hosted site: React frontend on the JSON API, Postgres (Supabase) + Railway | 🟨 Site database (Postgres via `EB_DATABASE_URL`, local compose), worker writing Postgres, API, React frontend (Live, Arbitrage, Card turn-ins, Launch market, About) and the Railway image done; not deployed yet; Streamlit demo retires after parity |
+| 7 | UI | Hosted site: React frontend on the JSON API, Postgres (Supabase) + Railway | 🟨 Site database (Postgres via `EB_DATABASE_URL`, local compose), worker writing Postgres, API, React frontend (Live, Arbitrage, Card turn-ins, Launch market, About) and the Railway image done; Streamlit demo retired; not deployed yet |
 
 Legend: ⬜ Not started · 🟨 In progress · ✅ Done
 
@@ -28,7 +28,7 @@ Phases 1–2 alone are useful: knowing which categories reliably spike in the fi
 ### Quick start
 
 ```bash
-python3 -m venv .venv && .venv/bin/pip install -e '.[dev,demo]'
+python3 -m venv .venv && .venv/bin/pip install -e '.[dev,pg]'
 .venv/bin/eb init-db      # create data/exiledbroker.duckdb with the schema
 .venv/bin/eb dumps list   # available poe.ninja league dumps and local state
 .venv/bin/eb dumps sync   # download + extract all challenge leagues into data/ (resumable)
@@ -37,7 +37,6 @@ python3 -m venv .venv && .venv/bin/pip install -e '.[dev,demo]'
 .venv/bin/eb exchange status           # what's on disk and loaded
 .venv/bin/eb exchange sync -l "<New League>" --start 2026-11-20   # register the upcoming league (see §2.8)
 .venv/bin/eb live watch                # keep the current league's latest hours loaded (Live market page)
-.venv/bin/streamlit run app/dashboard.py   # local demo (run from the repo root so the theme loads)
 .venv/bin/eb serve        # the site's API at http://127.0.0.1:8000/api (interactive docs at /docs)
 
 # Local copy of the hosted setup (Postgres stands in for Supabase):
@@ -142,7 +141,6 @@ Fixed on the way, because Postgres rejected them or answered differently:
 
 ### Open questions
 
-- **Frontend framework** for the public UI. The API comes first, so this can wait. The first hosted demo can be the Streamlit app itself, on Railway.
 - **What goes into Supabase.** All price history is ~100M+ rows, too much for a hosted Postgres plan. Likely: curated tables (e.g. the first 30 days, Medium/High confidence, plus aggregated curves) in Postgres, with the full Parquet history in Supabase Storage.
 
 ### Add-ons (after the first demo)
@@ -193,6 +191,9 @@ Fixed on the way, because Postgres rejected them or answered differently:
 | 2026-10-22 | **API results are cached per data version**, not on a timer: the key includes when the latest load finished, so each result is computed once per hourly update for all visitors (bounded LRU, 256 entries). Responses are gzipped. On real Allflame data from Postgres, cached calls take 2–8 ms and the heaviest cold call (arbitrage, 566 loops) about 0.3 s. |
 | 2026-10-22 | **Frontend stack:** React + Vite + TypeScript, TanStack Query and Table (v8), ECharts (lazy-loaded: the first load is 119 KB gzipped), Tailwind with a small token set, Fira Sans self-hosted (no font CDN). Types are generated from the API's OpenAPI schema. Dark only; green/red only for profit/loss, gold as the brand accent. Charts break lines where hours are missing (a live league's launch fortnight and latest days are weeks apart) and mark isolated hours with a dot, rather than drawing a line across the gap. |
 | 2026-10-22 | **One image, two Railway services.** The web service runs uvicorn serving `/api` and the built frontend from one origin (no CORS, one service to pay for); the worker runs `eb live watch` from the same image. Verified locally with compose: the worker container, starting from an empty disk, fetched only the 2 new hours (2 requests, 110 KB) and wrote them to Postgres in 2 s. |
+| 2026-10-22 | **Streamlit demo retired.** The React site covers the launch pages (Live market, Arbitrage, Card turn-ins, Launch market). Its page tests became API tests (every endpoint after every replayed hour), and its page budgets became endpoint budgets. The Analysis tools (Unique moves, launch curves, group timing) stay in `analysis/` for local research; they aren't on the site. |
+| 2026-10-22 | **Tables are served from a cache, never computed per request.** Each table is computed on the server once per data version (when a new hour loads), stored as JSON bytes gzipped once, and sent to every visitor with an ETag, so a returning client gets `304` and no body. The API trusts the data version for 15 s, so a cached request makes no database query at all. The pages' default tables are precomputed in the background as soon as an hour loads, so even the first visitor after an update doesn't wait. Clients only sort and chart what they receive. |
+| 2026-10-22 | **Live and trading charts show the last 3 days** (`hours`, default 72, up to 28 days for a later "expand" control), not the whole loaded window. The whole window left a weeks-long empty stretch in the zoom bar between a live league's launch fortnight and its latest days, and sent data nobody looked at. The loop chart shows the price in Chaos and the price via Divines (converted to Chaos at that hour's rate) as lines, so the gap between them is the margin, with the Chaos value traded in both markets as semi-transparent bars along the bottom. |
 | 2026-10-22 | **CI on GitHub Actions**, lint plus tests, with a Postgres 17 job. It runs only on the standard `ubuntu-latest` runner, which is free for a public repo, and superseded runs are cancelled. |
 | 2026-10-22 | **Performance measurements stay off the site.** The query meter, the budgets and `eb perf report` are local and CI tools. If live numbers are needed, they'd go into a server-side dev panel later, not a public page. |
 | 2026-10-22 | **Tests never touch `data/`.** `tests/conftest.py` points the default data directory at a temp dir before any fixture runs. It was added after a module-scoped fixture without `EB_DATA_DIR` reached the real database through `sync_live`, which then opened some sessions on the default path instead of `settings.db_path`. That run shrank Mirage's loaded hours to 30. Both are fixed, and Mirage was reloaded from the pages on disk (0 fetched; totals identical to before). |
@@ -370,14 +371,8 @@ ExiledBroker/
 │   │   └── launch_patterns.py  # ✔ phase 2: unique moves by tier, launch curves, group timing, card turn-ins across leagues, recency weights
 │   ├── services/               # ✔ read-side queries shared by the demo and the API (overview, prices, market, divination, cross_market, scoring, live)
 │   ├── perf.py                 # ✔ `eb perf report`: page reads, storage, worker cost; dated history in data/perf/
-│   ├── api/                    # ✔ the site's API: app.py, routes/ (live, trading, market), models.py, cache.py
+│   ├── api/                    # ✔ the site's API: app.py, routes/ (live, trading, market), models.py, deps.py (cached views), warm.py, cache.py
 │   └── cli.py                  # ✔ `eb dumps list|sync|load`, `eb exchange sync|status`, `eb live sync|watch`, `eb site seed`, `eb perf report`, `eb serve`, `eb init-db`
-├── app/
-│   ├── dashboard.py            # ✔ Streamlit entry point (navigation, credit)
-│   ├── common.py               # ✔ cached loaders + formatting
-│   ├── static/                 # ✔ sidebar wordmark + icon
-│   └── app_pages/              # ✔ live.py (default), market.py, cards.py, arbitrage.py, analysis.py, data.py
-├── .streamlit/config.toml      # ✔ demo theme
 ├── scripts/ingest.sh           # ✔ unattended, resumable ingest runner
 ├── config/core_pool.toml       # ✔ manual core-pool overrides (exclude / include by name)
 ├── web/                        # ✔ the site's frontend: React + Vite + TS (src/pages, src/components, src/api with generated types)
@@ -390,7 +385,7 @@ ExiledBroker/
 └── tests/                      # ✔ incl. fixtures/ (real exchange pages for the live replay), performance budgets, Postgres checks
 ```
 
-**Stack:** `httpx`, `polars`, DuckDB with Parquet, `pydantic`, `typer`, Streamlit (demo), FastAPI + uvicorn (hosted API), and `scikit-learn`/LightGBM later. DuckDB suits this well: a single file, fast queries over time series, and no server to run.
+**Stack:** `httpx`, `polars`, DuckDB with Parquet, `pydantic`, `typer`, FastAPI + uvicorn (the site's API), React + Vite + TypeScript (the site's frontend), Postgres (hosted, Supabase), and `scikit-learn`/LightGBM later. DuckDB suits this well: a single file, fast queries over time series, and no server to run.
 
 ## 5. Core data model
 

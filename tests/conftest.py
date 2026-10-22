@@ -8,3 +8,18 @@ import tempfile
 os.environ["EB_DATA_DIR"] = tempfile.mkdtemp(prefix="eb-test-data-")
 # Nor the site's Postgres from a developer's .env: tests that need one say so.
 os.environ["EB_DATABASE_URL"] = ""
+
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _fresh_api_caches(monkeypatch):
+    """Each test starts with empty API caches and sees new data at once (the API trusts
+    a data version for VERSION_TTL seconds; tests that check that set it themselves)."""
+    from exiledbroker.api import deps
+
+    deps.reset()
+    monkeypatch.setattr(deps, "VERSION_TTL", 0.0)
+    yield
+    deps.reset()

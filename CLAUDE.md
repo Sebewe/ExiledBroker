@@ -7,7 +7,7 @@ ExiledBroker is a Path of Exile 1 market tool: historical and live exchange data
 ## Commands
 
 ```bash
-python3 -m venv .venv && .venv/bin/pip install -e '.[dev,demo]'   # Python >=3.11, plain venv (no uv)
+python3 -m venv .venv && .venv/bin/pip install -e '.[dev,pg]'   # Python >=3.11, plain venv (no uv)
 
 .venv/bin/pytest                                   # all tests
 .venv/bin/pytest tests/test_live_pipeline.py       # one file
@@ -18,7 +18,6 @@ docker run -d --name eb-pg -e POSTGRES_PASSWORD=eb -p 55432:5432 postgres:17
 EB_TEST_POSTGRES_URL=postgresql://postgres:eb@localhost:55432/postgres .venv/bin/pytest tests/test_postgres.py   # needs .[pg]
 .venv/bin/eb perf report   # page reads, storage, worker cost; saved to data/perf/, flags growth vs the last report
 
-.venv/bin/streamlit run app/dashboard.py   # old demo (retiring); run from the repo root so the theme loads
 .venv/bin/eb serve                         # the site's API at http://127.0.0.1:8000/api (docs at /docs)
 
 # Local copy of hosting: Postgres in Docker stands in for Supabase (see .env.example)
@@ -47,7 +46,7 @@ A background run (`nohup … &`) ignores Ctrl-C. Stop it with `pkill -f "eb "`, 
 
 ## Architecture
 
-**Pipeline writes, UI reads.** CLI jobs (`cli.py` → `ingest/` → `normalize/`) fetch data and write a local DuckDB file (`data/exiledbroker.duckdb`) plus Parquet. The FastAPI app (`api/`, the site's backend) and the retiring Streamlit demo (`app/`) only read, and only through `services/`.
+**Pipeline writes, UI reads.** CLI jobs (`cli.py` → `ingest/` → `normalize/`) fetch data and write a local DuckDB file (`data/exiledbroker.duckdb`) plus Parquet. The site (FastAPI in `api/`, React in `web/`) only reads, and only through `services/`. (The Streamlit demo was retired on 2026-10-22; it's in git history.)
 
 **The site's database** is Postgres when `EB_DATABASE_URL` is set (Supabase hosted, the compose `db` service locally), else the local DuckDB file. DuckDB stays the research database (all history); Postgres holds only what the site reads (the live league).
 - `db.site_session()`: the API's reads (pooled psycopg). `db.site_writer()`: the live worker's writes, an in-memory DuckDB with Postgres attached (`USE site`), so the incremental loader runs unchanged and its transaction is Postgres's. Code that takes `settings` uses these or `settings.db_path`, never a default path.
@@ -84,7 +83,8 @@ Target: the web app **and** the live worker (`eb live watch`, or `eb live sync` 
   - Today: hourly price rows are kept only for price-mapping items, followed cards' rewards, and Chaos and Divine (`exchange_loader._keep_used_items`). `cross_market_hour` stays complete because it *is* the arbitrage universe.
   - When a feature needs more, widen the keep rule deliberately and rebuild with `--force`, rather than storing everything "just in case".
   - The same goes for reads: return summaries from SQL, not raw rows.
-- **Every Streamlit cache needs `max_entries`.** `tests/test_app_caches.py` enforces it. Caches are shared by all visitors and some are keyed on free-typed numbers.
+- **Serve tables from the cache, never per request.** An endpoint builds a `View` (`api/deps.py`): computed once per data version, stored as JSON bytes gzipped once, sent to every visitor with an ETag (`304` for a client that has it). The data version is read at most every 15 s, so a cached request makes no database query. The pages' default views are precomputed when new data loads (`api/warm.py`; `default_views` must match what the frontend sends, which `tests/test_api.py` checks). The cache is a bounded LRU (keys include free-typed numbers).
+- **Charts load a window, not the whole history:** hourly chart endpoints take `hours` (default 72, max 28 days).
 - **Index for the access paths.** `schema.sql` indexes league + source + time, because the primary keys start with item id.
 - **The worker must not depend on a persistent disk.** What to fetch is decided by the database (`exchange_loader.needs_rebuild` / `loaded_hours`), not by which pages are on disk. Reference data (RePoE names, core-pool snapshots, loot-filter tiers) lives in `reference_data` (`ingest/reference.py`). **Never download data we already have:** market hours are immutable and fetched once; reference sources go through `reference.fetch_if_changed`, which checks at most every `max_age` (RePoE weekly, pool and tiers daily; `eb exchange sync --refresh` checks now) using conditional requests (stored ETag / Last-Modified), so an unchanged source answers 304 and nothing is downloaded.
 - **The full list** of known cost issues and their status is in the README ("Hosting cost issues", and "Performance findings to fix" from the tooling).
@@ -105,12 +105,12 @@ Target: the web app **and** the live worker (`eb live watch`, or `eb live sync` 
 - **A new service or analysis query goes into `_cases` in `tests/test_postgres.py`**, so it's compared between DuckDB and Postgres. Queries behind the live pages also go into `LIVE_QUERIES`, which checks their index use. Text ordering differs between the engines (Postgres sorts by locale), so sort name lists in Python, and don't select a column twice.
 
 - Exchange behaviour is tested with `FakeExchange` / `market()` / `client_for()` in `tests/test_currency_exchange.py` (other test modules import them). `FakeExchange.now` marks the hour still being traded (end of stream).
-- Pages are tested headlessly with `streamlit.testing.v1.AppTest`, using an **absolute** path to `app/dashboard.py` and `EB_DATA_DIR` pointed at a temp dir. Call `st.cache_data.clear()` between states. The default page is the Live market.
-- `tests/test_live_pipeline.py` replays real GGG pages (Mirage's first 30 hours, `tests/fixtures/mirage_launch.json.gz`) through `ingest.live.sync_live`, hour by hour, and runs every page and analysis tool after each hour. Regenerate the fixture with `python tests/fixtures/make_fixtures.py` (needs Mirage data in `data/`).
+- The API is tested with FastAPI's `TestClient` on the replay fixture (`tests/test_api.py`: every endpoint after every update). `conftest.py` resets the API caches and sets the version TTL to 0 for each test. The frontend has Vitest + Testing Library tests against a stubbed `fetch` (`web/src/**/*.test.ts(x)`), covering each page's no-data / waiting / stale states.
+- `tests/test_live_pipeline.py` replays real GGG pages (Mirage's first 30 hours, `tests/fixtures/mirage_launch.json.gz`) through `ingest.live.sync_live`, hour by hour, and checks what the API reports after each hour. Regenerate the fixture with `python tests/fixtures/make_fixtures.py` (needs Mirage data in `data/`).
 
 ## Data and repo hygiene
 
 - All data lives in the gitignored `data/` folder (the default `EB_DATA_DIR`, anchored to the repo root). Never commit it.
 - Settings come from `EB_*` environment variables or `.env` (`config.py`).
-- `.claude/` and `.agents/` (the Streamlit skill; `.claude/skills/...` is a symlink into `.venv`) are intentionally left untracked.
+- `.claude/` and `.agents/` are intentionally left untracked.
 - The root `.gitignore` is Python's template, which ignores every `lib/`; `!web/src/lib/` re-includes the frontend's. Check `git add -n` for new folders.

@@ -1,5 +1,5 @@
-"""Performance budgets: what each page reads from the database and what each live
-update fetches and writes, measured on the real-data replay (Mirage's first 30 hours,
+"""Performance budgets: what each API endpoint (each page of the site) reads from the
+database and what each live update fetches and writes, measured on the real-data replay (Mirage's first 30 hours,
 see test_live_pipeline.py).
 
 The budgets are a few times today's measurements. They catch a page that starts
@@ -10,28 +10,15 @@ change legitimately needs more, raise the budget in the same change and say why.
 from datetime import timedelta
 
 import pytest
-import streamlit as st
-from streamlit.testing.v1 import AppTest
 
 from exiledbroker.ingest import currency_exchange as cx
 from exiledbroker.ingest.live import sync_live
 from exiledbroker.storage import db
 from test_currency_exchange import FakeExchange, client_for
-from test_live_pipeline import APP, LAUNCH, PAGES, PAGES_TO_RUN, settings  # noqa: F401
+from test_live_pipeline import LAUNCH, PAGES, settings  # noqa: F401
 
 EARLIEST = cx.from_ts(LAUNCH - 72 * 3600)
 HOURS = 30
-
-# Rows and bytes one page view reads (cache cold), measured at 30 hours. Today's
-# measurements in comments.
-PAGE_BUDGET = {
-    "live": (150, 20_000),  # 37 rows, 5 KB
-    "market": (800, 64_000),  # 211 rows, 17 KB (hourly + daily chart of one item)
-    "cards": (200, 24_000),  # 53 rows, 6 KB
-    "arbitrage": (150, 20_000),  # 38 rows, 5 KB
-    "analysis": (150, 20_000),  # 38 rows, 5 KB
-    "data": (150, 20_000),  # 39 rows, 5 KB
-}
 
 
 def update(s, server, hours_in: int):
@@ -48,28 +35,9 @@ def loaded(settings):  # noqa: F811
     return settings
 
 
-def page_reads(page: str) -> db.Meter:
-    """What one cold view of `page` reads (not the default page it opens on first)."""
-    at = AppTest.from_file(APP, default_timeout=120).run()
-    st.cache_data.clear()
-    with db.metered() as meter:
-        at.switch_page(f"app_pages/{page}.py").run()
-    assert not at.exception, (page, [e.message for e in at.exception])
-    return meter
-
-
 def describe(meter: db.Meter) -> str:
     top = sorted(meter.by_caller().values(), key=lambda q: -q.bytes)[:5]
     return "; ".join(f"{q.caller}: {q.rows} rows, {q.bytes:,} B" for q in top)
-
-
-@pytest.mark.parametrize("page", PAGES_TO_RUN)
-def test_page_reads_stay_small(loaded, page):
-    max_rows, max_bytes = PAGE_BUDGET[page]
-    meter = page_reads(page)
-    assert meter.queries, "nothing measured: is the page reading through storage.db?"
-    assert meter.rows <= max_rows, describe(meter)
-    assert meter.bytes <= max_bytes, describe(meter)
 
 
 def _add_past_leagues(s, n: int) -> None:
@@ -93,23 +61,6 @@ def _add_past_leagues(s, n: int) -> None:
                     f"{column} - {shift} AS {column}) FROM {table} "
                     "WHERE league_id = 'poe1-mirage'"
                 )
-
-
-# Pages about the running league must not read more as history accumulates, except
-# a row per league in league lists (pickers, the calendar). The others compare
-# leagues, so they may grow by a small summary per league.
-PER_LEAGUE_ROWS = {"live": 2, "cards": 2, "arbitrage": 2, "data": 2, "market": 60, "analysis": 60}
-
-
-@pytest.mark.parametrize("page", PAGES_TO_RUN)
-def test_page_reads_do_not_grow_with_history(loaded, page):
-    before = page_reads(page)
-    _add_past_leagues(loaded, 4)
-    after = page_reads(page)
-    allowed = 4 * PER_LEAGUE_ROWS[page]
-    assert after.rows <= before.rows + allowed, (
-        f"{before.rows} → {after.rows} rows. Now: {describe(after)}"
-    )
 
 
 def _runs(s) -> list[dict]:
@@ -171,21 +122,25 @@ API_BUDGET = {
     "/api/market/{league}/summary?group=currency&group=divination": (150, 30_000),  # 32, 5.6 KB
     "/api/market/{league}/hourly?item_id=currency:divine-orb": (150, 24_000),  # 30, 4.6 KB
 }
-LIVE_ENDPOINTS = [
+# Endpoints about one league must not read more as other leagues' history accumulates,
+# except a row per league in league lists.
+ONE_LEAGUE_ENDPOINTS = [
     "/api/status",
     "/api/live/{league}/loops",
     "/api/live/{league}/card-flips?lookback=48",
+    "/api/arbitrage?league={league}&min_hours=1",
+    "/api/cards/{league}",
 ]
+PER_LEAGUE_ROWS = 2
 
 
 def endpoint_reads(path: str) -> tuple[db.Meter, int]:
     from fastapi.testclient import TestClient
 
     from exiledbroker.api import app as app_module
-    from exiledbroker.api import cache, deps
+    from exiledbroker.api import deps
 
-    cache.results.clear()
-    deps._ready.clear()
+    deps.reset()
     client = TestClient(app_module.create_app())
     with db.metered() as meter:
         r = client.get(path.format(league="Mirage"))
@@ -201,10 +156,10 @@ def test_endpoint_reads_stay_small(loaded, path):
     assert size <= max_bytes, size
 
 
-@pytest.mark.parametrize("path", LIVE_ENDPOINTS)
-def test_live_endpoints_do_not_grow_with_history(loaded, path):
+@pytest.mark.parametrize("path", ONE_LEAGUE_ENDPOINTS)
+def test_one_league_endpoints_do_not_grow_with_history(loaded, path):
     before, _ = endpoint_reads(path)
     _add_past_leagues(loaded, 4)
     after, _ = endpoint_reads(path)
-    allowed = 4 * PER_LEAGUE_ROWS["live"]  # a row per league in the league list
+    allowed = 4 * PER_LEAGUE_ROWS
     assert after.rows <= before.rows + allowed, f"{before.rows} → {after.rows}: {describe(after)}"

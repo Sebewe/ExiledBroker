@@ -145,7 +145,7 @@ class Meter:
 
 
 # Open meters. Off (empty) in normal use, so reads cost nothing extra. A meter sees
-# reads from every thread, because Streamlit's AppTest runs pages on its own thread.
+# reads from every thread (FastAPI runs sync endpoints on a thread pool).
 _meters: list[Meter] = []
 _meters_lock = threading.Lock()
 

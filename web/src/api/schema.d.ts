@@ -34,7 +34,7 @@ export interface paths {
         };
         /**
          * Arbitrage Hourly
-         * @description One item's hours in both markets, for its chart.
+         * @description One item's latest `hours` hours in both markets, for its chart.
          */
         get: operations["arbitrage_hourly_api_arbitrage_hourly_get"];
         put?: never;
@@ -74,7 +74,7 @@ export interface paths {
         };
         /**
          * Card Hourly
-         * @description One card's set cost against its reward, hour by hour.
+         * @description One card's set cost against its reward over its latest `hours` hours.
          */
         get: operations["card_hourly_api_cards__league___card_id__hourly_get"];
         put?: never;
@@ -211,7 +211,7 @@ export interface paths {
         };
         /**
          * Hourly
-         * @description Hourly prices of up to 20 items, for the chart.
+         * @description Hourly launch-window prices of up to 20 items, for the chart.
          */
         get: operations["hourly_api_market__league__hourly_get"];
         put?: never;
@@ -666,6 +666,7 @@ export interface operations {
                 item_id: string;
                 league: string[];
                 direction?: "chaos_first" | "divine_first";
+                hours?: number;
             };
             header?: never;
             path?: never;
@@ -732,6 +733,7 @@ export interface operations {
         parameters: {
             query?: {
                 unit?: "chaos" | "divine";
+                hours?: number;
             };
             header?: never;
             path: {

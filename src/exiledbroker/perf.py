@@ -1,14 +1,15 @@
-"""`eb perf report`: measure the local database and demo, and keep a dated history.
+"""`eb perf report`: measure the site's API on the local data, and keep a dated history.
 
 Local only (it isn't part of the site). Each report measures:
-- what every page (and analysis tool) reads from the database on a cold view: queries,
-  rows, bytes, time, and which functions read the most;
+- what every endpoint the site's pages call reads from the database on a cold call
+  (cache empty): queries, rows, bytes, time, response size, and which functions read
+  the most;
 - what is stored: rows per table, overall and for the leagues that would be hosted
   (the running ones), and the database file size;
 - what the live worker has cost lately (ingest_run).
 
 Reports are saved to `data/perf/<date>.json` and compared with the previous one, so a
-change that makes a page read much more shows up. The same page measurements are
+change that makes an endpoint read much more shows up. The same measurements are
 asserted as budgets on the replay fixture in tests/test_performance.py."""
 
 import json
@@ -19,20 +20,28 @@ from pathlib import Path
 from exiledbroker.config import Settings
 from exiledbroker.storage import db
 
-APP = Path(__file__).resolve().parents[2] / "app" / "dashboard.py"
-PAGES = ["live", "market", "cards", "arbitrage", "analysis", "data"]
-ANALYSIS_TOOLS = ["Unique moves", "Launch curves", "Group timing", "Card turn-ins"]
+# What each page of the site calls, with its default settings ({league}: the newest).
+ENDPOINTS = {
+    "status": "/api/status",
+    "live: loops": "/api/live/{league}/loops",
+    "live: card flips": "/api/live/{league}/card-flips",
+    "arbitrage": "/api/arbitrage?league={league}",
+    "cards": "/api/cards/{league}",
+    "launch: summary": "/api/market/{league}/summary?group=currency",
+    "launch: chart": "/api/market/{league}/hourly?item_id=currency:divine-orb",
+}
 TABLES = ["price_observation", "cross_market_hour", "exchange_hour_loaded", "item"]
 # Reads that grew more than this since the previous report are flagged.
 GROWTH_FLAG = 1.25
 
 
-def _summary(meter: db.Meter, wall_ms: float) -> dict:
+def _summary(meter: db.Meter, wall_ms: float, response_bytes: int) -> dict:
     top = sorted(meter.by_caller().values(), key=lambda q: -q.bytes)[:5]
     return {
         "queries": len(meter.queries),
         "rows": meter.rows,
         "bytes": meter.bytes,
+        "response_bytes": response_bytes,
         "query_ms": round(meter.ms, 1),
         "wall_ms": round(wall_ms, 1),
         "top": [
@@ -43,27 +52,25 @@ def _summary(meter: db.Meter, wall_ms: float) -> dict:
 
 
 def measure_pages() -> dict[str, dict]:
-    """Cold views of every page and analysis tool, through Streamlit's AppTest."""
-    import streamlit as st
-    from streamlit.testing.v1 import AppTest
+    """A cold call (empty cache) of each endpoint the site's pages use."""
+    from fastapi.testclient import TestClient
 
+    from exiledbroker.api import app as app_module
+    from exiledbroker.api import deps
+
+    client = TestClient(app_module.create_app())
+    deps.reset()
+    leagues = client.get("/api/status").json().get("leagues", [])
+    league = leagues[0]["name"] if leagues else "none"
     out = {}
-    for page in PAGES:
-        at = AppTest.from_file(str(APP), default_timeout=300).run()
-        st.cache_data.clear()
+    for name, path in ENDPOINTS.items():
+        deps.reset()
         started = time.perf_counter()
         with db.metered() as meter:
-            at.switch_page(f"app_pages/{page}.py").run()
-        out[page] = _summary(meter, (time.perf_counter() - started) * 1000)
-        if at.exception:
-            out[page]["error"] = [e.message for e in at.exception]
-        if page == "analysis" and at.get("button_group"):
-            for tool in ANALYSIS_TOOLS:
-                st.cache_data.clear()
-                started = time.perf_counter()
-                with db.metered() as meter:
-                    at.get("button_group")[0].set_value(tool).run()
-                out[f"analysis: {tool}"] = _summary(meter, (time.perf_counter() - started) * 1000)
+            r = client.get(path.format(league=league), headers={"Accept-Encoding": "identity"})
+        out[name] = _summary(meter, (time.perf_counter() - started) * 1000, len(r.content))
+        if r.status_code != 200:
+            out[name]["error"] = [f"{r.status_code}: {r.text[:200]}"]
     return out
 
 
@@ -181,12 +188,12 @@ def render(rep: dict, prev: dict | None) -> str:
             n /= 1024
         return f"{n:,.1f} TB"
 
-    lines = [f"Performance report {rep['at']}", "", "Page reads (cold view):"]
+    lines = [f"Performance report {rep['at']}", "", "Endpoint reads (cold call, empty cache):"]
     for page, m in rep["pages"].items():
         lines.append(
-            f"  {page:<26} {m['queries']:>3} queries {m['rows']:>9,} rows "
-            f"{size(m['bytes']):>9}  {m['query_ms']:>7,.0f} ms in queries, "
-            f"{m['wall_ms']:>7,.0f} ms total"
+            f"  {page:<20} {m['queries']:>3} queries {m['rows']:>9,} rows "
+            f"{size(m['bytes']):>9} read, {size(m.get('response_bytes', 0)):>9} sent, "
+            f"{m['wall_ms']:>6,.0f} ms"
         )
         biggest = m["top"][0] if m["top"] else None
         if biggest and biggest["bytes"] > 0.5 * m["bytes"] and m["bytes"] > 100_000:

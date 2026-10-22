@@ -1,26 +1,61 @@
-"""Shared request plumbing: the database connection, the data version, cached reads,
-and turning polars frames into JSON-safe rows."""
+"""How the API serves tables: computed once per data version, then sent as cached bytes.
 
+A `View` is one table (an endpoint plus its arguments) and how to compute it. The
+first request for a view after new data is loaded computes it in the database, checks
+it against its response model, and stores the JSON body, gzipped once. Every later
+request, from any visitor, gets those bytes: no database query, no serialization. A
+client that already has the current version gets `304 Not Modified` (ETag), with no
+body at all. The pages' default views are computed in the background as soon as a new
+hour is loaded (api/warm.py), so visitors don't wait for them either.
+
+The data version (when the latest load finished) is read from the database at most
+every VERSION_TTL seconds, so a burst of requests costs one tiny query."""
+
+import gzip
+import hashlib
 import math
+import threading
+import time
 from collections.abc import Callable, Iterator
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Any
 
 import polars as pl
-from fastapi import HTTPException
+from fastapi import HTTPException, Request, Response
+from pydantic import BaseModel, TypeAdapter
 
 from exiledbroker.api.cache import results
 from exiledbroker.config import get_settings
 from exiledbroker.storage import db
 
+VERSION_TTL = 15.0  # seconds a data version is trusted before it's read again
+CACHE_CONTROL = "public, max-age=30"  # browsers revalidate with the ETag after this
+
 _ready: set[str] = set()
+_version_lock = threading.Lock()
+_version: dict[str, Any] = {"where": None, "at": 0.0, "value": None}
+
+
+def reset() -> None:
+    """Forget everything cached (tests, `eb perf report`)."""
+    results.clear()
+    _ready.clear()
+    with _version_lock:
+        _version.update(where=None, at=0.0, value=None)
+
+
+def _where() -> str:
+    settings = get_settings()
+    return settings.database_url or str(settings.db_path)
 
 
 def connection() -> Iterator:
-    """FastAPI dependency: a read connection to the site's database. Before anything
-    has been loaded (no database, or no schema yet) every endpoint answers 503."""
+    """A read connection to the site's database. Before anything has been loaded (no
+    database, or no schema yet) this raises 503."""
     settings = get_settings()
-    where = settings.database_url or str(settings.db_path)
+    where = _where()
     if not settings.database_url and not settings.db_path.exists():
         raise HTTPException(503, "no data loaded yet")
     with db.site_session(settings) as con:
@@ -34,16 +69,22 @@ def connection() -> Iterator:
         yield con
 
 
-def data_version(con) -> str | None:
-    """Changes whenever a load finishes (the worker's hourly update, a rebuild).
-    One read of a tiny table, so it's cheap to check on every request."""
-    at = db.scalar(con, "SELECT max(loaded_at) FROM ingest_load")
-    return at.isoformat() if at else None
+def data_version(force: bool = False) -> str | None:
+    """When the latest load finished; changes with every hourly update or rebuild."""
+    where = _where()
+    with _version_lock:
+        fresh = _version["where"] == where and time.monotonic() - _version["at"] < VERSION_TTL
+        if fresh and not force:
+            return _version["value"]
+    for con in connection():
+        at = db.scalar(con, "SELECT max(loaded_at) FROM ingest_load")
+    value = at.isoformat() if at else None
+    with _version_lock:
+        _version.update(where=where, at=time.monotonic(), value=value)
+    return value
 
 
-def cached(con, name: str, args: tuple, compute: Callable[[], list[dict]]) -> list[dict]:
-    """Rows for (endpoint, args), recomputed only when the data version changes."""
-    return results.get_or_compute((name, args, data_version(con)), compute)
+# --- Rows -----------------------------------------------------------------------
 
 
 def _clean(value):
@@ -68,11 +109,79 @@ def records(df: pl.DataFrame) -> list[dict]:
     return [{k: _clean(v) for k, v in row.items()} for row in df.to_dicts()]
 
 
-def league_id(con, name: str) -> str:
-    rows = db.rows(con, "SELECT id FROM league WHERE name = ?", [name])
-    if not rows:
+# --- Views and cached responses ----------------------------------------------------
+
+
+@dataclass(frozen=True)
+class View:
+    name: str
+    args: tuple
+    compute: Callable[[Any], pl.DataFrame | list[dict]]  # given a connection
+    model: Any  # the response model of one row
+
+
+@dataclass(frozen=True)
+class Payload:
+    rows: list  # the validated rows, for code that needs the data itself
+    body: bytes
+    gzipped: bytes
+    etag: str
+
+
+_adapters: dict[Any, TypeAdapter] = {}
+
+
+def _adapter(model) -> TypeAdapter:
+    if model not in _adapters:
+        _adapters[model] = TypeAdapter(list[model])
+    return _adapters[model]
+
+
+def payload(view: View) -> Payload:
+    """The view's response for the current data version, computed at most once."""
+    version = data_version()
+
+    def build() -> Payload:
+        for con in connection():
+            out = view.compute(con)
+        rows = records(out) if isinstance(out, pl.DataFrame) else out
+        adapter = _adapter(view.model)
+        checked = adapter.validate_python(rows)
+        body = adapter.dump_json(checked)
+        tag = hashlib.sha1(repr((view.name, view.args, version)).encode()).hexdigest()[:20]
+        return Payload(checked, body, gzip.compress(body, compresslevel=6), f'W/"{tag}"')
+
+    return results.get_or_compute((view.name, view.args, version), build)
+
+
+def respond(request: Request, view: View) -> Response:
+    """Send the view's cached bytes: 304 if the client has them, gzipped if it can."""
+    p = payload(view)
+    headers = {"ETag": p.etag, "Cache-Control": CACHE_CONTROL, "Vary": "Accept-Encoding"}
+    if request.headers.get("if-none-match") == p.etag:
+        return Response(status_code=304, headers=headers)
+    if "gzip" in request.headers.get("accept-encoding", ""):
+        headers["Content-Encoding"] = "gzip"
+        return Response(p.gzipped, media_type="application/json", headers=headers)
+    return Response(p.body, media_type="application/json", headers=headers)
+
+
+class _Name(BaseModel):
+    name: str
+
+
+LEAGUE_NAMES = View(
+    "league_names",
+    (),
+    lambda con: [{"name": r[0]} for r in db.rows(con, "SELECT name FROM league")],
+    _Name,
+)
+
+
+def require_league(name: str) -> None:
+    """404 for a league the site doesn't have (checked against a cached list)."""
+    if name not in {row.name for row in payload(LEAGUE_NAMES).rows}:
         raise HTTPException(404, f"unknown league {name!r}")
-    return rows[0][0]
 
 
 def parse_weights(text: str | None, defaults: dict[str, float]) -> dict[str, float]:

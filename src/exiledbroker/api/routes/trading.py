@@ -1,38 +1,45 @@
 """Trading tools across a league's whole loaded window: cross-market loops (the
 Arbitrage trading page) and card turn-ins (the Card turn-ins page)."""
 
+from datetime import timedelta
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Query
+import polars as pl
+from fastapi import APIRouter, Query, Request, Response
 
 from exiledbroker.analysis import launch_patterns as lp
 from exiledbroker.api import deps
+from exiledbroker.api.deps import View
 from exiledbroker.api.models import ArbitrageItem, CrossMarketHour, TurnIn, TurnInHour
-from exiledbroker.services import cross_market, divination
+from exiledbroker.services import cross_market, divination, live
 
 router = APIRouter(tags=["trading"])
-Con = Annotated[object, Depends(deps.connection)]
 Direction = Literal["chaos_first", "divine_first"]
 Unit = Literal["chaos", "divine"]
+# Charts show the latest few days by default: the whole loaded window is weeks, with a
+# gap between a live league's launch fortnight and its latest days.
+CHART_HOURS = 72
+MAX_CHART_HOURS = 28 * 24
 
 
-@router.get("/arbitrage", response_model=list[ArbitrageItem])
-def arbitrage(
-    con: Con,
-    league: Annotated[list[str] | None, Query()] = None,
+def arbitrage_view(
+    leagues: list[str],
     direction: Direction = "chaos_first",
-    buffer: Annotated[float, Query(ge=0, le=0.5)] = 0.02,
-    min_hours: Annotated[int, Query(ge=1, le=1000)] = 24,
-    min_price: Annotated[float, Query(ge=0)] = 1.0,
-    half_life: Annotated[float, Query(gt=0, le=20)] = 2.0,
+    buffer: float = 0.02,
+    min_hours: int = 24,
+    min_price: float = 1.0,
+    half_life: float = 2.0,
     weights: str | None = None,
-) -> list[dict]:
-    """Loops scored across leagues (default: every league with hourly data), newest
-    league weighted most. Repeat `league` to choose."""
-    leagues = league or lp.hourly_league_names(con)
-    for name in leagues:
-        deps.league_id(con, name)
+) -> View:
     w = deps.parse_weights(weights, cross_market.DEFAULT_WEIGHTS)
+
+    def compute(con) -> pl.DataFrame:
+        per = cross_market.summarize(con, leagues, direction, buffer, min_hours)
+        summary = cross_market.across_leagues(per, leagues, lp.recency_weights(leagues, half_life))
+        if summary.is_empty():
+            return summary
+        return cross_market.score(summary.filter(pl.col("chaos_price") >= min_price), w)
+
     args = (
         tuple(leagues),
         direction,
@@ -42,64 +49,112 @@ def arbitrage(
         half_life,
         tuple(sorted(w.items())),
     )
+    return View("arbitrage", args, compute, ArbitrageItem)
 
-    def compute() -> list[dict]:
-        per = cross_market.summarize(con, leagues, direction, buffer, min_hours)
-        summary = cross_market.across_leagues(per, leagues, lp.recency_weights(leagues, half_life))
-        if summary.is_empty():
-            return []
-        summary = summary.filter(summary["chaos_price"] >= min_price)
-        return deps.records(cross_market.score(summary, w))
 
-    return deps.cached(con, "arbitrage", args, compute)
+def _latest_hours(con, league: str, hours: int):
+    """`since` for a league's latest `hours` hours (None: nothing traded yet)."""
+    latest = live.latest_hour(con, league)
+    return None if latest is None else latest - timedelta(hours=hours)
+
+
+def arbitrage_hourly_view(
+    item_id: str, leagues: list[str], direction: Direction, hours: int
+) -> View:
+    def compute(con) -> pl.DataFrame:
+        frames = []
+        for league in leagues:  # each league's own latest hours
+            since = _latest_hours(con, league, hours)
+            if since is not None:
+                frames.append(cross_market.hourly(con, [league], [item_id], direction, since=since))
+        return pl.concat(frames) if frames else pl.DataFrame(schema=cross_market.HOURLY_SCHEMA)
+
+    return View(
+        "arbitrage_hourly", (item_id, tuple(leagues), direction, hours), compute, CrossMarketHour
+    )
+
+
+def cards_view(
+    league: str, unit: Unit = "chaos", prefer_cheaper_sets: bool = True, weights: str | None = None
+) -> View:
+    w = deps.parse_weights(weights, divination.DEFAULT_WEIGHTS)
+
+    def compute(con) -> pl.DataFrame:
+        summary = divination.turn_in_summary(con, league, unit)
+        return divination.score_turn_ins(summary, w, prefer_cheaper_sets)
+
+    args = (league, unit, prefer_cheaper_sets, tuple(sorted(w.items())))
+    return View("cards", args, compute, TurnIn)
+
+
+def card_hourly_view(league: str, card_id: str, unit: Unit, hours: int) -> View:
+    def compute(con) -> pl.DataFrame:
+        since = _latest_hours(con, league, hours)
+        if since is None:
+            return pl.DataFrame(schema=divination.HOURLY_SCHEMA)
+        return divination.hourly_turn_ins(con, league, [card_id], unit, since=since)
+
+    return View("card_hourly", (league, card_id, unit, hours), compute, TurnInHour)
+
+
+@router.get("/arbitrage", response_model=list[ArbitrageItem])
+def arbitrage(
+    request: Request,
+    league: Annotated[list[str] | None, Query()] = None,
+    direction: Direction = "chaos_first",
+    buffer: Annotated[float, Query(ge=0, le=0.5)] = 0.02,
+    min_hours: Annotated[int, Query(ge=1, le=1000)] = 24,
+    min_price: Annotated[float, Query(ge=0)] = 1.0,
+    half_life: Annotated[float, Query(gt=0, le=20)] = 2.0,
+    weights: str | None = None,
+) -> Response:
+    """Loops scored across leagues (default: every league with hourly data), newest
+    league weighted most. Repeat `league` to choose."""
+    if league is None:
+        for con in deps.connection():
+            league = lp.hourly_league_names(con)
+    for name in league:
+        deps.require_league(name)
+    return deps.respond(
+        request, arbitrage_view(league, direction, buffer, min_hours, min_price, half_life, weights)
+    )
 
 
 @router.get("/arbitrage/hourly", response_model=list[CrossMarketHour])
 def arbitrage_hourly(
-    con: Con,
+    request: Request,
     item_id: str,
     league: Annotated[list[str], Query()],
     direction: Direction = "chaos_first",
-) -> list[dict]:
-    """One item's hours in both markets, for its chart."""
+    hours: Annotated[int, Query(ge=1, le=MAX_CHART_HOURS)] = CHART_HOURS,
+) -> Response:
+    """One item's latest `hours` hours in both markets, for its chart."""
     for name in league:
-        deps.league_id(con, name)
-    args = (item_id, tuple(league), direction)
-    return deps.cached(
-        con,
-        "arbitrage_hourly",
-        args,
-        lambda: deps.records(cross_market.hourly(con, league, [item_id], direction)),
-    )
+        deps.require_league(name)
+    return deps.respond(request, arbitrage_hourly_view(item_id, league, direction, hours))
 
 
 @router.get("/cards/{league}", response_model=list[TurnIn])
 def cards(
-    con: Con,
+    request: Request,
     league: str,
     unit: Unit = "chaos",
     prefer_cheaper_sets: bool = True,
     weights: str | None = None,
-) -> list[dict]:
+) -> Response:
     """Every followed card with a priced reward and at least one traded hour, scored."""
-    deps.league_id(con, league)
-    w = deps.parse_weights(weights, divination.DEFAULT_WEIGHTS)
-    args = (league, unit, prefer_cheaper_sets, tuple(sorted(w.items())))
-
-    def compute() -> list[dict]:
-        summary = divination.turn_in_summary(con, league, unit)
-        return deps.records(divination.score_turn_ins(summary, w, prefer_cheaper_sets))
-
-    return deps.cached(con, "cards", args, compute)
+    deps.require_league(league)
+    return deps.respond(request, cards_view(league, unit, prefer_cheaper_sets, weights))
 
 
 @router.get("/cards/{league}/{card_id}/hourly", response_model=list[TurnInHour])
-def card_hourly(con: Con, league: str, card_id: str, unit: Unit = "chaos") -> list[dict]:
-    """One card's set cost against its reward, hour by hour."""
-    deps.league_id(con, league)
-    return deps.cached(
-        con,
-        "card_hourly",
-        (league, card_id, unit),
-        lambda: deps.records(divination.hourly_turn_ins(con, league, [card_id], unit)),
-    )
+def card_hourly(
+    request: Request,
+    league: str,
+    card_id: str,
+    unit: Unit = "chaos",
+    hours: Annotated[int, Query(ge=1, le=MAX_CHART_HOURS)] = CHART_HOURS,
+) -> Response:
+    """One card's set cost against its reward over its latest `hours` hours."""
+    deps.require_league(league)
+    return deps.respond(request, card_hourly_view(league, card_id, unit, hours))

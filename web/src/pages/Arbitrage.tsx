@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react'
 import type { ArbitrageItem } from '../api/client'
 import { useArbitrage, useArbitrageHourly, useStatus } from '../api/queries'
 import { LazyChart as Chart } from '../components/LazyChart'
-import { baseOptions, line } from '../lib/chartOptions'
+import { loopChart } from '../lib/loopChart'
 import { NumberField, Segmented, Toolbar } from '../components/Controls'
 import { DIRECTIONS, type Direction } from '../lib/directions'
 import { DataTable, ScoreBar } from '../components/DataTable'
@@ -58,21 +58,7 @@ export default function Arbitrage() {
     [],
   )
 
-  const chartOption = useMemo(() => {
-    const rows = hourly.data ?? []
-    const byLeague = [...new Set(rows.map((r) => r.league))]
-    return {
-      ...baseOptions('Chaos'),
-      series: byLeague.flatMap((league) => {
-        const mine = rows.filter((r) => r.league === league)
-        const suffix = byLeague.length > 1 ? ` (${league})` : ''
-        return [
-          line(`Bought with Chaos${suffix}`, mine.map((r) => [r.observed_at, r.chaos_price])),
-          line(`Via Divines${suffix}`, mine.map((r) => [r.observed_at, r.via_divines])),
-        ]
-      }),
-    }
-  }, [hourly.data])
+  const chartOption = useMemo(() => loopChart(hourly.data ?? []), [hourly.data])
 
   const top = items.data?.[0]
   return (
@@ -118,7 +104,7 @@ export default function Arbitrage() {
               <Stat label="Top score" value={score(top?.score)} hint={top?.name} />
               <Stat label="Leagues compared" value={count(leagues.length)} />
             </div>
-            <Section title="Ranked loops" description="Select a row to see that item's hours in both markets.">
+            <Section title="Ranked loops" description="Select a row for its last 3 days in both markets: the gap between the price lines is the margin, the bars how much traded in both.">
               {queryFallback(items) ??
                 (items.data!.length ? (
                   <>

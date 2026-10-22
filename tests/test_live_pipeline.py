@@ -1,6 +1,7 @@
 """End to end on real API output: replay Mirage's first hours exactly as GGG's
 exchange API published them (tests/fixtures/mirage_launch.json.gz), one hour at a
-time, and after each update run every page and tool of the demo.
+time, and after each update check what the site's API reports (tests/test_api.py
+calls every endpoint the same way).
 
 This is what a live league looks like: nothing at first, then hours arriving with
 gaps (no Divine trades for the first two hours, items that haven't traded yet)."""
@@ -11,8 +12,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import pytest
-import streamlit as st
-from streamlit.testing.v1 import AppTest
+from fastapi.testclient import TestClient
 
 from exiledbroker.config import Settings
 from exiledbroker.ingest import core_pool, item_names, loot_filter, reference
@@ -26,9 +26,6 @@ with gzip.open(Path(__file__).parent / "fixtures" / "mirage_launch.json.gz", "rt
     FIXTURE = json.load(_f)
 LAUNCH = FIXTURE["launch"]
 PAGES = {int(ts): page["markets"] for ts, page in FIXTURE["pages"].items()}
-APP = str(Path(__file__).resolve().parents[1] / "app" / "dashboard.py")
-PAGES_TO_RUN = ["live", "market", "cards", "arbitrage", "analysis", "data"]
-ANALYSIS_TOOLS = ["Unique moves", "Launch curves", "Group timing", "Card turn-ins"]
 
 
 def store_reference_data(s: Settings) -> None:
@@ -61,26 +58,20 @@ def store_reference_data(s: Settings) -> None:
 @pytest.fixture
 def settings(tmp_path, monkeypatch):
     monkeypatch.setenv("EB_DATA_DIR", str(tmp_path))
-    st.cache_data.clear()
     s = Settings(data_dir=tmp_path, request_min_interval=0)
     store_reference_data(s)
     return s
 
 
-def run_every_page() -> dict:
-    """Run each page (and each analysis tool); fail on any exception."""
-    st.cache_data.clear()
-    seen = {}
-    for page in PAGES_TO_RUN:
-        at = AppTest.from_file(APP, default_timeout=120).run()
-        at.switch_page(f"app_pages/{page}.py").run()
-        assert not at.exception, (page, [e.message for e in at.exception])
-        if page == "analysis" and at.get("button_group"):  # no switcher before any data
-            for tool in ANALYSIS_TOOLS:
-                at.get("button_group")[0].set_value(tool).run()
-                assert not at.exception, (tool, [e.message for e in at.exception])
-        seen[page] = at
-    return seen
+def site_status() -> dict:
+    """What the site's API says about the leagues right now (caches cleared)."""
+    from exiledbroker.api import app as app_module
+    from exiledbroker.api import deps
+
+    deps.reset()
+    r = TestClient(app_module.create_app()).get("/api/status")
+    assert r.status_code == 200, r.text
+    return r.json()
 
 
 def test_live_league_hour_by_hour(settings):
@@ -96,8 +87,7 @@ def test_live_league_hour_by_hour(settings):
     # Before the first hour is published, the league isn't trading anywhere yet.
     status = update(0)
     assert status.state == "not_running"
-    pages = run_every_page()
-    assert pages["live"].info[0].value.startswith("Start the live feed")
+    assert not settings.db_path.exists() or site_status()["leagues"] == []
 
     for hours_in in (1, 2, 3, 6, 12, 24, 30):
         status = update(hours_in)
@@ -105,21 +95,20 @@ def test_live_league_hour_by_hour(settings):
         assert status.state == "updated", status
         assert status.latest_hour == latest
         assert status.fetched >= 1  # at least the newly published hour
-        pages = run_every_page()
-
-        live = pages["live"]
+        site = site_status()["leagues"]
         with db.session(read_only=True) as con:
             traded = db.rows(
                 con,
                 "SELECT max(observed_at), count(DISTINCT observed_at) FROM price_observation "
                 "WHERE source = 'ggg-exchange-hourly'",
             )[0]
+        assert [lg["name"] for lg in site] == ["Mirage"]
         if traded[1] == 0:
             # Mirage's launch hour: published, but nothing had traded yet.
-            assert "nothing has traded" in live.info[0].value
+            assert site[0]["latest_hour"] is None and site[0]["launched_at"]
         else:
-            banners = list(live.warning) + list(live.success)
-            assert f"{traded[0]:%b %d, %H:00}" in banners[0].value
+            assert site[0]["latest_hour"] == f"{traded[0]:%Y-%m-%dT%H:%M:%S}Z"
+        assert site[0]["hours"] == hours_in
         assert traded[1] <= hours_in
 
     # After 30 hours: prices, cards and cross-market hours are all there.
@@ -133,8 +122,6 @@ def test_live_league_hour_by_hour(settings):
         cards = db.scalar(con, "SELECT count(*) FROM divination_card WHERE followed")
     assert 50 < divine < 200  # Mirage's day-2 Divine traded around 86–100c
     assert cross > 0 and cards == 2
-    market = pages["market"]
-    assert {m.label for m in market.metric} >= {"Divine Orb", "Mirror of Kalandra"}
 
     # Repeating an update with nothing new published fetches nothing and changes nothing.
     again = update(30)

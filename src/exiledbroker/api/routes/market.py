@@ -1,63 +1,82 @@
 """Launch market: tracked items over a league's first 14 days (the Launch market page),
-and the league calendar (the Data / about page)."""
+and the league calendar."""
 
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 
 from exiledbroker.api import deps
+from exiledbroker.api.deps import View
 from exiledbroker.api.models import CalendarLeague, Group, HourlyLeague, MarketHour, MarketItem
 from exiledbroker.normalize.tracked import GROUPS
 from exiledbroker.services import market, overview
 
 router = APIRouter(tags=["market"])
-Con = Annotated[object, Depends(deps.connection)]
 Unit = Literal["chaos", "divine"]
 
 
+def market_leagues_view() -> View:
+    return View("market_leagues", (), market.hourly_leagues, HourlyLeague)
+
+
+def groups_view() -> View:
+    return View("groups", (), market.tracked_groups, Group)
+
+
+def summary_view(league: str, group: list[str], unit: Unit = "chaos") -> View:
+    groups = sorted(group)
+    return View(
+        "summary",
+        (league, tuple(groups), unit),
+        lambda con: market.summary(con, league, groups, unit),
+        MarketItem,
+    )
+
+
 @router.get("/market/leagues", response_model=list[HourlyLeague])
-def leagues(con: Con) -> list[dict]:
+def leagues(request: Request) -> Response:
     """Leagues with hourly data, newest first."""
-    return deps.cached(con, "market_leagues", (), lambda: deps.records(market.hourly_leagues(con)))
+    return deps.respond(request, market_leagues_view())
 
 
 @router.get("/market/groups", response_model=list[Group])
-def groups(con: Con) -> list[dict]:
+def groups(request: Request) -> Response:
     """Price-mapping groups (currency, essences, scarabs, cards) and their item counts."""
-    return deps.cached(con, "groups", (), lambda: deps.records(market.tracked_groups(con)))
+    return deps.respond(request, groups_view())
 
 
 @router.get("/market/{league}/summary", response_model=list[MarketItem])
 def summary(
-    con: Con, league: str, group: Annotated[list[str], Query()], unit: Unit = "chaos"
-) -> list[dict]:
+    request: Request, league: str, group: Annotated[list[str], Query()], unit: Unit = "chaos"
+) -> Response:
     """Launch-window summary per tracked item of the chosen groups."""
-    deps.league_id(con, league)
+    deps.require_league(league)
     known = {g.id for g in GROUPS}  # fixed by code: valid before any item is loaded
     if unknown := sorted(set(group) - known):
         raise HTTPException(404, f"unknown group(s): {', '.join(unknown)}")
-    args = (league, tuple(sorted(group)), unit)
-    return deps.cached(
-        con, "summary", args, lambda: deps.records(market.summary(con, league, group, unit))
-    )
+    return deps.respond(request, summary_view(league, group, unit))
 
 
 @router.get("/market/{league}/hourly", response_model=list[MarketHour])
 def hourly(
-    con: Con,
+    request: Request,
     league: str,
     item_id: Annotated[list[str], Query(max_length=20)],
     unit: Unit = "chaos",
-) -> list[dict]:
-    """Hourly prices of up to 20 items, for the chart."""
-    deps.league_id(con, league)
-    args = (league, tuple(sorted(item_id)), unit)
-    return deps.cached(
-        con, "hourly", args, lambda: deps.records(market.hourly(con, league, item_id, unit))
+) -> Response:
+    """Hourly launch-window prices of up to 20 items, for the chart."""
+    deps.require_league(league)
+    ids = sorted(item_id)
+    view = View(
+        "hourly",
+        (league, tuple(ids), unit),
+        lambda con: market.hourly(con, league, ids, unit),
+        MarketHour,
     )
+    return deps.respond(request, view)
 
 
 @router.get("/leagues", response_model=list[CalendarLeague])
-def calendar(con: Con) -> list[dict]:
+def calendar(request: Request) -> Response:
     """Challenge leagues and how much price data each has."""
-    return deps.cached(con, "calendar", (), lambda: deps.records(overview.league_calendar(con)))
+    return deps.respond(request, View("calendar", (), overview.league_calendar, CalendarLeague))

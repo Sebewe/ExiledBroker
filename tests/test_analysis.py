@@ -112,8 +112,8 @@ def test_launch_curve_baseline_is_day1_median(tmp_path):
         FakeExchange,
         client_for,
         market,
+        register,
     )
-    from test_dashboard import register
 
     settings = Settings(data_dir=tmp_path, request_min_interval=0)
     # Divine at 30, 30, 300 (one junk hour) on day 1, then 60 on day 2.

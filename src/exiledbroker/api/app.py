@@ -1,7 +1,10 @@
 """The site's JSON API. It only reads, through `services/`, from the site's database
-(Postgres at EB_DATABASE_URL, or the local DuckDB file). Results are cached per data
-version (api/cache.py). The built frontend (web/dist), when present, is served too."""
+(Postgres at EB_DATABASE_URL, or the local DuckDB file). Tables are computed once per
+data version and served as cached bytes (api/deps.py), the defaults precomputed in the
+background (api/warm.py). The built frontend (web/dist), when present, is served too."""
 
+import threading
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import APIRouter, FastAPI, HTTPException
@@ -17,14 +20,26 @@ from exiledbroker.config import get_settings
 def create_app(web_dist: Path | None = None) -> FastAPI:
     settings = get_settings()
     web_dist = web_dist or settings.web_dist
-    app = FastAPI(title="ExiledBroker", version=__version__)
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        # Precompute the pages' default tables whenever new data is loaded (api/warm.py).
+        stop = threading.Event()
+        if settings.api_warm:
+            from exiledbroker.api import warm
+
+            threading.Thread(target=warm.run_forever, args=(stop,), daemon=True).start()
+        yield
+        stop.set()
+
+    app = FastAPI(title="ExiledBroker", version=__version__, lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
         allow_methods=["GET"],
         allow_headers=["*"],
     )
-    # JSON tables compress ~5-10x; egress is what hosting bills by.
+    # Tables arrive pre-gzipped from the cache (api/deps.py); this covers the rest.
     app.add_middleware(GZipMiddleware, minimum_size=1000)
     api = APIRouter(prefix="/api")
 

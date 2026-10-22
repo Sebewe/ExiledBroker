@@ -5,8 +5,6 @@
 .agents
 data
 tests
-app
-.streamlit
 scripts
 **/__pycache__
 web/node_modules

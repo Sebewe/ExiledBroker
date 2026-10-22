@@ -21,8 +21,7 @@ CARD = "currency:the-doctor"
 
 @pytest.fixture
 def client():
-    cache.results.clear()
-    deps._ready.clear()
+    deps.reset()
     return TestClient(app_module.create_app())
 
 
@@ -61,7 +60,7 @@ def test_no_data_yet(client, settings):  # noqa: F811
     assert client.get("/api/status").status_code == 503
     with db.session(settings.db_path) as con:  # a schema but no loads yet
         db.init_schema(con)
-    deps._ready.clear()
+    deps.reset()
     r = client.get("/api/status")
     assert r.status_code == 200 and r.json()["data_version"] is None
 
@@ -86,20 +85,66 @@ def test_every_endpoint_as_a_league_arrives(client, settings):  # noqa: F811
     assert hourly[-1]["observed_at"].endswith("Z")  # UTC, explicitly
 
 
-def test_results_are_cached_until_new_data(client, settings):  # noqa: F811
+def test_tables_are_computed_once_per_data_version(client, settings, monkeypatch):  # noqa: F811
     server = FakeExchange(PAGES, now=LAUNCH)
     update(settings, server, 6)
+    monkeypatch.setattr(deps, "VERSION_TTL", 60.0)  # as in production
     path = f"/api/cards/{LEAGUE}"
     with db.metered() as first:
-        client.get(path)
+        r1 = client.get(path)
     with db.metered() as again:
-        client.get(path)
-    # A repeat reads only the connection check and the data version.
-    assert again.rows < first.rows and len(again.queries) <= 2
-    update(settings, server, 12)  # a new hour loaded: recomputed
+        r2 = client.get(path)
+    assert first.queries and not again.queries  # a repeat never touches the database
+    assert r1.content == r2.content
+
+    # A client that has this version gets 304 and no body.
+    r3 = client.get(path, headers={"If-None-Match": r1.headers["etag"]})
+    assert r3.status_code == 304 and not r3.content
+    # Gzipped once, in the cache: the bytes on the wire are the compressed ones.
+    raw = client.get(path, headers={"Accept-Encoding": "identity"})
+    gz = client.get(path, headers={"Accept-Encoding": "gzip"})
+    assert "content-encoding" not in raw.headers and gz.headers["content-encoding"] == "gzip"
+    assert gz.json() == raw.json()
+
+    update(settings, server, 12)  # a new hour loaded: a new version, recomputed
+    monkeypatch.setattr(deps, "VERSION_TTL", 0.0)
     with db.metered() as fresh:
-        client.get(path)
-    assert len(fresh.queries) > len(again.queries)
+        r4 = client.get(path, headers={"If-None-Match": r1.headers["etag"]})
+    assert fresh.queries and r4.status_code == 200 and r4.headers["etag"] != r1.headers["etag"]
+
+
+def test_default_pages_are_precomputed(client, settings, monkeypatch):  # noqa: F811
+    """After warm(), what the pages ask for with their default controls is cached."""
+    from exiledbroker.api import warm
+
+    update(settings, FakeExchange(PAGES, now=LAUNCH), 30)
+    assert warm.warm() >= 6
+    monkeypatch.setattr(deps, "VERSION_TTL", 60.0)
+    # Exactly the requests the frontend makes on first load (web/src/api/queries.ts).
+    page_loads = [
+        "/api/status",
+        f"/api/live/{LEAGUE}/loops?direction=chaos_first&buffer=0.02&lookback=6&min_price=1",
+        f"/api/live/{LEAGUE}/card-flips?lookback=6&unit=chaos",
+        f"/api/arbitrage?league={LEAGUE}&direction=chaos_first&buffer=0.02&min_hours=24&min_price=1",
+        f"/api/cards/{LEAGUE}?unit=chaos&prefer_cheaper_sets=true",
+        "/api/market/leagues",
+        "/api/market/groups",
+        f"/api/market/{LEAGUE}/summary?group=currency&unit=chaos",
+    ]
+    for path in page_loads:
+        with db.metered() as meter:
+            assert client.get(path).status_code == 200
+        assert not meter.queries, (path, [q.sql for q in meter.queries])
+
+
+def test_charts_send_only_the_latest_hours(client, settings):  # noqa: F811
+    update(settings, FakeExchange(PAGES, now=LAUNCH), 30)
+    path = f"/api/arbitrage/hourly?league={LEAGUE}&item_id=currency:exalted-orb"
+    every = client.get(f"{path}&hours=672").json()
+    latest = client.get(f"{path}&hours=6").json()
+    assert len({r["observed_at"] for r in latest}) <= 6 < len({r["observed_at"] for r in every})
+    assert latest[-1]["observed_at"] == every[-1]["observed_at"]
+    assert client.get(f"{path}&hours=10000").status_code == 422
 
 
 def test_cache_is_bounded():

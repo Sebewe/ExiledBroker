@@ -85,7 +85,7 @@ export default function Cards() {
               <Stat label="Profitable in a typical hour" value={profitable === undefined ? '–' : count(profitable)} />
               <Stat label="Best margin" value={cards.data?.length ? signedPct(Math.max(...cards.data.map((c) => c.margin_pct ?? -Infinity))) : '–'} />
             </div>
-            <Section title="Ranked turn-ins" description="Select a row to see its set cost against its reward, hour by hour.">
+            <Section title="Ranked turn-ins" description="Select a row for its set cost against its reward over the last 3 days.">
               {queryFallback(cards) ??
                 (cards.data!.length ? (
                   <>

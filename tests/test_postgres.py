@@ -281,14 +281,13 @@ def test_api_answers_the_same_on_postgres(engines, monkeypatch):
     from fastapi.testclient import TestClient
 
     from exiledbroker.api import app as app_module
-    from exiledbroker.api import cache, deps
+    from exiledbroker.api import deps
     from test_api import endpoints
 
     def serve(url: str) -> dict:
         monkeypatch.setenv("EB_DATA_DIR", str(LOCAL["data_dir"]))
         monkeypatch.setenv("EB_DATABASE_URL", url)
-        cache.results.clear()
-        deps._ready.clear()
+        deps.reset()
         client = TestClient(app_module.create_app())
         out = {}
         for path in endpoints(LEAGUE)[1:]:  # status carries timestamps of its own

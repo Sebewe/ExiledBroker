@@ -1665,7 +1665,7 @@
     },
     "/api/arbitrage/hourly": {
       "get": {
-        "description": "One item's hours in both markets, for its chart.",
+        "description": "One item's latest `hours` hours in both markets, for its chart.",
         "operationId": "arbitrage_hourly_api_arbitrage_hourly_get",
         "parameters": [
           {
@@ -1701,6 +1701,18 @@
               ],
               "title": "Direction",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "hours",
+            "required": false,
+            "schema": {
+              "default": 72,
+              "maximum": 672,
+              "minimum": 1,
+              "title": "Hours",
+              "type": "integer"
             }
           }
         ],
@@ -1825,7 +1837,7 @@
     },
     "/api/cards/{league}/{card_id}/hourly": {
       "get": {
-        "description": "One card's set cost against its reward, hour by hour.",
+        "description": "One card's set cost against its reward over its latest `hours` hours.",
         "operationId": "card_hourly_api_cards__league___card_id__hourly_get",
         "parameters": [
           {
@@ -1858,6 +1870,18 @@
               ],
               "title": "Unit",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "hours",
+            "required": false,
+            "schema": {
+              "default": 72,
+              "maximum": 672,
+              "minimum": 1,
+              "title": "Hours",
+              "type": "integer"
             }
           }
         ],
@@ -2199,7 +2223,7 @@
     },
     "/api/market/{league}/hourly": {
       "get": {
-        "description": "Hourly prices of up to 20 items, for the chart.",
+        "description": "Hourly launch-window prices of up to 20 items, for the chart.",
         "operationId": "hourly_api_market__league__hourly_get",
         "parameters": [
           {

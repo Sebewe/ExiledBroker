@@ -9,8 +9,7 @@ from exiledbroker.config import Settings
 from exiledbroker.ingest import currency_exchange as cx
 from exiledbroker.normalize import exchange_loader, mappings
 from exiledbroker.storage import db
-from test_currency_exchange import ALCH, CHAOS, DIVINE, MIRROR, NAMES, T0, market
-from test_dashboard import register
+from test_currency_exchange import ALCH, CHAOS, DIVINE, MIRROR, NAMES, T0, market, register
 
 H = cx.HOUR
 LAUNCH = cx.from_ts(T0)
