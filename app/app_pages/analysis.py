@@ -51,6 +51,15 @@ if not pool:
     )
     st.stop()
 
+if not hourly_tool:
+    # A running league has hourly exchange data but no daily dump until it ends.
+    running = [name for name in available["hourly"] if name not in available["daily"]]
+    if running:
+        st.caption(
+            f"{', '.join(running)} isn't here yet: daily unique prices come from poe.ninja's "
+            "dump, published when a league ends. Its currency, cards and loops are in the "
+            "hourly tools."
+        )
 default = pool if hourly_tool else pool[:6]
 leagues = st.pills(
     "Leagues (newest first)",

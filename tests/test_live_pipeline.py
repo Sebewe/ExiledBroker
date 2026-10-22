@@ -94,6 +94,7 @@ def test_live_league_hour_by_hour(settings):
         latest = cx.from_ts(LAUNCH + (hours_in - 1) * 3600)
         assert status.state == "updated", status
         assert status.latest_hour == latest
+        assert status.fetched >= 1  # at least the newly published hour
         pages = run_every_page()
 
         live = pages["live"]

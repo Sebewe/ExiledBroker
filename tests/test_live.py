@@ -72,14 +72,39 @@ def test_sync_recent_window_and_increments(settings):
     with client_for(settings, server) as client:
         # Hour 50 is being traded; 49 is the latest published. 24h lookback.
         r = cx.sync_recent(
-            client, settings, "Allflame", launched, 24, now=cx.from_ts(E0 + 50 * HOUR + 600)
+            client,
+            settings,
+            "Allflame",
+            launched,
+            24,
+            now=cx.from_ts(E0 + 50 * HOUR + 600),
+            keep_launch_days=0,
         )
         assert list(r.window.hours) == list(range(E0 + 26 * HOUR, E0 + 50 * HOUR, HOUR))
         assert r.fetched == 24
+        # By default the league's first days are kept too: launch + recent, no overlap.
+        r = cx.sync_recent(
+            client,
+            settings,
+            "Allflame",
+            launched,
+            24,
+            now=cx.from_ts(E0 + 50 * HOUR + 600),
+            keep_launch_days=0.5,
+        )
+        launch_hours = list(range(launch_ts, launch_ts + 12 * HOUR, HOUR))
+        assert r.window.hours == launch_hours + list(range(E0 + 26 * HOUR, E0 + 50 * HOUR, HOUR))
+        assert r.fetched == 12
         # An hour later: only the newly published hour is fetched.
         server.now = E0 + 51 * HOUR
         r = cx.sync_recent(
-            client, settings, "Allflame", launched, 24, now=cx.from_ts(E0 + 51 * HOUR + 600)
+            client,
+            settings,
+            "Allflame",
+            launched,
+            24,
+            now=cx.from_ts(E0 + 51 * HOUR + 600),
+            keep_launch_days=0.5,
         )
         assert r.fetched == 1 and r.window.hours[-1] == E0 + 50 * HOUR
         # Early in a league the window starts at the launch, not before it.

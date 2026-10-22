@@ -93,10 +93,19 @@ class Window:
     launched_at: datetime
     end: datetime  # exclusive
     start: datetime | None = None  # defaults to the launch; later for a live window
+    # A live window also keeps the league's first days, so launch analysis still works.
+    keep_launch_days: float = 0
 
     @property
-    def hours(self) -> range:
-        return range(to_ts(self.start or self.launched_at), to_ts(self.end), HOUR)
+    def hours(self) -> list[int]:
+        end = to_ts(self.end)
+        hours = set(range(to_ts(self.start or self.launched_at), end, HOUR))
+        if self.keep_launch_days:
+            launch = to_ts(self.launched_at)
+            hours |= set(
+                range(launch, min(end, launch + int(self.keep_launch_days * 24) * HOUR), HOUR)
+            )
+        return sorted(hours)
 
 
 @dataclass
@@ -291,13 +300,20 @@ def sync_recent(
     lookback_hours: int = 14 * 24,
     now: datetime | None = None,
     progress: Callable[[int, int, int], None] | None = None,
+    keep_launch_days: float = 14,
 ) -> SyncResult:
     """Fetch the latest published hours of a running league: from `lookback_hours` ago
-    (or the launch, if later) up to the hour being traded now. Run it every hour: only
-    the newly published hours are fetched."""
+    (or the launch, if later) up to the hour being traded now, plus its first
+    `keep_launch_days` days. Run it every hour: only newly published hours are fetched."""
     end_ts = current_hour(now)
     start_ts = max(to_ts(launched_at), end_ts - lookback_hours * HOUR)
-    window = Window(league_name, launched_at, from_ts(end_ts), start=from_ts(start_ts))
+    window = Window(
+        league_name,
+        launched_at,
+        from_ts(end_ts),
+        start=from_ts(start_ts),
+        keep_launch_days=keep_launch_days,
+    )
     fetched = cached = 0
     hours = window.hours
     try:
