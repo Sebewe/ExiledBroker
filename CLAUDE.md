@@ -2,7 +2,16 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-ExiledBroker is a Path of Exile 1 market tool: historical and live exchange data → league-start price patterns, arbitrage (card turn-ins, Chaos↔Divine loops) and, later, predictions. `README.md` is the project's **living design document**: the Status table, decision log (with dates), project layout and findings (§9) are updated as work lands. Read it before larger changes and update it with them.
+ExiledBroker is a Path of Exile 1 market tool: historical and live exchange data → league-start price patterns, arbitrage (card turn-ins, Chaos↔Divine loops) and, later, predictions. `README.md` and `docs/` are the project's **living design documents**: the README's Status table, Next steps and layout, plus `docs/decisions.md` (decision log by topic, dated), `docs/data.md`, `docs/hosting.md` (cost issues, performance findings), `docs/findings.md` and `docs/roadmap.md`. Read the relevant doc before larger changes and update it with them; keep the README short and put detail in `docs/`.
+
+## Be very polite to GGG and poe.ninja (non-negotiable)
+
+GGG's and poe.ninja's public endpoints are a courtesy, and both blacklist clients that get overzealous. Being blocked would kill the project: there is no other source for this data. Treat every request to their servers as a cost to avoid.
+- **Never re-download what we already have.** Exchange hours are immutable: fetch each once, ever. Reference data goes through `reference.fetch_if_changed` (conditional requests, at most every `max_age`). Before writing anything that fetches, check how it decides what's missing. It must come from the database or a completed file, not "fetch the window again". A rebuild (`--force`, a `LOADER_VERSION` bump) reads pages already on disk and fetches only the missing ones (`fetch_page`). On the hosted worker's throwaway disk that's the whole window, so avoid rebuilds there unless they're truly needed.
+- **Every request goes through `ingest/http.PoliteClient`**, the internal rate limiter: one request at a time, at least `request_min_interval` (1 s) apart, exponential backoff with `Retry-After` honoured on 429/5xx, and a User-Agent naming the repo. Never call `httpx`/`urllib` directly, never parallelise requests (no threads, async fan-out or several clients at once), and never lower the interval to make something faster. Use one client per command, so spacing holds across the whole run.
+- **Poll no faster than the data changes:** one exchange hour per hour, a few minutes after it's published; poe.ninja no faster than its ~15-minute refresh. A 429 means slow down for good, not retry harder.
+- **Tests and development never hit the real servers.** Use `FakeExchange` / `client_for()` and the recorded fixtures. Don't run ad-hoc probes or loops against the live endpoints to explore. Use pages already on disk, and ask the user before any one-off request batch.
+- **Count the cost.** Any new fetching code reports its requests (`ingest_run`, `tests/test_performance.py`), and a change that adds requests says how many and why.
 
 ## Commands
 
@@ -88,7 +97,7 @@ Target: the web app **and** the live worker (`eb live watch`, or `eb live sync` 
 - **Charts load a window, not the whole history:** hourly chart endpoints take `hours` (default 72, max 28 days).
 - **Index for the access paths.** `schema.sql` indexes league + source + time, because the primary keys start with item id.
 - **The worker must not depend on a persistent disk.** What to fetch is decided by the database (`exchange_loader.needs_rebuild` / `loaded_hours`), not by which pages are on disk. Reference data (RePoE names, core-pool snapshots, loot-filter tiers) lives in `reference_data` (`ingest/reference.py`). **Never download data we already have:** market hours are immutable and fetched once; reference sources go through `reference.fetch_if_changed`, which checks at most every `max_age` (RePoE weekly, pool and tiers daily; `eb exchange sync --refresh` checks now) using conditional requests (stored ETag / Last-Modified), so an unchanged source answers 304 and nothing is downloaded.
-- **The full list** of known cost issues and their status is in the README ("Hosting cost issues", and "Performance findings to fix" from the tooling).
+- **The full list** of known cost issues and performance findings, with their status, is in `docs/hosting.md`.
 - **Performance is measured, not guessed.** CI (`.github/workflows/ci.yml`) runs lint, all tests and a Postgres 17 job. `tests/test_performance.py` budgets each page's reads, checks that live pages don't read more as history accumulates, and checks each live update's requests and writes (via `ingest_run`). When a change legitimately needs more, raise the budget in the same change and say why. Perf tooling stays local or in CI; nothing goes on the public site (a server-side dev panel later, if needed).
 - **Planned (user is designing it; don't build yet):** the site will split into a clear **live trading** section and a **historical** section with preloaded data and graphs.
 
