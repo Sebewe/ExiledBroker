@@ -1,4 +1,8 @@
-"""Cached data loaders and formatting shared by the demo pages."""
+"""Cached data loaders and formatting shared by the demo pages.
+
+Every cache is shared by all visitors and has a `max_entries` cap: some are keyed on
+numbers people type (fee buffer, half-life), so an uncapped cache would grow with use
+(cost issue #9). tests/test_app_caches.py enforces the cap."""
 
 import polars as pl
 import streamlit as st
@@ -15,13 +19,13 @@ def database_ready() -> bool:
     return get_settings().db_path.exists()
 
 
-@st.cache_data(ttl="10m", show_spinner=False)
+@st.cache_data(ttl="10m", show_spinner=False, max_entries=1)
 def hourly_leagues() -> pl.DataFrame:
     with db.session(read_only=True) as con:
         return market.hourly_leagues(con)
 
 
-@st.cache_data(ttl="10m", show_spinner=False)
+@st.cache_data(ttl="10m", show_spinner=False, max_entries=32)
 def summary(league: str, groups: tuple[str, ...], unit: str) -> pl.DataFrame:
     with db.session(read_only=True) as con:
         return market.summary(con, league, list(groups), unit)
@@ -33,7 +37,7 @@ def hourly(league: str, item_ids: tuple[str, ...], unit: str) -> pl.DataFrame:
         return market.hourly(con, league, list(item_ids), unit)
 
 
-@st.cache_data(ttl="10m", show_spinner=False)
+@st.cache_data(ttl="10m", show_spinner=False, max_entries=32)
 def turn_ins(league: str, unit: str) -> pl.DataFrame:
     with db.session(read_only=True) as con:
         return divination.turn_in_summary(con, league, unit)
@@ -45,7 +49,7 @@ def card_turn_in_hourly(league: str, card_id: str, unit: str) -> pl.DataFrame:
         return divination.hourly_turn_ins(con, league, [card_id], unit)
 
 
-@st.cache_data(ttl="10m", show_spinner=False)
+@st.cache_data(ttl="10m", show_spinner=False, max_entries=1)
 def followed_cards() -> pl.DataFrame:
     with db.session(read_only=True) as con:
         return divination.followed_cards(con)
@@ -54,7 +58,7 @@ def followed_cards() -> pl.DataFrame:
 # --- Analysis --------------------------------------------------------------------
 
 
-@st.cache_data(ttl="10m", show_spinner=False)
+@st.cache_data(ttl="10m", show_spinner=False, max_entries=1)
 def analysis_leagues() -> dict[str, list[str]]:
     """Challenge leagues with hourly and with daily data, newest first."""
     with db.session(read_only=True) as con:
@@ -64,7 +68,7 @@ def analysis_leagues() -> dict[str, list[str]]:
         }
 
 
-@st.cache_data(ttl="10m", show_spinner=False)
+@st.cache_data(ttl="10m", show_spinner=False, max_entries=1)
 def tracked_items() -> pl.DataFrame:
     with db.session(read_only=True) as con:
         return db.frame(
@@ -77,7 +81,7 @@ def tracked_items() -> pl.DataFrame:
         )
 
 
-@st.cache_data(ttl="10m", show_spinner="Comparing uniques across leagues…")
+@st.cache_data(ttl="10m", show_spinner="Comparing uniques across leagues…", max_entries=32)
 def unique_moves(leagues: tuple[str, ...], base_day: int, end_day: int, high_only: bool):
     with db.session(read_only=True) as con:
         moves = lp.unique_moves(
@@ -102,7 +106,7 @@ def group_curves(group_id: str, leagues: tuple[str, ...], unit: str, bucket: int
         return lp.group_curves(con, group_id, list(leagues), unit, bucket)
 
 
-@st.cache_data(ttl="10m", show_spinner="Comparing turn-ins across leagues…")
+@st.cache_data(ttl="10m", show_spinner="Comparing turn-ins across leagues…", max_entries=32)
 def turn_ins_across(leagues: tuple[str, ...], half_life: float) -> pl.DataFrame:
     with db.session(read_only=True) as con:
         return lp.turn_ins_across_leagues(
@@ -130,7 +134,7 @@ def cross_market_item(leagues: tuple[str, ...], item_id: str, direction: str) ->
 # they're re-queried once per new hour, not once per minute (cost issue #1).
 
 
-@st.cache_data(ttl="1m", show_spinner=False)
+@st.cache_data(ttl="1m", show_spinner=False, max_entries=1)
 def live_leagues() -> pl.DataFrame:
     with db.session(read_only=True) as con:
         return live.live_leagues(con)
@@ -152,13 +156,13 @@ def live_cards(league: str, latest_hour, lookback: int, unit: str) -> pl.DataFra
         return live.live_card_flips(con, league, lookback, unit)
 
 
-@st.cache_data(ttl="10m", show_spinner=False)
+@st.cache_data(ttl="10m", show_spinner=False, max_entries=1)
 def calendar() -> pl.DataFrame:
     with db.session(read_only=True) as con:
         return overview.league_calendar(con)
 
 
-@st.cache_data(ttl="10m", show_spinner=False)
+@st.cache_data(ttl="10m", show_spinner=False, max_entries=1)
 def loads() -> pl.DataFrame:
     with db.session(read_only=True) as con:
         return db.frame(

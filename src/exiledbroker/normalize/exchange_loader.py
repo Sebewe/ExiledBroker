@@ -24,8 +24,9 @@ import duckdb
 
 from exiledbroker.config import Settings
 from exiledbroker.ingest import currency_exchange as cx
+from exiledbroker.ingest.core_pool import load_pool
 from exiledbroker.ingest.item_names import BaseItem
-from exiledbroker.normalize.mappings import refresh_mappings
+from exiledbroker.normalize.mappings import refresh_cards, refresh_mappings
 from exiledbroker.normalize.tracked import (
     CHAOS_METADATA,
     DIVINE,
@@ -36,7 +37,7 @@ from exiledbroker.normalize.tracked import (
 from exiledbroker.storage import db
 
 SOURCE = "ggg-exchange-hourly"
-LOADER_VERSION = 4
+LOADER_VERSION = 5
 CATEGORY_BY_CLASS = {"StackableCurrency": "currency", "MapFragment": "fragment"}
 
 
@@ -193,6 +194,42 @@ def _stage_prices(con: duckdb.DuckDBPyConnection, parquet: str, lid: str) -> Non
     )
 
 
+ALWAYS_KEPT = {currency_item_id("Chaos Orb"), currency_item_id(DIVINE)}
+
+
+def _keep_used_items(con: duckdb.DuckDBPyConnection, settings: Settings) -> int:
+    """Drop staged hourly prices for items no page uses. Kept: items in a price-mapping
+    group (same name rules and core pool as tracked_item), the rewards of followed
+    cards, and Chaos and Divine. Returns the number of staged rows dropped.
+
+    The card table is refreshed first so a brand-new database already knows which
+    rewards to keep. An item added to the pool later has no earlier hours; a forced
+    rebuild (`--force`) restores them."""
+    pool = load_pool(con, settings)
+    refresh_cards(con, settings, pool)
+    rewards = {
+        r[0]
+        for r in db.rows(
+            con,
+            "SELECT reward_item_id FROM divination_card "
+            "WHERE followed AND reward_item_id IS NOT NULL",
+        )
+    }
+    keep = {
+        item_id
+        for item_id, name in db.rows(con, "SELECT DISTINCT item_id, name FROM stage_names")
+        if item_id in ALWAYS_KEPT
+        or item_id in rewards
+        or any(g.matches(name, pool) for g in GROUPS)
+    }
+    con.execute("CREATE OR REPLACE TEMP TABLE keep_items (item_id VARCHAR)")
+    if keep:
+        con.executemany("INSERT INTO keep_items VALUES (?)", [(k,) for k in sorted(keep)])
+    before = db.scalar(con, "SELECT count(*) FROM stage_price")
+    con.execute("DELETE FROM stage_price WHERE item_id NOT IN (SELECT item_id FROM keep_items)")
+    return before - db.scalar(con, "SELECT count(*) FROM stage_price")
+
+
 def _hours_table(con: duckdb.DuckDBPyConnection, name: str, hours: list[int]) -> None:
     con.execute(f"CREATE OR REPLACE TEMP TABLE {name} (hour TIMESTAMP)")
     if hours:
@@ -292,11 +329,16 @@ def load_league(
             _stage_names(con, metadata_ids, names)
             _stage_prices(con, parquet, lid)
             _stage_cross(con, parquet, lid)
+            # Store hourly prices only for what the site reads (cost issue #7). The
+            # cross-market rows stay complete: they're the arbitrage universe.
+            _keep_used_items(con, settings)
             con.execute(
                 """
                 INSERT INTO item (id, game, canonical_name, category, metadata_id)
                 SELECT DISTINCT n.item_id, 'poe1', n.name, n.category, n.metadata_id
-                FROM stage_names n WHERE n.item_id IN (SELECT item_id FROM stage_price)
+                FROM stage_names n
+                WHERE n.item_id IN (SELECT item_id FROM stage_price)
+                   OR n.item_id IN (SELECT item_id FROM stage_cross)
                 ON CONFLICT (id) DO UPDATE SET metadata_id = excluded.metadata_id
                 """
             )
@@ -335,7 +377,14 @@ def load_league(
         con.execute("ROLLBACK")
         raise
     finally:
-        for t in ("stage_names", "stage_price", "stage_cross", "touched_hours", "added_hours"):
+        for t in (
+            "stage_names",
+            "stage_price",
+            "stage_cross",
+            "touched_hours",
+            "added_hours",
+            "keep_items",
+        ):
             con.execute(f"DROP TABLE IF EXISTS {t}")
         batch.unlink(missing_ok=True)
     return LoadResult(

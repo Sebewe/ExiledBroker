@@ -145,3 +145,68 @@ def test_mapping_refresh_only_writes_changes(setup):
     changed = [rows[0][:3] + (99,)] + [tuple(r) for r in rows[1:]]
     assert mappings._sync_rows(con, "tracked_item", mappings.TRACKED_COLUMNS, 2, changed) == (1, 1)
     assert db.scalar(con, "SELECT sort_order FROM tracked_item ORDER BY item_id LIMIT 1") == 99
+
+
+FRAGMENT = "Metadata/Items/MapFragments/VaalFragment1_1"
+CARD = "Metadata/Items/DivinationCards/DivinationCardTest"
+
+
+def test_only_used_items_get_hourly_prices(tmp_path):
+    """Hourly prices are stored only for what the site reads (cost issue #7): price-
+    mapping items, followed cards' rewards, Chaos and Divine. Cross-market rows stay
+    complete for arbitrage."""
+    from exiledbroker.ingest import item_names, loot_filter, reference
+    from exiledbroker.ingest.item_names import BaseItem
+
+    settings = Settings(data_dir=tmp_path, request_min_interval=0)
+    names = {
+        **NAMES,
+        FRAGMENT: BaseItem(FRAGMENT, "Sacrifice at Dusk", "MapFragment"),
+        CARD: BaseItem(CARD, "The Test", "DivinationCard"),
+    }
+    markets = [
+        market("Mirage", CHAOS, DIVINE, 300, 10),
+        market("Mirage", FRAGMENT, CHAOS, 10, 20),
+        market("Mirage", FRAGMENT, DIVINE, 10, 1),
+    ]
+    cx.write_page(settings, T0, {"next_change_id": T0 + H, "markets": markets})
+    con = register(settings)
+
+    def fragment_rows():
+        prices = db.scalar(
+            con, "SELECT count(*) FROM price_observation WHERE item_id LIKE '%sacrifice%'"
+        )
+        cross = db.scalar(
+            con, "SELECT count(*) FROM cross_market_hour WHERE item_id LIKE '%sacrifice%'"
+        )
+        return prices, cross
+
+    exchange_loader.load_league(con, settings, window(0, 1), names)
+    assert fragment_rows() == (0, 1)  # no hourly price; still an arbitrage candidate
+    assert (
+        db.scalar(con, "SELECT count(*) FROM item WHERE canonical_name = 'Sacrifice at Dusk'") == 1
+    )
+
+    # A followed card turns into the fragment: now its price is needed for turn-ins.
+    reference.put(
+        con,
+        item_names.KEY,
+        {
+            CARD: {
+                "name": "The Test",
+                "item_class": "DivinationCard",
+                "release_state": "released",
+                "properties": {"description": "<currencyitem>{Sacrifice at Dusk}", "stack_size": 3},
+            },
+            FRAGMENT: {
+                "name": "Sacrifice at Dusk",
+                "item_class": "MapFragment",
+                "release_state": "released",
+                "properties": {},
+            },
+        },
+    )
+    reference.put(con, loot_filter.KEY, {"tiers": {"The Test": "t1"}, "shown": ["The Test"]})
+    exchange_loader.load_league(con, settings, window(0, 1), names, force=True)
+    assert fragment_rows() == (1, 1)
+    con.close()
