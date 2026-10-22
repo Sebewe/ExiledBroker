@@ -202,9 +202,29 @@ def _hours_table(con: duckdb.DuckDBPyConnection, name: str, hours: list[int]) ->
         )
 
 
-def _loaded_hours(con: duckdb.DuckDBPyConnection, lid: str) -> set[int]:
+def loaded_hours(con: duckdb.DuckDBPyConnection, lid: str) -> set[int]:
     rows = db.rows(con, "SELECT hour FROM exchange_hour_loaded WHERE league_id = ?", [lid])
     return {cx.to_ts(r[0].replace(tzinfo=UTC)) for r in rows}
+
+
+def needs_rebuild(con: duckdb.DuckDBPyConnection, league_id: str, force: bool = False) -> bool:
+    """True if the league must be fully rebuilt: never loaded, or loaded by an older
+    LOADER_VERSION, or `force`."""
+    q = "SELECT fingerprint FROM ingest_load WHERE league_id = ? AND source = ?"
+    previous = db.rows(con, q, [league_id, SOURCE])
+    return force or not previous or previous[0][0] != f"loader_version={LOADER_VERSION}"
+
+
+def pending_hours(
+    con: duckdb.DuckDBPyConnection, league_id: str, hours: list[int], force: bool = False
+) -> list[int]:
+    """The hours of `hours` that a load would add: those not loaded yet, or all of them
+    on a rebuild. The database, not what's on disk, decides what's missing, so a
+    worker with an empty disk only needs the new hours' pages."""
+    if needs_rebuild(con, league_id, force):
+        return list(hours)
+    loaded = loaded_hours(con, league_id)
+    return [h for h in hours if h not in loaded]
 
 
 def load_league(
@@ -219,12 +239,10 @@ def load_league(
     the window are removed."""
     lid = cx.league_id(cx.GAME, window.league_name)
     version = f"loader_version={LOADER_VERSION}"
-    q = "SELECT fingerprint FROM ingest_load WHERE league_id = ? AND source = ?"
-    previous = db.rows(con, q, [lid, SOURCE])
-    rebuild = force or not previous or previous[0][0] != version
+    rebuild = needs_rebuild(con, lid, force)
 
     wanted = set(window.hours)
-    loaded = set() if rebuild else _loaded_hours(con, lid)
+    loaded = set() if rebuild else loaded_hours(con, lid)
     add = sorted(h for h in wanted - loaded if cx.page_path(settings, h).exists())
     remove = sorted(loaded - wanted)
     if not (add or remove or rebuild):

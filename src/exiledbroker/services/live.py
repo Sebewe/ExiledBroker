@@ -38,16 +38,22 @@ def live_leagues(con: duckdb.DuckDBPyConnection) -> pl.DataFrame:
     """Leagues followed on the exchange, newest data first: name, latest hour (null
     until something has traded), hours loaded. A just-launched league is listed before
     its first trade, so the live view can say it's waiting rather than missing."""
+    # Cheap enough to run every minute: the latest hour comes from the league/time
+    # index and the hour count from exchange_hour_loaded, not from scanning prices.
     return db.frame(
         con,
         """
-        SELECT l.name, max(p.observed_at) AS latest_hour,
-               count(DISTINCT p.observed_at) AS hours, l.launched_at
-        FROM league l
-        LEFT JOIN price_observation p ON p.league_id = l.id AND p.source = ?
-        WHERE l.kind = 'challenge' AND (l.exchange_tracked OR p.item_id IS NOT NULL)
-        GROUP BY l.name, l.launched_at
-        ORDER BY coalesce(max(p.observed_at), l.launched_at) DESC NULLS LAST
+        SELECT name, latest_hour, hours, launched_at FROM (
+            SELECT l.name, l.launched_at,
+                   (SELECT max(p.observed_at) FROM price_observation p
+                    WHERE p.league_id = l.id AND p.source = ?) AS latest_hour,
+                   (SELECT count(*) FROM exchange_hour_loaded h
+                    WHERE h.league_id = l.id) AS hours,
+                   l.exchange_tracked
+            FROM league l WHERE l.kind = 'challenge'
+        ) t
+        WHERE exchange_tracked OR latest_hour IS NOT NULL
+        ORDER BY coalesce(latest_hour, launched_at) DESC NULLS LAST
         """,
         [HOURLY],
     )
@@ -55,15 +61,15 @@ def live_leagues(con: duckdb.DuckDBPyConnection) -> pl.DataFrame:
 
 def latest_hour(con: duckdb.DuckDBPyConnection, league: str) -> datetime | None:
     q = """
-        SELECT max(p.observed_at) FROM price_observation p JOIN league l ON l.id = p.league_id
-        WHERE l.name = ? AND p.source = ?
+        SELECT max(p.observed_at) FROM price_observation p
+        WHERE p.league_id = (SELECT id FROM league WHERE name = ?) AND p.source = ?
     """
     rows = db.rows(con, q, [league, HOURLY])
     return rows[0][0] if rows else None
 
 
-def _since(latest: datetime, lookback_hours: int) -> pl.Expr:
-    return pl.col("observed_at") > pl.lit(latest - timedelta(hours=lookback_hours))
+def _since(latest: datetime, lookback_hours: int) -> datetime:
+    return latest - timedelta(hours=lookback_hours)
 
 
 def live_loops(
@@ -79,8 +85,8 @@ def live_loops(
     latest = latest_hour(con, league)
     if latest is None:
         return pl.DataFrame()
-    hours = cross_market.hourly(con, [league], direction=direction).filter(
-        _since(latest, lookback_hours)
+    hours = cross_market.hourly(
+        con, [league], direction=direction, since=_since(latest, lookback_hours)
     )
     if hours.is_empty():
         return pl.DataFrame()
@@ -121,9 +127,7 @@ def live_card_flips(
     latest = latest_hour(con, league)
     if latest is None:
         return pl.DataFrame()
-    hours = divination.hourly_turn_ins(con, league, unit=unit).filter(
-        _since(latest, lookback_hours)
-    )
+    hours = divination.hourly_turn_ins(con, league, unit=unit, since=_since(latest, lookback_hours))
     hours = hours.drop_nulls("margin")
     if hours.is_empty():
         return pl.DataFrame()

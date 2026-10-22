@@ -108,7 +108,20 @@ def sync_live(
         _register(settings, league, launched_at)
     if refresh_core_pool:
         refresh_pool(client, settings)
-    result = cx.sync_recent(client, settings, league, launched_at, lookback_hours, now=now)
+    # Fetch only the hours the database doesn't have yet (all of them on a rebuild),
+    # so a worker whose disk is wiped between runs makes one request per new hour.
+    with db.session(read_only=True) as con:
+        rebuild = exchange_loader.needs_rebuild(con, lid)
+        loaded = set() if rebuild else exchange_loader.loaded_hours(con, lid)
+    result = cx.sync_recent(
+        client,
+        settings,
+        league,
+        launched_at,
+        lookback_hours,
+        now=now,
+        only=lambda hours: [h for h in hours if h not in loaded],
+    )
     hours = list(result.window.hours)
     if not hours:
         return LiveStatus(league, "no_hours")

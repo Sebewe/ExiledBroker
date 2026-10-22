@@ -176,3 +176,9 @@ CREATE TABLE IF NOT EXISTS exchange_hour_loaded (
     hour      TIMESTAMP NOT NULL,
     PRIMARY KEY (league_id, hour)
 );
+
+-- Access paths: pages filter by league + source + time, but the primary keys start
+-- with item id. Without these, Postgres would scan whole tables (cost issue #3).
+-- In DuckDB they're cheap (no measurable file growth; 21 ms → 1 ms on Allflame).
+CREATE INDEX IF NOT EXISTS price_obs_league_time ON price_observation (league_id, source, observed_at);
+CREATE INDEX IF NOT EXISTS cross_market_league_time ON cross_market_hour (league_id, observed_at);

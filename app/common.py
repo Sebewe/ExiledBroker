@@ -125,7 +125,10 @@ def cross_market_item(leagues: tuple[str, ...], item_id: str, direction: str) ->
         return cross_market.hourly(con, list(leagues), [item_id], direction)
 
 
-# --- Live (short cache: the watcher adds an hour of data every hour) --------------
+# --- Live -------------------------------------------------------------------------
+# The watcher adds one hour of data per hour. Only the cheap league list is re-read
+# every minute; the heavy results are cached by the league's latest loaded hour, so
+# they're re-queried once per new hour, not once per minute (cost issue #1).
 
 
 @st.cache_data(ttl="1m", show_spinner=False)
@@ -134,16 +137,18 @@ def live_leagues() -> pl.DataFrame:
         return live.live_leagues(con)
 
 
-@st.cache_data(ttl="1m", show_spinner=False, max_entries=32)
+@st.cache_data(ttl="6h", show_spinner=False, max_entries=64)
 def live_loops(
-    league: str, direction: str, buffer: float, lookback: int, min_price: float
+    league: str, latest_hour, direction: str, buffer: float, lookback: int, min_price: float
 ) -> pl.DataFrame:
+    """`latest_hour` is part of the cache key: a new hour means a fresh query."""
     with db.session(read_only=True) as con:
         return live.live_loops(con, league, direction, buffer, lookback, min_price)
 
 
-@st.cache_data(ttl="1m", show_spinner=False, max_entries=32)
-def live_cards(league: str, lookback: int, unit: str) -> pl.DataFrame:
+@st.cache_data(ttl="6h", show_spinner=False, max_entries=64)
+def live_cards(league: str, latest_hour, lookback: int, unit: str) -> pl.DataFrame:
+    """`latest_hour` is part of the cache key: a new hour means a fresh query."""
     with db.session(read_only=True) as con:
         return live.live_card_flips(con, league, lookback, unit)
 

@@ -74,6 +74,22 @@ The site's default page. It shows what's best to arbitrage **right now** in the 
 - **Before the first trade:** a just-launched league shows "waiting for the first trades" rather than nothing. Mirage's launch hour was published with no trades in it.
 - **Tested on real API output:** `tests/test_live_pipeline.py` replays Mirage's first 30 hours exactly as GGG published them (`tests/fixtures/mirage_launch.json.gz`, rebuilt by `tests/fixtures/make_fixtures.py`). After each new hour it runs the real live update and then every page and analysis tool. It also checks that an update interrupted mid-hour resumes cleanly. That's how the one-league slider bug (decision log) was found.
 
+### Hosting cost issues (review of 2026-10-22)
+
+Things that would raise the Railway/Supabase bill, measured on real data where possible. Fix before hosting; update the status as they're done.
+
+| # | Issue | Measured / estimated | Fix | Status |
+|---|---|---|---|---|
+| 1 | Live page pulled a league's whole cross-market history (135k rows, 15 MB) to show ~85 rows, re-run every minute by auto-refresh | ≈ 650 GB/month Supabase egress (Pro includes 250 GB) | Filter by time in SQL; re-query only when a new hour is loaded | ✅ done: identical results, 596 rows (0.07 MB) instead of 135,532 (15.1 MB), once per new hour instead of every minute; the per-minute league check takes ~10 ms via the index |
+| 2 | Live worker fetched any window page missing from disk: ~672 requests/hour on a server with a throwaway disk | Risk of being blocked by GGG; slow | Use `exchange_hour_loaded` (the database) to decide what to fetch | ✅ done: a worker with a wiped disk fetches only the new hour; a rebuild re-fetches the whole window, so data can't shrink (tested) |
+| 3 | No indexes for the pages' access paths (league + source + time); primary keys start with item id | Full scans on Postgres → bigger paid database | Add league/time indexes | ✅ done (in `schema.sql`; tested on DuckDB only, no local Postgres) |
+| 4 | Arbitrage trading pulls 439k rows (49 MB) per 10-minute cache expiry | High if busy | Worker writes per-item summary tables hourly | ⬜ |
+| 5 | Card turn-ins and Analysis tools pull 1.6–6 MB per load | Moderate | Same precomputed summaries (fits the planned historical section) | ⬜ |
+| 6 | Worker re-downloads RePoE (3 MB) and the loot filter every run on a wiped disk | Small, impolite | Store in the database or refresh daily | ⬜ |
+| 7 | Every exchange item stored every hour (~1,000 for Allflame); the site uses tracked items + cross-market legs | ~30–50% more rows (estimate) | Store only what the site uses | ⬜ |
+| 8 | Text primary keys (~2× row size vs integer ids) | Matters only at larger scale | Defer | ⬜ |
+| 9 | Streamlit memory grows per concurrent visitor; some caches keyed on free-typed numbers (unbounded) | Launch-week traffic | Cap caches; the planned frontend fixes the rest | ⬜ |
+
 ### Next steps
 
 - **Phase 2:** use the Analysis tab across all four exchange-era leagues and write up the patterns that repeat (§9).

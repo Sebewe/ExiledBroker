@@ -289,10 +289,14 @@ def sync_recent(
     now: datetime | None = None,
     progress: Callable[[int, int, int], None] | None = None,
     keep_launch_days: float = 14,
+    only: Callable[[list[int]], list[int]] | None = None,
 ) -> SyncResult:
     """Fetch the latest published hours of a running league: from `lookback_hours` ago
     (or the launch, if later) up to the hour being traded now, plus its first
-    `keep_launch_days` days. Run it every hour: only newly published hours are fetched."""
+    `keep_launch_days` days. Run it every hour: only newly published hours are fetched.
+
+    `only` narrows which of the window's hours to fetch (e.g. those not loaded yet);
+    by default every hour whose page isn't on disk is fetched."""
     end_ts = current_hour(now)
     start_ts = max(to_ts(launched_at), end_ts - lookback_hours * HOUR)
     window = Window(
@@ -303,7 +307,7 @@ def sync_recent(
         keep_launch_days=keep_launch_days,
     )
     fetched = cached = 0
-    hours = window.hours
+    hours = only(window.hours) if only else window.hours
     try:
         for i, ts in enumerate(hours, 1):
             if page_path(settings, ts).exists():

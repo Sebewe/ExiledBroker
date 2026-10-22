@@ -14,6 +14,8 @@ need the expected value of the reward (it can roll differently), which comes lat
 SQL here must stay Postgres-compatible: Supabase will serve the same queries.
 """
 
+from datetime import datetime
+
 import duckdb
 import polars as pl
 
@@ -59,8 +61,11 @@ def hourly_turn_ins(
     league: str,
     card_ids: list[str] | None = None,
     unit: str = "chaos",
+    since: datetime | None = None,
 ) -> pl.DataFrame:
-    """Set cost vs reward value for each hour both the card and its reward traded."""
+    """Set cost vs reward value for each hour both the card and its reward traded.
+
+    `since` (exclusive) limits it to recent hours in SQL, for the live view."""
     col = _unit(unit)
     where, params = "", [league, HOURLY]
     if card_ids is not None:
@@ -68,6 +73,9 @@ def hourly_turn_ins(
             return pl.DataFrame(schema=HOURLY_SCHEMA)
         where = f"AND d.item_id IN ({', '.join('?' for _ in card_ids)})"
         params += card_ids
+    if since is not None:
+        where += " AND c.observed_at > ?"
+        params.append(since)
     return db.frame(
         con,
         f"""

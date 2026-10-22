@@ -125,8 +125,8 @@ def live_view() -> None:
         )
     sfx = UNIT_SUFFIX[unit]
 
-    loops = live_loops(league, direction, buffer_pct / 100, lookback, min_price)
-    cards = live_cards(league, lookback, unit)
+    loops = live_loops(league, latest, direction, buffer_pct / 100, lookback, min_price)
+    cards = live_cards(league, latest, lookback, unit)
     c1, c2, c3 = st.columns(3)
     c1.metric(
         "Loops paying in their latest hour",

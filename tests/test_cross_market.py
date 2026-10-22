@@ -90,3 +90,13 @@ def test_buffer_and_missing_leagues():
     assert three["worst_league_share"].item() == 0.0
     assert three["weighted_share"].item() == pytest.approx((1 / 3 + 1) / 3)
     assert xm.score(three)["score"].item() == 1.0
+
+
+def test_since_limits_hours_in_sql(con):
+    from datetime import timedelta
+
+    from test_currency_exchange import LAUNCH
+
+    hour0 = LAUNCH.replace(tzinfo=None)
+    assert xm.hourly(con, ["Mirage"], since=hour0 - timedelta(hours=1)).height == 1
+    assert xm.hourly(con, ["Mirage"], since=hour0).is_empty()  # exclusive

@@ -51,9 +51,10 @@ A background run (`nohup … &`) ignores Ctrl-C. Stop it with `pkill -f "eb "`, 
 
 Target: the web app **and** the live worker (`eb live watch`, or `eb live sync` on an hourly cron) run on Railway, with data in Supabase Postgres. Only live-league data is hosted (a few hundred MB). The goal is Railway Hobby plus Supabase Free/Pro, so watch for anything that scales cost with time or traffic:
 - **Never rewrite data to add data.** Loads stay incremental: insert new hours, delete only what leaves the window.
-- **Pages must read small results.** Do aggregation in SQL or in precomputed summary tables written by the worker, not by pulling raw hourly rows into Python. Database egress and compute are what cost money on Supabase. Known offenders still to fix before hosting: the Live page and Arbitrage trading pull every cross-market hour and filter in Python. Filter by time in SQL and cache on the latest loaded hour, not a timer.
-- **Index for the access paths** (league + source + time); the primary keys start with item id.
-- **The worker must not depend on a persistent disk.** Use the database (`exchange_hour_loaded`) as the record of what's loaded and fetch only missing hours. `sync_recent` currently fetches any window page missing from disk.
+- **Pages must read small results.** Do aggregation in SQL or in precomputed summary tables written by the worker, not by pulling raw hourly rows into Python. Database egress and compute are what cost money on Supabase. The Live page filters by time in SQL (`since=`) and caches on the latest loaded hour, not a timer. Arbitrage trading, Card turn-ins and the Analysis tools still pull raw hours (README cost issues #4–5).
+- **Index for the access paths.** `schema.sql` indexes league + source + time, because the primary keys start with item id.
+- **The worker must not depend on a persistent disk.** What to fetch is decided by the database (`exchange_loader.needs_rebuild` / `loaded_hours`), not by which pages are on disk.
+- **The full list** of known cost issues and their status is in the README ("Hosting cost issues").
 - **Planned (user is designing it; don't build yet):** the site will split into a clear **live trading** section and a **historical** section with preloaded data and graphs.
 
 ## Scope rules (decided by the user)

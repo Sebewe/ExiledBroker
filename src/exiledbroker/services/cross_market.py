@@ -20,6 +20,8 @@ have caught both sides, so treat results as candidates to check live.
 SQL here must stay Postgres-compatible: Supabase will serve the same queries.
 """
 
+from datetime import datetime
+
 import duckdb
 import polars as pl
 
@@ -65,9 +67,13 @@ def hourly(
     leagues: list[str],
     item_ids: list[str] | None = None,
     direction: str = "chaos_first",
+    since: datetime | None = None,
 ) -> pl.DataFrame:
     """Per item-hour: direct Chaos price, price via Divines, the VWAP gap, the
-    worst-price loop edge, and the chaos value traded in both markets."""
+    worst-price loop edge, and the chaos value traded in both markets.
+
+    `since` (exclusive) limits it to recent hours in SQL, so the live view doesn't
+    pull a league's whole history."""
     if not leagues or item_ids == []:
         return pl.DataFrame(schema=HOURLY_SCHEMA)
     params: list = list(leagues)
@@ -75,6 +81,9 @@ def hourly(
     if item_ids is not None:
         where += f" AND x.item_id IN ({', '.join('?' for _ in item_ids)})"
         params += item_ids
+    if since is not None:
+        where += " AND x.observed_at > ?"
+        params.append(since)
     rows = db.frame(
         con,
         f"""

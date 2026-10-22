@@ -155,3 +155,44 @@ def test_live_update_survives_an_interrupted_hour(settings):
     with client_for(settings, server) as client:
         status = sync_live(client, settings, "Mirage", names, now=now, earliest=earliest)
     assert status.state == "updated" and status.latest_hour == cx.from_ts(LAUNCH + 5 * 3600)
+
+
+def _hours_loaded(settings) -> int:
+    with db.session(read_only=True) as con:
+        return db.scalar(con, "SELECT count(*) FROM exchange_hour_loaded")
+
+
+def test_worker_with_a_wiped_disk_fetches_only_new_hours(settings, monkeypatch):
+    """On a server the disk may be wiped between runs: the database decides what's
+    missing, so each hourly update needs only the new hour (cost issue #2)."""
+    import shutil
+
+    from exiledbroker.normalize import exchange_loader
+
+    names = item_names.load_base_items(settings)
+    server = FakeExchange(PAGES, now=LAUNCH + 8 * 3600)
+    earliest = cx.from_ts(LAUNCH - 72 * 3600)
+
+    def update():
+        now = cx.from_ts(server.now) + timedelta(minutes=10)
+        with client_for(settings, server) as client:
+            return sync_live(client, settings, "Mirage", names, now=now, earliest=earliest)
+
+    assert update().state == "updated" and _hours_loaded(settings) == 8
+    shutil.rmtree(settings.exchange_raw_dir)  # a fresh container: no pages on disk
+
+    server.now += 3600  # one more hour published
+    before = len(server.requests)
+    status = update()
+    new_requests = server.requests[before:]
+    # The latest-hour check and the new hour, not the 8 hours already loaded.
+    assert set(new_requests) == {LAUNCH + 8 * 3600}
+    assert (status.hours_added, status.hours_removed) == (1, 0)
+    assert _hours_loaded(settings) == 9
+
+    # A rebuild (new loader version) on a wiped disk re-fetches the whole window,
+    # so the data can't shrink to just the pages that happen to be on disk.
+    shutil.rmtree(settings.exchange_raw_dir)
+    monkeypatch.setattr(exchange_loader, "LOADER_VERSION", exchange_loader.LOADER_VERSION + 1)
+    status = update()
+    assert status.state == "updated" and _hours_loaded(settings) == 9
