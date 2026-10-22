@@ -72,7 +72,10 @@ def daily(
 def summary(
     con: duckdb.DuckDBPyConnection, league: str, group_ids: list[str], unit: str = "chaos"
 ) -> pl.DataFrame:
-    """One row per item: price on key days, change, peak, volume and a daily trend."""
+    """One row per item: average and key-day prices, change, peak, volume and a daily trend.
+
+    Sorted by `average`, the item's volume-weighted price over the whole window.
+    """
     d = daily(con, league, group_ids, unit)
     if d.is_empty():
         return d
@@ -86,6 +89,7 @@ def summary(
                 for n in SUMMARY_DAYS
             ],
             pl.col("value").filter(pl.col("day") == last_day).first().alias("latest"),
+            ((pl.col("value") * pl.col("volume")).sum() / pl.col("volume").sum()).alias("average"),
             pl.col("value").max().alias("peak"),
             pl.col("day").sort_by("value").last().alias("peak_day"),
             pl.col("volume").sum().alias("volume"),
@@ -93,7 +97,7 @@ def summary(
             pl.col("value").alias("trend"),
         )
         .with_columns(change=pl.col("latest") / pl.col("day_1") - 1)
-        .sort("chaos_volume", descending=True)
+        .sort("average", descending=True)
     )
     return out
 

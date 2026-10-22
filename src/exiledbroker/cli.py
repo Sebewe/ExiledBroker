@@ -7,7 +7,7 @@ import uvicorn
 
 from exiledbroker.config import get_settings
 from exiledbroker.ingest import currency_exchange as cx
-from exiledbroker.ingest import item_names
+from exiledbroker.ingest import item_names, poe_ninja_categories
 from exiledbroker.ingest import poe_ninja_dumps as dumps_mod
 from exiledbroker.ingest.http import PoliteClient, is_complete, part_path_for
 from exiledbroker.normalize import dump_loader, exchange_loader
@@ -240,6 +240,7 @@ def exchange_sync(
         index, selected = _exchange_leagues(settings, client, league or [])
         item_names.ensure_base_items(client, settings)
         names = item_names.load_base_items(settings)
+        currency_names = poe_ninja_categories.refresh_currency_names(client, settings)
         typer.echo(f"{len(selected)} league(s), first {days} days each.")
 
         for i, dump in enumerate(selected, 1):
@@ -272,7 +273,11 @@ def exchange_sync(
             with db.session() as con:
                 db.init_schema(con)
                 dump_store.upsert_leagues(con, _calendar_leagues(index, [dump]))
-                loaded = exchange_loader.load_league(con, settings, w, names, force=force)
+                loaded = exchange_loader.load_league(
+                    con, settings, w, names, force=force, currency_names=currency_names
+                )
+                # The currency list can change without the league's inputs changing.
+                exchange_loader.refresh_tracked(con, currency_names)
             if loaded.skipped:
                 typer.echo(f"{prefix}: already loaded")
             else:

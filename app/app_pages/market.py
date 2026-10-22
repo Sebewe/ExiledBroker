@@ -22,15 +22,7 @@ if leagues.is_empty():
     )
     st.stop()
 
-with st.container(horizontal=True, vertical_alignment="bottom"):
-    league = st.selectbox("League", leagues["name"].to_list(), width=220)
-    unit = st.segmented_control(
-        "Price in",
-        ["chaos", "divine"],
-        default="chaos",
-        required=True,
-        format_func=str.capitalize,
-    )
+league = st.selectbox("League", leagues["name"].to_list(), width=220)
 
 info = leagues.filter(pl.col("name") == league).row(0, named=True)
 st.caption(
@@ -48,9 +40,7 @@ KPIS = [
     ("currency:mirror-of-kalandra", "divine"),
     ("currency:mirror-shard", "divine"),
 ]
-core = {
-    u: summary(league, ("chaos", "divine", "alchemy", "mirror"), u) for u in ("chaos", "divine")
-}
+core = {u: summary(league, ("currency",), u) for u in ("chaos", "divine")}
 with st.container(horizontal=True):
     for item_id, kpi_unit in KPIS:
         rows = core[kpi_unit].filter(pl.col("item_id") == item_id)
@@ -71,14 +61,19 @@ st.space("small")
 st.subheader("Price mappings", icon=":material/stacked_line_chart:")
 
 GROUPS = {
-    "Currency": ("chaos", "divine", "alchemy"),
-    "Mirrors": ("mirror",),
+    "Currency": ("currency",),
     "High-tier essences": ("essence",),
     "Scarabs": ("scarab",),
 }
-group = st.segmented_control(
-    "Group", list(GROUPS), default="Currency", required=True, label_visibility="collapsed"
-)
+with st.container(horizontal=True, vertical_alignment="bottom"):
+    group = st.segmented_control("Group", list(GROUPS), default="Currency", required=True)
+    unit = st.segmented_control(
+        "Price in",
+        ["chaos", "divine"],
+        default="chaos",
+        required=True,
+        format_func=str.capitalize,
+    )
 table = summary(league, GROUPS[group], unit)
 # An item priced in itself is a flat line at 1; leave it out of its own unit.
 self_priced = {"chaos": "currency:chaos-orb", "divine": "currency:divine-orb"}[unit]
@@ -91,11 +86,14 @@ if table.is_empty():
 left, right = st.columns([2, 3])
 with left, st.container(border=True, height="stretch"):
     st.markdown("**Launch-window summary**")
-    st.caption("Sorted by chaos-equivalent volume. Select rows to chart them.")
+    st.caption(
+        "Sorted by average price over the window (volume-weighted). Select rows to chart them."
+    )
     fmt = price_format(unit)
     event = st.dataframe(
         table.select(
             "name",
+            "average",
             "day_1",
             "day_3",
             "day_7",
@@ -112,6 +110,11 @@ with left, st.container(border=True, height="stretch"):
         key=f"table-{group}-{unit}",
         column_config={
             "name": st.column_config.TextColumn("Item", pinned=True),
+            "average": st.column_config.NumberColumn(
+                "Avg price",
+                format=fmt,
+                help="Volume-weighted average price over the whole window.",
+            ),
             "day_1": st.column_config.NumberColumn("Day 1", format=fmt),
             "day_3": st.column_config.NumberColumn("Day 3", format=fmt),
             "day_7": st.column_config.NumberColumn("Day 7", format=fmt),
@@ -129,14 +132,19 @@ with left, st.container(border=True, height="stretch"):
     )
 
 picked_rows = event.selection.rows
-picked = table[picked_rows] if picked_rows else table.head(min(5, table.height))
+# Without a selection, chart the five most-traded items rather than the priciest.
+picked = (
+    table[picked_rows]
+    if picked_rows
+    else table.sort("chaos_volume", descending=True).head(min(5, table.height))
+)
 
 with right, st.container(border=True, height="stretch"):
     with st.container(horizontal=True, vertical_alignment="center"):
         st.markdown("**Hourly price**")
-        log_scale = st.toggle("Log scale", value=group != "Mirrors")
+        log_scale = st.toggle("Log scale", value=True)
     if not picked_rows:
-        st.caption("Showing the top items by volume.")
+        st.caption("Showing the five most-traded items. Select rows in the table to change.")
     series = hourly(league, tuple(picked["item_id"].to_list()), unit)
     y = alt.Y("value:Q", title=f"Price ({unit})").scale(
         type="log" if log_scale else "linear", zero=False

@@ -95,7 +95,9 @@ tail -f data/logs/latest.log
 | 2026-10-21 | **Event and Ruthless leagues are excluded** from data and analysis. Most players don't play them and their markets don't follow normal trends (§2.6), so including them would make predictions worse. Every command defaults to challenge leagues, the calendar lists only challenge leagues, and the Ancestors data was deleted. `--kind` / `-l` can still select one explicitly. |
 | 2026-10-21 | **Scope: currency and uniques only.** The dump loader skips base items, gems, cluster jewels, maps and the other item types. Currency-like item types (scarabs, essences, fossils, oils, ...) are keyed by name (`currency:<slug>`), like the currency file and the exchange, so one item has one id whatever the source. Uniques keep `ninja:<Id>`. |
 | 2026-10-21 | **For the first 14 days, hourly exchange prices replace daily ones** for everything traded on the exchange. The hourly price is volume-weighted across the item's Chaos and Divine markets, with Divine trades converted at that hour's Divine rate (§2.4). |
-| 2026-10-21 | **Price mappings** (`tracked_item`): Chaos, Divine, Orb of Alchemy, Mirror of Kalandra + Mirror Shard, high-tier essences (all Deafening, plus Hysteria/Insanity/Horror/Delirium), and scarabs. Groups are name rules in `normalize/tracked.py`, so they apply to every source. |
+| 2026-10-21 | **Price mappings** (`tracked_item`) have three groups. **Currency** = poe.ninja's Currency category (including league-mechanic currency, excluding Catalysts), always including Chaos, Divine, Alchemy, Mirror of Kalandra and Mirror Shard; mirrors aren't a separate group. **High-tier essences** = all Deafening, plus Hysteria/Insanity/Horror/Delirium. **Scarabs** = every item named "… Scarab …". Groups are name rules in `normalize/tracked.py`, so they apply to every source. |
+| 2026-10-21 | The currency list is fetched from poe.ninja's exchange overview (`type=Currency`, current league) on each `eb exchange sync`, and kept as a running union in `data/raw/poe_ninja/categories/currency.json`. Currency added by a new league is picked up and older currency is never dropped. |
+| 2026-10-21 | Demo tables sort by each item's **average price over the window** (volume-weighted, in the selected unit), shown as the "Avg price" column. With nothing selected, the chart shows the five most-traded items. |
 | 2026-10-21 | Exchange item names come from RePoE's base item table. RePoE gives some different items the same name, so an ambiguous name never merges items: each metadata id becomes its own item, labelled `Name (MetadataName)`. None of the tracked items are ambiguous. |
 | 2026-10-21 | A league's `launched_at` is the first hour it trades on the exchange (Mirage: 2026-03-06 20:00 UTC). Hourly `day_offset` is fractional days from then. |
 | 2026-10-21 | Item identity = poe.ninja's line `Id` (`item.id = 'ninja:<Id>'`), because it is stable across leagues. Currencies from the currency file get `currency:<slug>`. |
@@ -176,14 +178,13 @@ Mirage, first 14 days: 368 pages (39 MB raw), 1,027 items, 269k hourly rows.
 
 ### 2.5 Price mappings (`tracked_item`)
 
-| Group | Items | Mirage hourly rows |
+| Group | Items | In Mirage |
 |---|---|---|
-| Chaos Orb | 1 | 334 |
-| Divine Orb | 1 | 334 |
-| Orb of Alchemy | 1 | 335 |
-| Mirrors | Mirror of Kalandra, Mirror Shard | 630 |
-| High-tier essences | 20 Deafening + Hysteria, Insanity, Horror, Delirium | 7,900 |
-| Scarabs | every item named "… Scarab …" (111 traded in Mirage) | 35,987 |
+| Currency | poe.ninja's Currency category minus Catalysts (89 names), plus the five core orbs | 88 traded, all with hourly prices (Dead Man's Sulphur is newer than Mirage) |
+| High-tier essences | 20 Deafening + Hysteria, Insanity, Horror, Delirium | 24 |
+| Scarabs | every item named "… Scarab …" | 111 traded |
+
+The demo's "Launch market" page shows KPI cards for Divine, Chaos, Alchemy, Mirror and Mirror Shard. Below them, each group gets a table sorted by average price, and selecting rows charts their hourly prices.
 
 From day 1 to day 14 in Mirage: Divine 86 → 266 chaos (+208%), Mirror of Kalandra 84 → 678 divines (+710%), Mirror Shard 9.7 → 34 divines, Deafening Essence of Scorn 2.5 → 22.7 chaos.
 
@@ -219,6 +220,7 @@ ExiledBroker/
 │   │   ├── poe_ninja_dumps.py  # ✔ dump listing, download, zip → Parquet
 │   │   ├── currency_exchange.py # ✔ GGG hourly exchange: find launch, fetch window, → Parquet
 │   │   ├── item_names.py       # ✔ RePoE metadata id → name
+│   │   ├── poe_ninja_categories.py # ✔ poe.ninja's Currency category list (running union)
 │   │   ├── poe_ninja_live.py   # live economy overview (phase 6)
 │   │   └── patch_notes.py      # scrape raw text → store
 │   ├── storage/
@@ -228,7 +230,7 @@ ExiledBroker/
 │   ├── normalize/
 │   │   ├── dump_loader.py      # ✔ dump Parquet → item / price_observation (currency + uniques)
 │   │   ├── exchange_loader.py  # ✔ exchange Parquet → hourly prices (one transaction per league)
-│   │   ├── tracked.py          # ✔ price mapping groups (name rules)
+│   │   ├── tracked.py          # ✔ price mapping groups: currency, high-tier essences, scarabs
 │   │   ├── leagues.py          # ✔ day_offset, league ids, challenge/ruthless/event tagging
 │   │   ├── entities.py         # name resolution, renames, variants
 │   │   └── currency.py         # chaos/divine normalization
@@ -252,7 +254,7 @@ ExiledBroker/
 ├── .streamlit/config.toml      # ✔ demo theme
 ├── scripts/ingest.sh           # ✔ unattended, resumable ingest runner
 ├── web/                        # hosted public frontend (later; framework TBD)
-├── data/                       # ✔ gitignored: raw/{poe_ninja/dumps, ggg/currency_exchange, repoe}, processed/{poe_ninja/dumps, ggg/currency_exchange}, logs/, exiledbroker.duckdb
+├── data/                       # ✔ gitignored: raw/{poe_ninja/{dumps,categories}, ggg/currency_exchange, repoe}, processed/{poe_ninja/dumps, ggg/currency_exchange}, logs/, exiledbroker.duckdb
 ├── notebooks/                  # exploration
 └── tests/                      # ✔
 ```
@@ -264,7 +266,7 @@ ExiledBroker/
 ```
 League(id, game, name, version, start_at, end_at, mechanic, kind, dump_name, launched_at)
 Item(id, canonical_name, category, base_type, variant, links, ninja_id, metadata_id)
-TrackedItem(item_id, group_id, group_label, sort_order)   -- price mappings
+TrackedItem(item_id, group_id, group_label, sort_order)   -- price mappings: currency | essence | scarab
 ItemAlias(alias, item_id, valid_from_league)     -- handles renames/reworks
 PriceObservation(item_id, league_id, observed_at, day_offset,
                  chaos_value, divine_value, listing_count, source,

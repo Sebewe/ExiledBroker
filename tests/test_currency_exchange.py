@@ -192,12 +192,13 @@ def test_hourly_prices(settings):
     assert db.scalar(con, "SELECT launched_at FROM league WHERE name = 'Mirage'") == LAUNCH.replace(
         tzinfo=None
     )
+    # Core currencies are tracked even before poe.ninja's currency list is fetched.
     groups = dict(db.rows(con, "SELECT item_id, group_id FROM tracked_item"))
     assert groups == {
-        "currency:chaos-orb": "chaos",
-        "currency:divine-orb": "divine",
-        "currency:mirror-of-kalandra": "mirror",
-        "currency:orb-of-alchemy": "alchemy",
+        "currency:chaos-orb": "currency",
+        "currency:divine-orb": "currency",
+        "currency:mirror-of-kalandra": "currency",
+        "currency:orb-of-alchemy": "currency",
     }
     con.close()
 
@@ -240,14 +241,55 @@ def test_market_services(settings):
     from exiledbroker.services import market
 
     con, _, _ = load(settings)
-    groups = market.tracked_groups(con)["group_id"].to_list()
-    assert groups == ["chaos", "divine", "alchemy", "mirror"]
-    s = market.summary(con, "Mirage", ["mirror"], "divine").row(0, named=True)
+    assert market.tracked_groups(con)["group_id"].to_list() == ["currency"]
+    table = market.summary(con, "Mirage", ["currency"], "divine")
+    # Sorted by average price, most expensive first.
+    assert table["name"].to_list()[:2] == ["Mirror of Kalandra", "Divine Orb"]
+    s = table.row(0, named=True)
     # All three hours fall in day 1: (400 + 500) divines over 2 mirrors.
-    assert s["name"] == "Mirror of Kalandra" and s["day_1"] == 450 and s["trend"] == [450]
+    assert s["day_1"] == 450 and s["average"] == 450 and s["trend"] == [450]
     h = market.hourly(con, "Mirage", ["currency:mirror-of-kalandra"], "divine")
     assert h["value"].to_list() == [400, 500]
     assert h.row(0, named=True)["low"] == pytest.approx(350)
     with pytest.raises(ValueError):
-        market.summary(con, "Mirage", ["mirror"], "exalt")
+        market.summary(con, "Mirage", ["currency"], "exalt")
     con.close()
+
+
+def test_currency_list_extends_currency_group(settings):
+    con, _, _ = load(settings)
+    exchange_loader.refresh_tracked(con, {"Orb of Fusing"})
+    assert db.scalar(con, "SELECT count(*) FROM tracked_item WHERE group_id = 'currency'") == 4
+    con.execute(
+        "INSERT INTO item (id, game, canonical_name, category) "
+        "VALUES ('currency:orb-of-fusing', 'poe1', 'Orb of Fusing', 'currency')"
+    )
+    exchange_loader.refresh_tracked(con, {"Orb of Fusing"})
+    assert db.scalar(con, "SELECT count(*) FROM tracked_item WHERE group_id = 'currency'") == 5
+    con.close()
+
+
+def test_refresh_currency_names_keeps_a_union(settings):
+    from exiledbroker.ingest import poe_ninja_categories as cats
+
+    def handler(request):
+        if request.url.path.endswith("/leagues"):
+            return httpx.Response(200, json=[{"id": "Allflame", "name": "Allflame"}])
+        assert request.url.params["type"] == "Currency"
+        return httpx.Response(
+            200,
+            json={
+                "items": [
+                    {"name": "Exalted Orb", "category": "Currency"},
+                    {"name": "Foulborn Exalted Orb", "category": "Keepers"},
+                    {"name": "Tainted Catalyst", "category": "Catalysts"},
+                ]
+            },
+        )
+
+    cats.currency_names_path(settings).parent.mkdir(parents=True)
+    cats.currency_names_path(settings).write_text('["Old League Orb"]')
+    with PoliteClient(settings, transport=httpx.MockTransport(handler)) as client:
+        names = cats.refresh_currency_names(client, settings)
+    assert names == {"Old League Orb", "Exalted Orb", "Foulborn Exalted Orb"}
+    assert cats.load_currency_names(settings) == names

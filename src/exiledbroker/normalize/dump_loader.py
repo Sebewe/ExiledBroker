@@ -160,11 +160,12 @@ def _stage(con: duckdb.DuckDBPyConnection, settings: Settings, dump: DumpInfo) -
     )
 
 
-def refresh_tracked(con: duckdb.DuckDBPyConnection) -> None:
+def refresh_tracked(con: duckdb.DuckDBPyConnection, settings: Settings) -> None:
     # Imported here to avoid a cycle; the exchange loader owns the group rules' table.
+    from exiledbroker.ingest.poe_ninja_categories import load_currency_names
     from exiledbroker.normalize.exchange_loader import refresh_tracked as refresh
 
-    refresh(con)
+    refresh(con, load_currency_names(settings))
 
 
 def load_league(
@@ -187,7 +188,7 @@ def load_league(
             ON CONFLICT (id) DO NOTHING
             """
         )
-        refresh_tracked(con)
+        refresh_tracked(con, settings)
         con.execute(
             "DELETE FROM price_observation WHERE league_id = ? AND source = ?",
             [dump.league_id, SOURCE],

@@ -5,6 +5,7 @@ Item ids for currency-like items are `currency:<slug of name>` everywhere.
 """
 
 import re
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
 from exiledbroker.normalize.leagues import slugify
@@ -13,6 +14,9 @@ CHAOS = "Chaos Orb"
 DIVINE = "Divine Orb"
 CHAOS_METADATA = "Metadata/Items/Currency/CurrencyRerollRare"
 DIVINE_METADATA = "Metadata/Items/Currency/CurrencyModValues"
+
+# Always currency, even before poe.ninja's currency list has been fetched.
+CORE_CURRENCY = {CHAOS, DIVINE, "Orb of Alchemy", "Mirror of Kalandra", "Mirror Shard"}
 
 # Essences that only come from corrupting (Remnant of Corruption); top tier with Deafening.
 CORRUPTED_ESSENCES = {
@@ -28,26 +32,22 @@ class Group:
     id: str
     label: str
     order: int
+    rule: Callable[[str, set[str]], bool]
 
-    def matches(self, name: str) -> bool:
-        return GROUP_RULES[self.id](name)
+    def matches(self, name: str, currency_names: set[str] = frozenset()) -> bool:
+        return self.rule(name, currency_names)
 
 
-GROUP_RULES = {
-    "chaos": lambda n: n == CHAOS,
-    "divine": lambda n: n == DIVINE,
-    "alchemy": lambda n: n == "Orb of Alchemy",
-    "mirror": lambda n: n in ("Mirror of Kalandra", "Mirror Shard"),
-    "essence": lambda n: n.startswith("Deafening Essence of ") or n in CORRUPTED_ESSENCES,
-    "scarab": lambda n: re.search(r"\bScarab\b", n) is not None,
-}
 GROUPS = [
-    Group("chaos", "Chaos Orb", 1),
-    Group("divine", "Divine Orb", 2),
-    Group("alchemy", "Orb of Alchemy", 3),
-    Group("mirror", "Mirrors", 4),
-    Group("essence", "High-tier essences", 5),
-    Group("scarab", "Scarabs", 6),
+    # poe.ninja's Currency category (minus Catalysts), see ingest/poe_ninja_categories.py.
+    Group("currency", "Currency", 1, lambda n, cur: n in CORE_CURRENCY or n in cur),
+    Group(
+        "essence",
+        "High-tier essences",
+        2,
+        lambda n, cur: n.startswith("Deafening Essence of ") or n in CORRUPTED_ESSENCES,
+    ),
+    Group("scarab", "Scarabs", 3, lambda n, cur: re.search(r"\bScarab\b", n) is not None),
 ]
 
 
@@ -55,5 +55,6 @@ def currency_item_id(name: str) -> str:
     return f"currency:{slugify(name)}"
 
 
-def groups_for(name: str) -> list[Group]:
-    return [g for g in GROUPS if g.matches(name)]
+def groups_for(name: str, currency_names: Iterable[str] = ()) -> list[Group]:
+    cur = set(currency_names)
+    return [g for g in GROUPS if g.matches(name, cur)]

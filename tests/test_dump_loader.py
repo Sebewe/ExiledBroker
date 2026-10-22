@@ -84,7 +84,7 @@ def test_load_keeps_currency_and_uniques(setup):
     assert db.scalar(con, "SELECT links FROM item WHERE id = 'ninja:3'") == 6
     tracked = db.rows(con, "SELECT item_id, group_id FROM tracked_item ORDER BY 1")
     assert tracked == [
-        ("currency:divine-orb", "divine"),
+        ("currency:divine-orb", "currency"),
         ("currency:gilded-breach-scarab", "scarab"),
     ]
 

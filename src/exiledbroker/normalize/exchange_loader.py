@@ -46,7 +46,7 @@ class LoadResult:
 
 def _category(name: str, item_class: str) -> str:
     for group in GROUPS:
-        if group.matches(name) and group.id in ("essence", "scarab"):
+        if group.id in ("essence", "scarab") and group.matches(name):
             return group.id
     return CATEGORY_BY_CLASS.get(item_class, item_class.lower() or "unknown")
 
@@ -154,6 +154,7 @@ def load_league(
     window: cx.Window,
     names: dict[str, BaseItem],
     force: bool = False,
+    currency_names: set[str] = frozenset(),
 ) -> LoadResult:
     lid = cx.league_id(cx.GAME, window.league_name)
     fp = fingerprint(settings, window.league_name)
@@ -197,7 +198,7 @@ def load_league(
             SELECT * FROM stage_price
             """
         )
-        refresh_tracked(con)
+        refresh_tracked(con, currency_names)
         items = db.scalar(con, "SELECT count(DISTINCT item_id) FROM stage_price")
         rows = db.scalar(con, "SELECT count(*) FROM stage_price")
         con.execute(
@@ -221,7 +222,7 @@ def load_league(
     return LoadResult(lid, skipped=False, items=items, rows=rows)
 
 
-def refresh_tracked(con: duckdb.DuckDBPyConnection) -> int:
+def refresh_tracked(con: duckdb.DuckDBPyConnection, currency_names: set[str] = frozenset()) -> int:
     """Rebuild tracked_item from the group rules over every item we know."""
     rows = [
         (item_id, g.id, g.label, g.order)
@@ -229,7 +230,7 @@ def refresh_tracked(con: duckdb.DuckDBPyConnection) -> int:
             con, "SELECT id, canonical_name FROM item WHERE id LIKE 'currency:%'"
         )
         for g in GROUPS
-        if g.matches(name)
+        if g.matches(name, currency_names)
     ]
     con.execute("DELETE FROM tracked_item")
     if rows:
