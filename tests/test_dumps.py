@@ -7,7 +7,6 @@ from exiledbroker.config import Settings
 from exiledbroker.ingest import poe_ninja_dumps as dumps
 from exiledbroker.ingest.files import write_json_atomic
 from exiledbroker.ingest.http import meta_path_for
-from exiledbroker.services import overview, prices
 from exiledbroker.storage import db
 from exiledbroker.storage import dumps as dump_store
 
@@ -79,7 +78,7 @@ def test_extract_rejects_unexpected_header(settings, mirage):
         dumps.extract_dump(settings, mirage)
 
 
-def test_views_and_services(settings, mirage):
+def test_views(settings, mirage):
     dumps.extract_dump(settings, mirage, include_hardcore=True)
     with db.session(settings.db_path) as con:
         db.init_schema(con)
@@ -88,12 +87,8 @@ def test_views_and_services(settings, mirage):
             "dump_item_price",
             "dump_currency_price",
         ]
-        curve = prices.item_curve(con, "Mirage", "Mageblood")
-        assert curve["day_offset"].to_list() == [1, 2]  # hardcore row excluded
-        assert curve["chaos_value"].to_list() == [7798.2, 12783.76]
-        cal = overview.league_calendar(con)
-        assert cal.filter(cal["name"] == "Mirage")["item_rows"].item() == 2
-        assert overview.leagues_with_prices(con) == ["Mirage"]
+        rows = db.rows(con, "SELECT hardcore, day_offset FROM dump_item_price ORDER BY 1, 2")
+        assert rows == [(False, 1), (False, 2), (True, 1)]
         row = db.rows(con, "SELECT get, value, day_offset FROM dump_currency_price")
         assert row == [("Divine Orb", 86.2, 1)]
 

@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     http_timeout: float = 60.0
     http_retries: int = 5
     poe_ninja_base_url: str = "https://poe.ninja"
+    exchange_base_url: str = "https://web.poecdn.com/api/currency-exchange"
+    repoe_base_items_url: str = "https://repoe-fork.github.io/base_items.min.json"
 
     @property
     def db_path(self) -> Path:
@@ -52,6 +54,18 @@ class Settings(BaseSettings):
     @property
     def dumps_processed_dir(self) -> Path:
         return self.processed_dir / "poe_ninja" / "dumps"
+
+    @property
+    def exchange_raw_dir(self) -> Path:
+        return self.raw_dir / "ggg" / "currency_exchange"
+
+    @property
+    def exchange_processed_dir(self) -> Path:
+        return self.processed_dir / "ggg" / "currency_exchange"
+
+    @property
+    def repoe_raw_dir(self) -> Path:
+        return self.raw_dir / "repoe"
 
 
 def get_settings() -> Settings:

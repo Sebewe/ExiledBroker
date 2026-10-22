@@ -89,3 +89,38 @@ CREATE TABLE IF NOT EXISTS prediction (
     created_at  TIMESTAMP DEFAULT current_timestamp,
     PRIMARY KEY (run_id, league_id, item_id, horizon_day)
 );
+
+-- Added in phase 1 (dump loader).
+ALTER TABLE item ADD COLUMN IF NOT EXISTS ninja_id BIGINT;            -- poe.ninja line id, stable across leagues
+ALTER TABLE item ADD COLUMN IF NOT EXISTS gem_quality INTEGER;
+ALTER TABLE price_observation ADD COLUMN IF NOT EXISTS confidence VARCHAR;      -- Low | Medium | High
+ALTER TABLE price_observation ADD COLUMN IF NOT EXISTS chaos_ask DOUBLE PRECISION; -- chaos paid for one unit
+ALTER TABLE price_observation ADD COLUMN IF NOT EXISTS chaos_bid DOUBLE PRECISION; -- chaos received for one unit
+
+-- One row per (league, source) load, so re-running a load is a no-op.
+CREATE TABLE IF NOT EXISTS ingest_load (
+    league_id   VARCHAR NOT NULL REFERENCES league (id),
+    source      VARCHAR NOT NULL,
+    fingerprint VARCHAR NOT NULL,
+    item_count  INTEGER,
+    row_count   BIGINT,
+    loaded_at   TIMESTAMP DEFAULT current_timestamp,
+    PRIMARY KEY (league_id, source)
+);
+
+-- Added in phase 1 (hourly currency exchange).
+ALTER TABLE league ADD COLUMN IF NOT EXISTS launched_at TIMESTAMP;   -- first hour seen on the exchange (UTC)
+ALTER TABLE item ADD COLUMN IF NOT EXISTS metadata_id VARCHAR;       -- GGG metadata path, e.g. Metadata/Items/Currency/CurrencyModValues
+ALTER TABLE price_observation ADD COLUMN IF NOT EXISTS volume DOUBLE PRECISION;       -- units traded in the period
+ALTER TABLE price_observation ADD COLUMN IF NOT EXISTS chaos_volume DOUBLE PRECISION; -- chaos-equivalent traded
+ALTER TABLE price_observation ADD COLUMN IF NOT EXISTS chaos_low DOUBLE PRECISION;    -- lowest traded price in the period
+ALTER TABLE price_observation ADD COLUMN IF NOT EXISTS chaos_high DOUBLE PRECISION;   -- highest traded price in the period
+
+-- Curated price mappings: which items belong to which tracked group.
+CREATE TABLE IF NOT EXISTS tracked_item (
+    item_id     VARCHAR NOT NULL REFERENCES item (id),
+    group_id    VARCHAR NOT NULL,            -- chaos | divine | alchemy | mirror | essence | scarab
+    group_label VARCHAR NOT NULL,
+    sort_order  INTEGER NOT NULL,
+    PRIMARY KEY (item_id, group_id)
+);

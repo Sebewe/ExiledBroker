@@ -6,15 +6,22 @@ import typer
 import uvicorn
 
 from exiledbroker.config import get_settings
+from exiledbroker.ingest import currency_exchange as cx
+from exiledbroker.ingest import item_names
 from exiledbroker.ingest import poe_ninja_dumps as dumps_mod
 from exiledbroker.ingest.http import PoliteClient, is_complete, part_path_for
-from exiledbroker.normalize.leagues import LEAGUE_KINDS
+from exiledbroker.normalize import dump_loader, exchange_loader
+from exiledbroker.normalize.leagues import CHALLENGE, LEAGUE_KINDS
 from exiledbroker.storage import db
 from exiledbroker.storage import dumps as dump_store
 
 app = typer.Typer(help="ExiledBroker: PoE league-start market speculation.", no_args_is_help=True)
 dumps_app = typer.Typer(help="poe.ninja historical economy dumps.", no_args_is_help=True)
+exchange_app = typer.Typer(
+    help="GGG currency exchange: hourly history since Settlers.", no_args_is_help=True
+)
 app.add_typer(dumps_app, name="dumps")
+app.add_typer(exchange_app, name="exchange")
 
 
 @contextmanager
@@ -70,6 +77,13 @@ def _select(index, leagues: list[str], kind: str, since: int | None):
         for d in index
         if (kind == "all" or d.kind == kind) and (since is None or d.min_date.year >= since)
     ]
+
+
+def _calendar_leagues(index, selected):
+    """Challenge leagues, plus anything explicitly selected. Event and Ruthless leagues
+    are left out by default: few players, and markets unlike a normal league."""
+    names = {d.league_name for d in selected}
+    return [d for d in index if d.kind == CHALLENGE or d.league_name in names]
 
 
 def _progress_printer(label: str):
@@ -153,6 +167,135 @@ def dumps_sync(
 
         with db.session() as con:
             db.init_schema(con)
-            n = dump_store.upsert_leagues(con, index)
+            n = dump_store.upsert_leagues(con, _calendar_leagues(index, selected))
             views = dump_store.refresh_views(con, settings.dumps_processed_dir)
         typer.echo(f"Loaded {n} leagues into the calendar; views: {', '.join(views) or 'none'}")
+
+
+@dumps_app.command("load")
+def dumps_load(
+    league: Annotated[
+        list[str] | None, typer.Option("--league", "-l", help="League name; repeatable.")
+    ] = None,
+    kind: str = typer.Option(CHALLENGE, help=f"Filter by kind: {', '.join(LEAGUE_KINDS)} or all."),
+    force: bool = typer.Option(False, help="Reload even if the inputs are unchanged."),
+) -> None:
+    """Process extracted dumps into the item and price_observation tables.
+
+    Each league loads in one transaction, so an interrupt leaves it fully loaded or
+    untouched. Leagues already loaded from the same files are skipped.
+    """
+    settings = get_settings()
+    index = dumps_mod.cached_index(settings)
+    if index is None:
+        raise typer.BadParameter("no dump listing yet; run `eb dumps list` or `eb dumps sync`")
+    selected = [
+        d for d in _select(index, league or [], kind, None) if dumps_mod.is_extracted(settings, d)
+    ]
+    if not selected:
+        typer.echo("Nothing extracted to load. Run `eb dumps sync` first.")
+        raise typer.Exit(1)
+
+    with resumable(), db.session() as con:
+        db.init_schema(con)
+        dump_store.upsert_leagues(con, _calendar_leagues(index, selected))
+        for i, dump in enumerate(selected, 1):
+            prefix = f"[{i}/{len(selected)}] {dump.league_name} ({dump.kind})"
+            result = dump_loader.load_league(con, settings, dump, force=force)
+            if result.skipped:
+                typer.echo(f"{prefix}: already loaded")
+            else:
+                typer.echo(f"{prefix}: {result.items:,} items, {result.rows:,} price rows")
+
+
+def _exchange_leagues(settings, client, leagues: list[str]):
+    index = dumps_mod.cached_index(settings) or dumps_mod.fetch_index(client, settings)
+    history_start = cx.HISTORY_START.date()
+    if leagues:
+        return index, _select(index, leagues, "all", None)
+    eligible = [d for d in index if d.kind == CHALLENGE and d.max_date >= history_start]
+    return index, eligible
+
+
+@exchange_app.command("sync")
+def exchange_sync(
+    league: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--league",
+            "-l",
+            help="League name; repeatable. Default: every challenge league since Settlers.",
+        ),
+    ] = None,
+    days: int = typer.Option(14, help="Days after launch to fetch."),
+    force: bool = typer.Option(False, help="Rebuild Parquet and reload even if unchanged."),
+) -> None:
+    """Fetch hourly exchange history, then process it into the database.
+
+    One request per hour of history, spaced politely. Interrupt any time (Ctrl-C) and
+    re-run the same command: finished hours are never fetched again.
+    """
+    settings = get_settings()
+    with resumable(), PoliteClient(settings) as client:
+        index, selected = _exchange_leagues(settings, client, league or [])
+        item_names.ensure_base_items(client, settings)
+        names = item_names.load_base_items(settings)
+        typer.echo(f"{len(selected)} league(s), first {days} days each.")
+
+        for i, dump in enumerate(selected, 1):
+            prefix = f"[{i}/{len(selected)}] {dump.league_name}"
+            last = {"day": -1}
+
+            def progress(done: int, total: int, fetched: int, prefix=prefix, last=last) -> None:
+                day = done // 24
+                if day != last["day"] or done == total:
+                    last["day"] = day
+                    typer.echo(f"  {prefix}: hour {done}/{total} ({fetched} fetched)")
+
+            result = cx.sync_league(
+                client, settings, dump.league_name, dump.min_date, days, progress
+            )
+            if result.window is None:
+                typer.echo(f"{prefix}: not on the exchange yet")
+                continue
+            w = result.window
+            note = (
+                " (league still running; stopped at the current hour)" if result.reached_end else ""
+            )
+            typer.echo(
+                f"{prefix}: launched {w.launched_at:%Y-%m-%d %H:%M} UTC, "
+                f"{result.fetched} hour(s) fetched, {result.cached} already on disk{note}"
+            )
+            if force:
+                cx.sidecar_path(settings, dump.league_name).unlink(missing_ok=True)
+            cx.extract_league(settings, w)
+            with db.session() as con:
+                db.init_schema(con)
+                dump_store.upsert_leagues(con, _calendar_leagues(index, [dump]))
+                loaded = exchange_loader.load_league(con, settings, w, names, force=force)
+            if loaded.skipped:
+                typer.echo(f"{prefix}: already loaded")
+            else:
+                typer.echo(f"{prefix}: {loaded.items:,} items, {loaded.rows:,} hourly price rows")
+
+
+@exchange_app.command("status")
+def exchange_status() -> None:
+    """Show how much hourly history is on disk and loaded, per league."""
+    settings = get_settings()
+    index = dumps_mod.cached_index(settings) or []
+    pages = len(list(settings.exchange_raw_dir.glob("*.json.gz")))
+    typer.echo(f"{pages:,} hourly pages on disk in {settings.exchange_raw_dir}")
+    rows = {}
+    if settings.db_path.exists():
+        with db.session(read_only=True) as con:
+            q = "SELECT league_id, row_count, loaded_at FROM ingest_load WHERE source = ?"
+            rows = {r[0]: r[1:] for r in db.rows(con, q, [exchange_loader.SOURCE])}
+    for d in index:
+        if d.kind != CHALLENGE or d.max_date < cx.HISTORY_START.date():
+            continue
+        w = cx.extracted_window(settings, d.league_name)
+        span = f"{w.launched_at:%Y-%m-%d %H:%M} → {w.end:%Y-%m-%d %H:%M}" if w else "-"
+        n, at = rows.get(d.league_id, (0, None))
+        loaded = f"{n:,} rows (loaded {at:%Y-%m-%d %H:%M})" if at else "not loaded"
+        typer.echo(f"{d.league_name:<14} {span:<36} {loaded}")
