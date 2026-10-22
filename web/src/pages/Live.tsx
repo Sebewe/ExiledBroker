@@ -1,5 +1,5 @@
 import { createColumnHelper } from '@tanstack/react-table'
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import type { CardFlip, Loop } from '../api/client'
 import { useArbitrageHourly, useCardFlips, useLoops, useStatus } from '../api/queries'
 import { LazyChart as Chart } from '../components/LazyChart'
@@ -12,7 +12,7 @@ import { Notice } from '../components/Notice'
 import { queryFallback } from '../lib/queryFallback'
 import { PageHeader, Section } from '../components/Section'
 import { Stat } from '../components/Stat'
-import { count, pct, price, signedPct, tone, type Unit } from '../lib/format'
+import { count, inUnit, pct, price, signedPct, tone, type Unit } from '../lib/format'
 import { useLeague } from '../lib/useLeague'
 import { useNumberParam, useParam } from '../lib/useParam'
 
@@ -24,7 +24,6 @@ export default function Live() {
   const status = useStatus()
   const names = status.data?.leagues.map((l) => l.name) ?? []
   const [league, setLeague] = useLeague(names)
-  const [lookback, setLookback] = useNumberParam('lookback', 6)
   const [direction, setDirection] = useParam<Direction>('direction', 'chaos_first')
   const [bufferPct, setBufferPct] = useNumberParam('buffer', 2)
   const [minPrice, setMinPrice] = useNumberParam('min_price', 1)
@@ -33,13 +32,17 @@ export default function Live() {
 
   const info = status.data?.leagues.find((l) => l.name === league)
   const trading = !!info?.latest_hour
+  // Tables arrive in Chaos; Divines are converted here, with the league's latest Divine
+  // price, so switching units costs no request.
+  const rate = info?.divine_chaos
+  const shown: Unit = rate ? unit : 'chaos'
+  const money = useCallback((v: number | null | undefined) => price(inUnit(v, shown, rate), shown), [shown, rate])
   const loops = useLoops(trading ? league : undefined, {
     direction,
     buffer: bufferPct / 100,
-    lookback,
     min_price: minPrice,
   })
-  const flips = useCardFlips(trading ? league : undefined, lookback, unit)
+  const flips = useCardFlips(trading ? league : undefined)
   const selected = picked ?? loops.data?.[0]?.item_id
   const hourly = useArbitrageHourly(selected, league ? [league] : [], direction)
 
@@ -47,35 +50,42 @@ export default function Live() {
     () => [
       loop.accessor('name', { header: 'Item' }),
       loop.accessor('score', { header: 'Score', cell: (c) => <ScoreBar value={c.getValue()} />, meta: { numeric: true } }),
-      loop.accessor('price', { header: 'Price', cell: (c) => price(c.getValue()), meta: { numeric: true } }),
+      loop.accessor('price', { header: 'Price', cell: (c) => money(c.getValue()), meta: { numeric: true } }),
       loop.accessor('last_edge', {
         header: 'Edge now',
         cell: (c) => <span className={tone(c.getValue())}>{signedPct(c.getValue())}</span>,
         meta: { numeric: true, hint: 'Profit of one loop at the worst prices of its latest hour' },
       }),
-      loop.accessor('overlap_chaos', {
-        header: 'Volume',
-        cell: (c) => price(c.getValue()),
-        meta: { numeric: true, hint: 'Chaos value traded in both markets over the look-back' },
+      loop.accessor('hour_volume', {
+        header: 'Volume / hour',
+        cell: (c) => money(c.getValue()),
+        meta: { numeric: true, hint: 'Value traded in both markets in its latest hour' },
+      }),
+      loop.accessor('hour_items', {
+        header: 'Items / hour',
+        cell: (c) => count(c.getValue()),
+        meta: {
+          numeric: true,
+          hint: 'Items traded in both markets in its latest hour: how much a loop could go through. GGG publishes units traded, not the number of trades.',
+        },
       }),
       loop.accessor('paying_share', {
         header: 'Paying hours',
         cell: (c) => pct(c.getValue(), 0),
-        meta: { numeric: true, hint: 'Share of look-back hours the loop beat the fee buffer' },
+        meta: { numeric: true, hint: 'Share of the last 6 hours the loop beat the fee buffer' },
       }),
-      loop.accessor('hours_since', { header: 'Last seen', cell: (c) => `${c.getValue()}h ago`, meta: { numeric: true } }),
     ],
-    [],
+    [money],
   )
   const flipColumns = useMemo(
     () => [
       flip.accessor('name', { header: 'Card' }),
       flip.accessor('score', { header: 'Score', cell: (c) => <ScoreBar value={c.getValue()} />, meta: { numeric: true } }),
-      flip.accessor('set_cost', { header: 'Set cost', cell: (c) => price(c.getValue(), unit), meta: { numeric: true } }),
-      flip.accessor('reward_value', { header: 'Reward', cell: (c) => price(c.getValue(), unit), meta: { numeric: true } }),
+      flip.accessor('set_cost', { header: 'Set cost', cell: (c) => money(c.getValue()), meta: { numeric: true } }),
+      flip.accessor('reward_value', { header: 'Reward', cell: (c) => money(c.getValue()), meta: { numeric: true } }),
       flip.accessor('last_margin', {
         header: 'Margin',
-        cell: (c) => <span className={tone(c.getValue())}>{price(c.getValue(), unit)}</span>,
+        cell: (c) => <span className={tone(c.getValue())}>{money(c.getValue())}</span>,
         meta: { numeric: true },
       }),
       flip.accessor('last_margin_pct', {
@@ -87,7 +97,7 @@ export default function Live() {
       flip.accessor('profitable_share', { header: 'Profitable hours', cell: (c) => pct(c.getValue(), 0), meta: { numeric: true } }),
       flip.accessor('reward', { header: 'Gives' }),
     ],
-    [unit],
+    [money],
   )
 
   const chartOption = useMemo(() => loopChart(hourly.data ?? []), [hourly.data])
@@ -124,11 +134,10 @@ export default function Live() {
       {trading && (
         <>
           <Toolbar>
-            <Segmented label="Look back" value={lookback} options={[1, 3, 6, 12, 24] as const} onChange={setLookback} format={(h) => `${h}h`} />
             <Segmented label="Loop" value={direction} options={['chaos_first', 'divine_first'] as const} onChange={setDirection} format={(d) => DIRECTIONS[d]} />
             <NumberField label="Fee buffer" value={bufferPct} onChange={setBufferPct} min={0} max={50} step={0.5} suffix="%" hint="A loop only counts if it beats this, to cover gold fees and rounding." />
             <NumberField label="Min item price" value={minPrice} onChange={setMinPrice} min={0} max={100000} step={0.5} suffix="c" hint="Filters out dust-priced bulk items." />
-            <Segmented label="Cards priced in" value={unit} options={['chaos', 'divine'] as const} onChange={setUnit} format={(u) => (u === 'chaos' ? 'Chaos' : 'Divine')} />
+            <Segmented label="Prices in" value={shown} options={rate ? (['chaos', 'divine'] as const) : (['chaos'] as const)} onChange={setUnit} format={(u) => (u === 'chaos' ? 'Chaos' : 'Divine')} />
           </Toolbar>
           <div className="grid grid-cols-3 gap-2 sm:gap-3">
             <Stat label="Loops paying now" value={loops.data ? count(loops.data.length) : '–'} hint={`Beat the ${bufferPct}% buffer in their latest hour`} />
@@ -137,7 +146,7 @@ export default function Live() {
           </div>
           <Section
             title="Best loops right now"
-            description={`Chaos ↔ Divine: the edge at the worst prices of the item's latest hour, and how often it paid over the last ${lookback}h. Select a row for its last 3 days: the gap between the two price lines is the margin, the bars how much traded in both markets.`}
+            description={`Chaos ↔ Divine: the edge at the worst prices of the item's latest hour, and how often it paid over the last 6 hours. Select a row for its last 3 days: the gap between the two price lines is the margin, the bars how much traded in both markets.`}
           >
             {queryFallback(loops) ??
               (loops.data!.length ? (

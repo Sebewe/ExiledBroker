@@ -631,6 +631,17 @@
       },
       "LiveLeague": {
         "properties": {
+          "divine_chaos": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Divine Chaos"
+          },
           "hours": {
             "title": "Hours",
             "type": "integer"
@@ -668,7 +679,8 @@
           "name",
           "latest_hour",
           "hours",
-          "launched_at"
+          "launched_at",
+          "divine_chaos"
         ],
         "title": "LiveLeague",
         "type": "object"
@@ -707,6 +719,28 @@
               }
             ],
             "title": "Freshness Rank"
+          },
+          "hour_items": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hour Items"
+          },
+          "hour_volume": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hour Volume"
           },
           "hours": {
             "title": "Hours",
@@ -815,6 +849,8 @@
           "paying_share",
           "overlap_chaos",
           "last_edge",
+          "hour_volume",
+          "hour_items",
           "last_gap",
           "price",
           "last_hour",

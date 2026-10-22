@@ -13,6 +13,7 @@ class LiveLeague(BaseModel):
     latest_hour: datetime | None  # latest hour with trades; null until the first trade
     hours: int  # hours loaded
     launched_at: datetime | None
+    divine_chaos: float | None  # latest Divine price in Chaos; convert prices with it
 
 
 class Status(BaseModel):
@@ -32,6 +33,8 @@ class Loop(Ranks):
     paying_share: float | None
     overlap_chaos: float | None
     last_edge: float | None
+    hour_volume: float | None  # Chaos value traded in both markets, latest hour
+    hour_items: float | None  # items traded in both markets, latest hour (not trade count)
     last_gap: float | None
     price: float | None
     last_hour: datetime

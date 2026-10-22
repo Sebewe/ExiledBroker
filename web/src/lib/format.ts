@@ -1,6 +1,14 @@
 export type Unit = 'chaos' | 'divine'
 export const UNIT_SUFFIX: Record<Unit, string> = { chaos: 'c', divine: 'div' }
 
+/** A Chaos amount in the chosen unit, converted with the latest Divine price (in the
+ *  browser: the server sends Chaos only, plus that one rate). */
+export function inUnit(chaos: number | null | undefined, unit: Unit, divineChaos: number | null | undefined) {
+  if (chaos === null || chaos === undefined) return null
+  if (unit === 'chaos') return chaos
+  return divineChaos ? chaos / divineChaos : null
+}
+
 /** A price with sensible precision: 12,345 / 123.4 / 1.23 / 0.0123. */
 export function price(value: number | null | undefined, unit: Unit = 'chaos'): string {
   if (value === null || value === undefined) return '–'

@@ -27,7 +27,6 @@ function useVersioned<T>(key: unknown[], fn: () => Promise<T>, enabled = true) {
 export interface LoopParams {
   direction: 'chaos_first' | 'divine_first'
   buffer: number
-  lookback: number
   min_price: number
 }
 
@@ -39,15 +38,11 @@ export function useLoops(league: string | undefined, p: LoopParams) {
   )
 }
 
-export function useCardFlips(league: string | undefined, lookback: number, unit: 'chaos' | 'divine') {
+/** Always in Chaos: the page converts to Divines itself (see Live.tsx). */
+export function useCardFlips(league: string | undefined) {
   return useVersioned(
-    ['card-flips', league, lookback, unit],
-    () =>
-      unwrap(
-        api.GET('/api/live/{league}/card-flips', {
-          params: { path: { league: league! }, query: { lookback, unit } },
-        }),
-      ),
+    ['card-flips', league],
+    () => unwrap(api.GET('/api/live/{league}/card-flips', { params: { path: { league: league! } } })),
     !!league,
   )
 }

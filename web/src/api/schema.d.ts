@@ -416,6 +416,8 @@ export interface components {
         };
         /** LiveLeague */
         LiveLeague: {
+            /** Divine Chaos */
+            divine_chaos: number | null;
             /** Hours */
             hours: number;
             /** Latest Hour */
@@ -433,6 +435,10 @@ export interface components {
             edge_now_rank: number | null;
             /** Freshness Rank */
             freshness_rank: number | null;
+            /** Hour Items */
+            hour_items: number | null;
+            /** Hour Volume */
+            hour_volume: number | null;
             /** Hours */
             hours: number;
             /** Hours Since */

@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from 'react'
+import { useId, useState, type ReactNode } from 'react'
 
 export function Field({ label, hint, children }: { label: string; hint?: string; children: (id: string) => ReactNode }) {
   const id = useId()
@@ -68,6 +68,9 @@ export function NumberField({
   suffix?: string
   hint?: string
 }) {
+  // While editing, the box shows exactly what was typed, so it can be emptied (an
+  // empty box counts as 0). Leaving the field shows the number actually used.
+  const [draft, setDraft] = useState<string | null>(null)
   return (
     <Field label={label} hint={hint}>
       {(id) => (
@@ -76,14 +79,16 @@ export function NumberField({
             id={id}
             type="number"
             inputMode="decimal"
-            value={value}
+            value={draft ?? String(value)}
             min={min}
             max={max}
             step={step}
             onChange={(e) => {
-              const v = e.target.valueAsNumber
+              setDraft(e.target.value)
+              const v = e.target.value === '' ? 0 : e.target.valueAsNumber
               if (Number.isFinite(v)) onChange(Math.min(max, Math.max(min, v)))
             }}
+            onBlur={() => setDraft(null)}
             className="num h-9 w-24 bg-transparent px-2.5 text-sm outline-none"
           />
           {suffix && <span className="pr-2.5 text-sm text-faint">{suffix}</span>}

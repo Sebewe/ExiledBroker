@@ -18,6 +18,7 @@ from exiledbroker.services import cross_market, divination
 from exiledbroker.services.scoring import rank_score
 from exiledbroker.storage import db
 
+DIVINE_ID = "currency:divine-orb"
 LOOP_FACTORS = {
     "edge_now": ("last_edge", True),
     "consistency": ("paying_share", True),
@@ -36,17 +37,22 @@ CARD_WEIGHTS = {"margin_now": 4.0, "consistency": 3.0, "volume": 3.0, "freshness
 
 def live_leagues(con: duckdb.DuckDBPyConnection) -> pl.DataFrame:
     """Leagues followed on the exchange, newest data first: name, latest hour (null
-    until something has traded), hours loaded. A just-launched league is listed before
-    its first trade, so the live view can say it's waiting rather than missing."""
+    until something has traded), hours loaded, and the latest Divine price in Chaos
+    (the site converts prices to Divines with it, in the browser). A just-launched
+    league is listed before its first trade, so the live view can say it's waiting
+    rather than missing."""
     # Cheap enough to run every minute: the latest hour comes from the league/time
     # index and the hour count from exchange_hour_loaded, not from scanning prices.
     return db.frame(
         con,
         """
-        SELECT name, latest_hour, hours, launched_at FROM (
+        SELECT name, latest_hour, hours, launched_at, divine_chaos FROM (
             SELECT l.name, l.launched_at,
                    (SELECT max(p.observed_at) FROM price_observation p
                     WHERE p.league_id = l.id AND p.source = ?) AS latest_hour,
+                   (SELECT d.chaos_value FROM price_observation d
+                    WHERE d.item_id = ? AND d.league_id = l.id AND d.source = ?
+                    ORDER BY d.observed_at DESC LIMIT 1) AS divine_chaos,
                    (SELECT count(*) FROM exchange_hour_loaded h
                     WHERE h.league_id = l.id) AS hours,
                    l.exchange_tracked
@@ -55,7 +61,7 @@ def live_leagues(con: duckdb.DuckDBPyConnection) -> pl.DataFrame:
         WHERE exchange_tracked OR latest_hour IS NOT NULL
         ORDER BY coalesce(latest_hour, launched_at) DESC NULLS LAST
         """,
-        [HOURLY],
+        [HOURLY, DIVINE_ID, HOURLY],
     )
 
 
@@ -106,6 +112,10 @@ def live_loops(
             "paying_share",
             "overlap_chaos",
             last_edge=pl.col("last_edge"),
+            # Traded in both markets in the item's latest hour: the Chaos value, and the
+            # items (GGG publishes units traded per hour, not the number of trades).
+            hour_volume=pl.col("last_overlap_chaos"),
+            hour_items=pl.col("last_overlap_chaos") / pl.col("last_chaos_price"),
             last_gap=pl.col("last_gap"),
             price=pl.col("last_chaos_price"),
             last_hour=pl.col("last_observed_at"),

@@ -123,8 +123,8 @@ def test_default_pages_are_precomputed(client, settings, monkeypatch):  # noqa: 
     # Exactly the requests the frontend makes on first load (web/src/api/queries.ts).
     page_loads = [
         "/api/status",
-        f"/api/live/{LEAGUE}/loops?direction=chaos_first&buffer=0.02&lookback=6&min_price=1",
-        f"/api/live/{LEAGUE}/card-flips?lookback=6&unit=chaos",
+        f"/api/live/{LEAGUE}/loops?direction=chaos_first&buffer=0.02&min_price=1",
+        f"/api/live/{LEAGUE}/card-flips",
         f"/api/arbitrage?league={LEAGUE}&direction=chaos_first&buffer=0.02&min_hours=24&min_price=1",
         f"/api/cards/{LEAGUE}?unit=chaos&prefer_cheaper_sets=true",
         "/api/market/leagues",

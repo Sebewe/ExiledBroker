@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import Live from './Live'
@@ -30,10 +30,12 @@ function renderLive() {
 }
 
 const NOW = '2026-10-22T09:30:00Z'
-const league = (latest: string | null) => ({ name: 'Allflame', latest_hour: latest, hours: 30, launched_at: '2026-10-21T00:00:00Z' })
+const league = (latest: string | null) => ({
+  name: 'Allflame', latest_hour: latest, hours: 30, launched_at: '2026-10-21T00:00:00Z', divine_chaos: 200,
+})
 const loop = {
   item_id: 'currency:x', name: 'Legion Scarab', hours: 6, paying_share: 1, overlap_chaos: 900, last_edge: 0.35,
-  last_gap: 0.4, price: 2.06, last_hour: '2026-10-22T08:00:00Z', hours_since: 0, edge_now_rank: 1,
+  last_gap: 0.4, price: 100, hour_volume: 3000, hour_items: 30, last_hour: '2026-10-22T08:00:00Z', hours_since: 0, edge_now_rank: 1,
   consistency_rank: 1, volume_rank: 1, freshness_rank: 1, score: 0.79,
 }
 
@@ -75,5 +77,40 @@ describe('Live market', () => {
     expect(await screen.findByRole('cell', { name: 'Legion Scarab' })).toBeInTheDocument()
     expect(screen.getByText('+35.0%')).toBeInTheDocument()
     expect(screen.queryByText('Data may be out of date')).not.toBeInTheDocument()
+    expect(screen.getByRole('cell', { name: '30' })).toBeInTheDocument() // items / hour
+  })
+
+  it('converts to Divines in the browser, without asking the server again', async () => {
+    serve({
+      '/api/status': { body: { now: NOW, data_version: 'v1', leagues: [league('2026-10-22T08:00:00Z')] } },
+      '/api/live/Allflame/loops': { body: [loop] },
+      '/api/live/Allflame/card-flips': { body: [] },
+      '/api/arbitrage/hourly': { body: [] },
+    })
+    renderLive()
+    expect(await screen.findByRole('cell', { name: '100.0c' })).toBeInTheDocument()
+    const calls = vi.mocked(fetch).mock.calls.length
+    fireEvent.click(screen.getByRole('radio', { name: 'Divine' }))
+    expect(await screen.findByRole('cell', { name: '0.500div' })).toBeInTheDocument() // 100c / 200c
+    expect(screen.getByRole('cell', { name: '15.0div' })).toBeInTheDocument() // volume 3000c
+    expect(vi.mocked(fetch).mock.calls.length).toBe(calls)
+  })
+
+  it('lets a number box be emptied, which counts as 0', async () => {
+    serve({
+      '/api/status': { body: { now: NOW, data_version: 'v1', leagues: [league('2026-10-22T08:00:00Z')] } },
+      '/api/live/Allflame/loops': { body: [] },
+      '/api/live/Allflame/card-flips': { body: [] },
+    })
+    renderLive()
+    const box = await screen.findByLabelText('Min item price')
+    fireEvent.change(box, { target: { value: '' } })
+    expect(box).toHaveValue(null) // empty while editing
+    await vi.waitFor(() => {
+      const urls = vi.mocked(fetch).mock.calls.map(([r]) => (typeof r === 'string' ? r : (r as Request).url))
+      expect(urls.some((u) => u.includes('/loops') && u.includes('min_price=0'))).toBe(true)
+    })
+    fireEvent.blur(box)
+    expect(box).toHaveValue(0)
   })
 })
