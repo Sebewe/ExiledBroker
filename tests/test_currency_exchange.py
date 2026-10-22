@@ -10,10 +10,32 @@ from exiledbroker.ingest import currency_exchange as cx
 from exiledbroker.ingest.http import PoliteClient
 from exiledbroker.ingest.item_names import BaseItem
 from exiledbroker.ingest.poe_ninja_dumps import parse_index
-from exiledbroker.normalize import exchange_loader
+from exiledbroker.normalize import exchange_loader, mappings
 from exiledbroker.storage import db
 from exiledbroker.storage import dumps as dump_store
 
+FILTER = """
+Show # $type->divination $tier->excustomstack
+\tStackSize >= 3
+\tClass == "Divination Cards"
+\tBaseType == "The Hoarder"
+
+Show # $type->divination $tier->t1
+\tClass == "Divination Cards"
+\tBaseType == "House of Mirrors" "The Doctor"
+\tSetFontSize 45
+
+Show # %HS3 $type->divination $tier->t4
+\tClass == "Divination Cards"
+\tBaseType == "The Hoarder"
+
+Hide # %H0 $type->divination $tier->t5
+\tClass == "Divination Cards"
+\tBaseType == "Rain of Chaos" "The Doctor"
+
+Show # $type->divination $tier->restex
+\tClass == "Divination Cards"
+"""
 CHAOS = "Metadata/Items/Currency/CurrencyRerollRare"
 DIVINE = "Metadata/Items/Currency/CurrencyModValues"
 MIRROR = "Metadata/Items/Currency/CurrencyDuplicate"
@@ -256,40 +278,99 @@ def test_market_services(settings):
     con.close()
 
 
-def test_currency_list_extends_currency_group(settings):
+def test_core_pool_limits_groups(settings):
+    from exiledbroker.ingest.core_pool import CorePool
+
     con, _, _ = load(settings)
-    exchange_loader.refresh_tracked(con, {"Orb of Fusing"})
-    assert db.scalar(con, "SELECT count(*) FROM tracked_item WHERE group_id = 'currency'") == 4
     con.execute(
-        "INSERT INTO item (id, game, canonical_name, category) "
-        "VALUES ('currency:orb-of-fusing', 'poe1', 'Orb of Fusing', 'currency')"
+        "INSERT INTO item (id, game, canonical_name, category) VALUES "
+        "('currency:orb-of-fusing', 'poe1', 'Orb of Fusing', 'currency'), "
+        "('currency:coffin-crafts', 'poe1', 'Coffin Crafts', 'currency')"
     )
-    exchange_loader.refresh_tracked(con, {"Orb of Fusing"})
-    assert db.scalar(con, "SELECT count(*) FROM tracked_item WHERE group_id = 'currency'") == 5
+
+    def currency(pool):
+        mappings.refresh_tracked(con, pool)
+        q = "SELECT i.canonical_name FROM tracked_item t JOIN item i ON i.id = t.item_id"
+        return sorted(r[0] for r in db.rows(con, q))
+
+    # No snapshot yet: only the always-core five that exist here.
+    assert currency(None) == ["Chaos Orb", "Divine Orb", "Mirror of Kalandra", "Orb of Alchemy"]
+    listed = {"Chaos Orb", "Divine Orb", "Orb of Fusing", "Mirror of Kalandra"}
+    pool = CorePool(listed={"currency": listed})
+    # The pool decides: Alchemy isn't listed for the current league, Fusing is.
+    assert currency(pool) == ["Chaos Orb", "Divine Orb", "Mirror of Kalandra", "Orb of Fusing"]
+    pool.exclude, pool.include = {"Mirror of Kalandra"}, {"currency": {"Coffin Crafts"}}
+    assert currency(pool) == ["Chaos Orb", "Coffin Crafts", "Divine Orb", "Orb of Fusing"]
     con.close()
 
 
-def test_refresh_currency_names_keeps_a_union(settings):
-    from exiledbroker.ingest import poe_ninja_categories as cats
+def test_refresh_pool_replaces_snapshot_and_reads_overrides(settings, tmp_path):
+    from exiledbroker.ingest import core_pool
+
+    lists = {
+        "Currency": [
+            {"name": "Exalted Orb", "category": "Currency"},
+            {"name": "Foulborn Exalted Orb", "category": "Keepers"},
+            {"name": "Tainted Catalyst", "category": "Catalysts"},
+        ],
+        "Essence": [{"name": "Deafening Essence of Woe", "category": "Essence"}],
+        "Scarab": [{"name": "Horned Scarab of Bloodlines", "category": "Scarab"}],
+    }
 
     def handler(request):
+        if request.url.host == "raw.githubusercontent.com":
+            return httpx.Response(200, text=FILTER)
         if request.url.path.endswith("/leagues"):
             return httpx.Response(200, json=[{"id": "Allflame", "name": "Allflame"}])
-        assert request.url.params["type"] == "Currency"
-        return httpx.Response(
-            200,
-            json={
-                "items": [
-                    {"name": "Exalted Orb", "category": "Currency"},
-                    {"name": "Foulborn Exalted Orb", "category": "Keepers"},
-                    {"name": "Tainted Catalyst", "category": "Catalysts"},
-                ]
-            },
-        )
+        return httpx.Response(200, json={"items": lists[request.url.params["type"]]})
 
-    cats.currency_names_path(settings).parent.mkdir(parents=True)
-    cats.currency_names_path(settings).write_text('["Old League Orb"]')
+    old = core_pool.snapshot_path(settings, "currency")
+    old.parent.mkdir(parents=True)
+    old.write_text('{"league": "Old", "names": ["Old League Orb"]}')
+    settings.core_pool_file = tmp_path / "core_pool.toml"
+    settings.core_pool_file.write_text(
+        'exclude = ["Exalted Orb"]\n[include]\ncurrency = ["Coffin"]\n'
+    )
+
     with PoliteClient(settings, transport=httpx.MockTransport(handler)) as client:
-        names = cats.refresh_currency_names(client, settings)
-    assert names == {"Old League Orb", "Exalted Orb", "Foulborn Exalted Orb"}
-    assert cats.load_currency_names(settings) == names
+        pool = core_pool.refresh_pool(client, settings)
+    # Replaced, not merged: the old league's orb is gone. Catalysts are left out.
+    assert pool.listed["currency"] == {"Exalted Orb", "Foulborn Exalted Orb"}
+    assert pool.league == "Allflame"
+    assert pool.allows("currency", "Exalted Orb") is False  # excluded by config
+    assert pool.allows("currency", "Coffin") is True  # included by config
+    assert pool.allows("divination", "Coffin") is False  # ...in currency only
+    assert pool.allows("scarab", "Horned Scarab of Bloodlines") is True
+    assert pool.allows("essence", "Deafening Essence of Rage") is False
+    assert pool.allows("divination", "The Doctor") is True
+    assert pool.allows("divination", "Rain of Chaos") is False  # hidden tier
+    assert core_pool.load_pool(settings).listed == pool.listed
+
+
+def test_turn_in_margins(settings):
+    from exiledbroker.services import divination
+
+    con, _, _ = load(settings)
+    # Stand-in card: 300 "cards" (Orb of Alchemy, 0.2c in hour 0) turn into 1 Divine (30c).
+    con.execute(
+        "INSERT INTO divination_card (item_id, name, stack_size, reward_kind, reward_name, "
+        "reward_quantity, reward_item_id, reward_text, filter_tier, followed, reward_fixed) "
+        "VALUES ('currency:orb-of-alchemy', 'Test Card', 300, 'currency', 'Divine Orb', 1, "
+        "'currency:divine-orb', '', 't3', TRUE, TRUE), "
+        "('currency:mirror-of-kalandra', 'Unfollowed', 1, 'currency', 'Divine Orb', 1, "
+        "'currency:divine-orb', '', 't5', FALSE, TRUE)"
+    )
+    hourly = divination.hourly_turn_ins(con, "Mirage")
+    # Only hour 0 has both the card and its reward; the unfollowed card is ignored.
+    assert hourly.select("card", "set_cost", "reward_value", "margin").rows() == [
+        ("Test Card", 60.0, 30.0, -30.0)
+    ]
+    s = divination.turn_in_summary(con, "Mirage").row(0, named=True)
+    assert (s["name"], s["hours"], s["profitable_share"], s["avg_margin_pct"]) == (
+        "Test Card",
+        1,
+        0.0,
+        -0.5,
+    )
+    assert divination.hourly_turn_ins(con, "Mirage", card_ids=[]).is_empty()
+    con.close()

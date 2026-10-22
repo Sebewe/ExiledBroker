@@ -11,6 +11,32 @@ from exiledbroker.storage import db
 
 UNIT_COLUMN = {"chaos": "chaos_value", "divine": "divine_value"}
 SUMMARY_DAYS = (1, 3, 7, 14)  # 1-based: "day 1" is the first 24 hours after launch
+SUMMARY_SCHEMA = {
+    "item_id": pl.String,
+    "name": pl.String,
+    "group_id": pl.String,
+    **{f"day_{n}": pl.Float64 for n in SUMMARY_DAYS},
+    "latest": pl.Float64,
+    "average": pl.Float64,
+    "peak": pl.Float64,
+    "peak_day": pl.Int32,
+    "volume": pl.Float64,
+    "chaos_volume": pl.Float64,
+    "trend": pl.List(pl.Float64),
+    "days": pl.Int32,
+    "change": pl.Float64,
+}
+
+
+HOURLY_SCHEMA = {
+    "observed_at": pl.Datetime,
+    "day_offset": pl.Float64,
+    "name": pl.String,
+    "value": pl.Float64,
+    "low": pl.Float64,
+    "high": pl.Float64,
+    "volume": pl.Float64,
+}
 
 
 def _unit(unit: str) -> str:
@@ -20,14 +46,23 @@ def _unit(unit: str) -> str:
 
 
 def hourly_leagues(con: duckdb.DuckDBPyConnection) -> pl.DataFrame:
-    """Leagues with hourly exchange data: name, launch time, hours covered."""
+    """Leagues followed on the hourly exchange, newest first, including ones with no
+    trades yet (a new league is registered before its first hour is published).
+
+    Columns: name, start_at (announced), launched_at (first hour seen, or null),
+    row_count and hours_covered (0 until data arrives).
+    """
     return db.frame(
         con,
         """
-        SELECT l.name, l.launched_at, il.row_count,
-               (SELECT max(p.day_offset) FROM price_observation p
-                WHERE p.league_id = l.id AND p.source = ?) AS days_covered
-        FROM league l JOIN ingest_load il ON il.league_id = l.id AND il.source = ?
+        SELECT l.name, l.start_at, l.launched_at,
+               coalesce(il.row_count, 0) AS row_count,
+               coalesce((SELECT CAST(round(max(p.day_offset) * 24) AS INTEGER) + 1
+                         FROM price_observation p
+                         WHERE p.league_id = l.id AND p.source = ?), 0) AS hours_covered
+        FROM league l
+        LEFT JOIN ingest_load il ON il.league_id = l.id AND il.source = ?
+        WHERE l.exchange_tracked OR il.league_id IS NOT NULL
         ORDER BY l.start_at DESC
         """,
         [HOURLY, HOURLY],
@@ -55,7 +90,10 @@ def daily(
         f"""
         SELECT i.id AS item_id, i.canonical_name AS name, t.group_id,
                CAST(floor(p.day_offset) AS INTEGER) + 1 AS day,
-               sum(p.{col} * p.volume) / sum(p.volume) AS value,
+               -- Hours with no price in this unit (e.g. before the first Divine trade)
+               -- are left out of both sides of the weighted average.
+               sum(p.{col} * p.volume)
+                   / nullif(sum(CASE WHEN p.{col} IS NOT NULL THEN p.volume END), 0) AS value,
                sum(p.volume) AS volume, sum(p.chaos_volume) AS chaos_volume
         FROM price_observation p
         JOIN item i ON i.id = p.item_id
@@ -78,8 +116,8 @@ def summary(
     """
     d = daily(con, league, group_ids, unit)
     if d.is_empty():
-        return d
-    last_day = d["day"].max()
+        return pl.DataFrame(schema=SUMMARY_SCHEMA)
+    priced_volume = pl.col("volume").filter(pl.col("value").is_not_null()).sum()
     out = (
         d.sort("day")
         .group_by("item_id", "name", "group_id", maintain_order=True)
@@ -88,16 +126,20 @@ def summary(
                 pl.col("value").filter(pl.col("day") == n).first().alias(f"day_{n}")
                 for n in SUMMARY_DAYS
             ],
-            pl.col("value").filter(pl.col("day") == last_day).first().alias("latest"),
-            ((pl.col("value") * pl.col("volume")).sum() / pl.col("volume").sum()).alias("average"),
+            # The item's own last traded day; thin items may not trade every day.
+            pl.col("value").drop_nulls().last().alias("latest"),
+            pl.when(priced_volume > 0)
+            .then((pl.col("value") * pl.col("volume")).sum() / priced_volume)
+            .alias("average"),
             pl.col("value").max().alias("peak"),
             pl.col("day").sort_by("value").last().alias("peak_day"),
             pl.col("volume").sum().alias("volume"),
             pl.col("chaos_volume").sum().alias("chaos_volume"),
-            pl.col("value").alias("trend"),
+            pl.col("day").n_unique().cast(pl.Int32).alias("days"),
+            pl.col("value").drop_nulls().alias("trend"),
         )
         .with_columns(change=pl.col("latest") / pl.col("day_1") - 1)
-        .sort("average", descending=True)
+        .sort("average", descending=True, nulls_last=True)
     )
     return out
 
@@ -107,7 +149,7 @@ def hourly(
 ) -> pl.DataFrame:
     """Hourly price, traded range and volume for the given items."""
     if not item_ids:
-        return pl.DataFrame()
+        return pl.DataFrame(schema=HOURLY_SCHEMA)
     col = _unit(unit)
     marks = ", ".join("?" for _ in item_ids)
     return db.frame(

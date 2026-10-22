@@ -18,11 +18,12 @@ import duckdb
 from exiledbroker.config import Settings
 from exiledbroker.ingest.files import read_json
 from exiledbroker.ingest.poe_ninja_dumps import GAME, DumpInfo, parquet_path
+from exiledbroker.normalize.mappings import refresh_mappings
 from exiledbroker.storage import db
 
 SOURCE = "poe.ninja-dump"
 # Bump when the row mapping changes so loaded leagues are rebuilt.
-LOADER_VERSION = 2
+LOADER_VERSION = 3
 
 SLUG = "trim(regexp_replace(lower({col}), '[^a-z0-9]+', '-', 'g'), '-')"
 CONFIDENCE_RANK = "CASE {col} WHEN 'High' THEN 3 WHEN 'Medium' THEN 2 WHEN 'Low' THEN 1 END"
@@ -31,6 +32,7 @@ LINKS = "CASE links WHEN '6 links' THEN 6 WHEN '5 links' THEN 5 WHEN '1-4 links'
 # For now we keep currency and uniques only. Item-file types that are really
 # currency are keyed by name, like the currency file and the hourly exchange.
 CURRENCY_LIKE_TYPES = (
+    "DivinationCard",
     "Scarab",
     "Essence",
     "Fossil",
@@ -74,14 +76,16 @@ def _stage(con: duckdb.DuckDBPyConnection, settings: Settings, dump: DumpInfo) -
                CASE WHEN type IN {CURRENCY_LIKE} THEN 'currency:' || {SLUG.format(col="name")}
                     ELSE 'ninja:' || ninja_id END AS item_id
         FROM read_parquet('{items_pq}')
-        WHERE NOT hardcore AND chaos_value > 0
+        -- Nameless rows (e.g. 15 Sanctum relics in the Ancestor dump) can't be identified.
+        WHERE NOT hardcore AND chaos_value > 0 AND name IS NOT NULL
           AND (type LIKE 'Unique%' OR type IN {CURRENCY_LIKE})
         """
     )
     con.execute(
         f"""
         CREATE OR REPLACE TEMP TABLE stage_currency AS
-        WITH c AS (SELECT * FROM read_parquet('{currency_pq}') WHERE NOT hardcore AND value > 0),
+        WITH c AS (SELECT * FROM read_parquet('{currency_pq}') WHERE NOT hardcore AND value > 0
+                   AND get IS NOT NULL AND pay IS NOT NULL),
         ask AS (
             SELECT get AS name, date, value AS chaos_ask, confidence AS ask_conf
             FROM c WHERE pay = 'Chaos Orb' AND get <> 'Chaos Orb'
@@ -160,14 +164,6 @@ def _stage(con: duckdb.DuckDBPyConnection, settings: Settings, dump: DumpInfo) -
     )
 
 
-def refresh_tracked(con: duckdb.DuckDBPyConnection, settings: Settings) -> None:
-    # Imported here to avoid a cycle; the exchange loader owns the group rules' table.
-    from exiledbroker.ingest.poe_ninja_categories import load_currency_names
-    from exiledbroker.normalize.exchange_loader import refresh_tracked as refresh
-
-    refresh(con, load_currency_names(settings))
-
-
 def load_league(
     con: duckdb.DuckDBPyConnection, settings: Settings, dump: DumpInfo, force: bool = False
 ) -> LoadResult:
@@ -188,7 +184,7 @@ def load_league(
             ON CONFLICT (id) DO NOTHING
             """
         )
-        refresh_tracked(con, settings)
+        refresh_mappings(con, settings)
         con.execute(
             "DELETE FROM price_observation WHERE league_id = ? AND source = ?",
             [dump.league_id, SOURCE],

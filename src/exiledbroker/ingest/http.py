@@ -51,6 +51,12 @@ class PoliteClient:
         time.sleep(delay)
 
     def get_json(self, url: str) -> object:
+        return self._get(url).json()
+
+    def get_text(self, url: str) -> str:
+        return self._get(url).text
+
+    def _get(self, url: str) -> httpx.Response:
         for attempt in range(self.settings.http_retries + 1):
             self.throttle()
             try:
@@ -64,7 +70,7 @@ class PoliteClient:
                 self.backoff(attempt, r)
                 continue
             r.raise_for_status()
-            return r.json()
+            return r
         raise RuntimeError("unreachable")
 
     def stream(self, url: str, headers: dict[str, str]):

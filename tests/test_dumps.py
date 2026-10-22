@@ -1,3 +1,4 @@
+import json
 import zipfile
 from datetime import date
 
@@ -101,3 +102,25 @@ def test_league_upsert_updates_existing(settings):
         assert db.scalar(con, "SELECT count(*) FROM league") == 2
         start = db.scalar(con, "SELECT CAST(start_at AS DATE) FROM league WHERE name = 'Mirage'")
         assert start == date(2026, 3, 6)
+
+
+def test_extract_drops_rows_split_by_line_breaks(settings, mirage):
+    # A name with an unquoted line break spills one record over three lines.
+    broken = ITEMS + (
+        "Mirage;2026-03-09;7;Coffin;Reveals a Random Craft when Buried\n"
+        "Rarer Crafts are more common;Reveals a Random Craft when Buried\n"
+        "Rarer Crafts are more common;;;5;High\n"
+        "Mirage;2026-03-09;1;UniqueAccessory;Mageblood;Heavy Belt;;;15000;High\r\n"
+    )
+    zp = dumps.zip_path(settings, mirage)
+    with zipfile.ZipFile(zp, "w") as zf:
+        zf.writestr("Mirage.items.csv", broken)
+        zf.writestr("Mirage.currency.csv", CURRENCY)
+    dumps.extract_dump(settings, mirage)
+    out = dumps.parquet_path(settings, mirage, "items")
+    import polars as pl
+
+    df = pl.read_parquet(out)
+    assert df["chaos_value"].to_list() == [7798.2, 12783.76, 15000.0]
+    assert df["confidence"].to_list()[-1] == "High"  # no stray \r
+    assert json.loads(out.with_name(out.name + ".dropped.json").read_text()) == {"rows": 3}

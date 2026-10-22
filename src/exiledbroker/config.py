@@ -6,12 +6,20 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from exiledbroker import __version__
 
 
+def _repo_root() -> Path | None:
+    root = Path(__file__).resolve().parents[2]
+    return root if (root / "pyproject.toml").exists() else None
+
+
 def _default_data_dir() -> Path:
     """The repo's gitignored data/ folder when running from a checkout, else ./data."""
-    repo_root = Path(__file__).resolve().parents[2]
-    if (repo_root / "pyproject.toml").exists():
-        return repo_root / "data"
-    return Path("data")
+    root = _repo_root()
+    return root / "data" if root else Path("data")
+
+
+def _default_core_pool() -> Path:
+    root = _repo_root()
+    return root / "config" / "core_pool.toml" if root else Path("config/core_pool.toml")
 
 
 class Settings(BaseSettings):
@@ -20,6 +28,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="EB_", env_file=".env", extra="ignore")
 
     data_dir: Path = Field(default_factory=_default_data_dir)
+    # Manual include/exclude lists for the core drop pool (committed, edit by hand).
+    core_pool_file: Path = Field(default_factory=_default_core_pool)
     db_filename: str = "exiledbroker.duckdb"
     # Only PoE1 for now; every league row still carries its game.
     default_game: str = "poe1"
@@ -33,6 +43,13 @@ class Settings(BaseSettings):
     http_retries: int = 5
     poe_ninja_base_url: str = "https://poe.ninja"
     exchange_base_url: str = "https://web.poecdn.com/api/currency-exchange"
+    # NeverSink's loot filter (the one FilterBlade serves) decides which divination
+    # cards we follow: only cards the filter shows at this strictness.
+    loot_filter_url: str = (
+        "https://raw.githubusercontent.com/NeverSinkDev/NeverSink-Filter/master/"
+        "NeverSink%27s%20filter%20-%20{strictness}.filter"
+    )
+    loot_filter_strictness: str = "2-SEMI-STRICT"
     repoe_base_items_url: str = "https://repoe-fork.github.io/base_items.min.json"
 
     @property

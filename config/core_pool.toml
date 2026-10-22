@@ -1,0 +1,22 @@
+# The core drop pool: which items ExiledBroker is allowed to show.
+#
+# Each price-mapping group is limited automatically, refreshed on every
+# `eb exchange sync`:
+#   currency, essence, scarab: what poe.ninja lists for the *current* league, so items
+#     from league mechanics that didn't go core, or removed from the game, drop out.
+#   divination: the cards NeverSink's loot filter (FilterBlade) shows.
+#
+# When that isn't enough (e.g. the new league's own currency, which may or may not
+# go core), list items by their exact in-game name below, then re-run
+# `eb exchange sync` (it re-applies the pool; finished hours aren't fetched again).
+
+# Never show these, in any group, even if poe.ninja or the filter lists them.
+exclude = [
+]
+
+# Always show these in the given group, even if poe.ninja or the filter doesn't list them.
+[include]
+currency = []
+essence = []
+scarab = []
+divination = []

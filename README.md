@@ -13,13 +13,13 @@ A Path of Exile market speculation tool. It uses historical price data and the n
 | Phase | Goal | Deliverable | State |
 |---|---|---|---|
 | 0 | Scaffolding | Package, CLI, DuckDB schema, config, service layer, Streamlit demo + API skeleton | ✅ Done |
-| 1 | Historical ingest | Daily poe.ninja dumps + hourly GGG exchange → `item` / `price_observation`, league calendar, price mappings | 🟨 Both pipelines done. Mirage loaded (daily, plus hourly for the first 14 days). Other challenge leagues: run `scripts/ingest.sh` |
-| 2 | Exploration | Notebooks: recurring launch-week patterns by category | ⬜ Not started |
+| 1 | Historical ingest | Daily poe.ninja dumps + hourly GGG exchange → `item` / `price_observation`, league calendar, price mappings, core pool, divination cards | ✅ Done. All 32 challenge leagues daily; hourly for the four exchange-era leagues |
+| 2 | Exploration | Recurring launch-week patterns across recent leagues: `analysis/` module + the demo's Analysis tab | 🟨 Tools built (unique moves, launch curves, group timing, card turn-ins across leagues); first finding in §9 |
 | 3 | Patch corpus | Scraper, extractor, review tool for past leagues | ⬜ Not started |
 | 4 | Baseline + backtest | First honest accuracy numbers | ⬜ Not started |
 | 5 | Signals | Ranked list: "farm X", "buy Y on day 2, sell day 6" | ⬜ Not started |
 | 6 | Live mode | Hourly ingest at launch, alerts when prices drift from prediction | ⬜ Not started |
-| 7 | UI | Streamlit demo (local) → hosted public frontend on the JSON API | 🟨 Streamlit demo: Mirage launch market for the tracked groups |
+| 7 | UI | Streamlit demo (local) → hosted public frontend on the JSON API | 🟨 Streamlit demo: launch market, card turn-ins, data; handles leagues with no data yet |
 
 Legend: ⬜ Not started · 🟨 In progress · ✅ Done
 
@@ -35,6 +35,7 @@ python3 -m venv .venv && .venv/bin/pip install -e '.[dev,demo]'
 .venv/bin/eb dumps load   # process extracted leagues into item / price_observation
 .venv/bin/eb exchange sync -l Mirage   # hourly exchange history, first 14 days (resumable)
 .venv/bin/eb exchange status           # what's on disk and loaded
+.venv/bin/eb exchange sync -l "<New League>" --start 2026-11-20   # register the upcoming league (see §2.8)
 .venv/bin/streamlit run app/dashboard.py   # local demo (run from the repo root so the theme loads)
 .venv/bin/eb serve        # API at http://127.0.0.1:8000/api/health (for hosting later)
 .venv/bin/pytest          # tests
@@ -62,11 +63,12 @@ tail -f data/logs/latest.log
 - Rough cost: the hourly exchange for the four challenge leagues since Settlers is ~1.5k requests (~30 min, ~150 MB on disk). The daily dumps for all ~30 challenge leagues are about 1 GB of zips.
 - While a run is loading, the demo may briefly fail to open the database (DuckDB allows one writer). Refresh the page.
 
-### Phase 1 next steps
+### Next steps
 
-- Run `scripts/ingest.sh all` to fill in the other challenge leagues.
-- Add the upcoming league to the calendar once its name and start time are announced. It won't be in the dumps.
-- Live recording at launch (phase 6): uniques have no sub-daily history anywhere public, so the poe.ninja live poller must be running when the next league starts (§2.2).
+- **Phase 2:** use the Analysis tab across all four exchange-era leagues and write up the patterns that repeat (§9).
+- **Before the next launch:** register the upcoming league once its name and date are announced (§2.8), and run the exchange sync on a schedule (hourly) through launch week. A small `eb exchange watch` loop or a launchd/cron entry is the obvious next step (phase 6).
+- **Live recording at launch (phase 6):** uniques have no sub-daily history anywhere public, so the poe.ninja live poller must be running when the next league starts (§2.2).
+- **Divination card expected value:** random rewards ("5x Currency") and unique rewards (§2.7).
 
 ### Open questions
 
@@ -95,8 +97,15 @@ tail -f data/logs/latest.log
 | 2026-10-21 | **Event and Ruthless leagues are excluded** from data and analysis. Most players don't play them and their markets don't follow normal trends (§2.6), so including them would make predictions worse. Every command defaults to challenge leagues, the calendar lists only challenge leagues, and the Ancestors data was deleted. `--kind` / `-l` can still select one explicitly. |
 | 2026-10-21 | **Scope: currency and uniques only.** The dump loader skips base items, gems, cluster jewels, maps and the other item types. Currency-like item types (scarabs, essences, fossils, oils, ...) are keyed by name (`currency:<slug>`), like the currency file and the exchange, so one item has one id whatever the source. Uniques keep `ninja:<Id>`. |
 | 2026-10-21 | **For the first 14 days, hourly exchange prices replace daily ones** for everything traded on the exchange. The hourly price is volume-weighted across the item's Chaos and Divine markets, with Divine trades converted at that hour's Divine rate (§2.4). |
-| 2026-10-21 | **Price mappings** (`tracked_item`) have three groups. **Currency** = poe.ninja's Currency category (including league-mechanic currency, excluding Catalysts), always including Chaos, Divine, Alchemy, Mirror of Kalandra and Mirror Shard; mirrors aren't a separate group. **High-tier essences** = all Deafening, plus Hysteria/Insanity/Horror/Delirium. **Scarabs** = every item named "… Scarab …". Groups are name rules in `normalize/tracked.py`, so they apply to every source. |
-| 2026-10-21 | The currency list is fetched from poe.ninja's exchange overview (`type=Currency`, current league) on each `eb exchange sync`, and kept as a running union in `data/raw/poe_ninja/categories/currency.json`. Currency added by a new league is picked up and older currency is never dropped. |
+| 2026-10-21 | **Price mappings** (`tracked_item`) have four groups: **Currency** (mirrors included, not a separate group), **High-tier essences** (all Deafening, plus Hysteria/Insanity/Horror/Delirium), **Scarabs**, and **Divination cards**. The group rules are in `normalize/tracked.py`, so they apply to every source. |
+| 2026-10-21 | **Only the core drop pool is shown** (`ingest/core_pool.py`). Currency, essences and scarabs are limited to what poe.ninja lists for the *current* league (exchange overview `type=Currency/Essence/Scarab`, minus Catalysts). Each list is a snapshot, replaced on every `eb exchange sync`, so items whose league mechanic didn't go core drop out. (This replaces the earlier running-union currency list.) Divination cards are limited to what NeverSink's filter shows. Manual overrides go in the committed `config/core_pool.toml`: `exclude` hides a name everywhere, `[include]` forces a name into one group. Example: Deafening Essence of Doubt traded in Mirage but isn't in the current list, so it's hidden. |
+| 2026-10-21 | **Malformed dump rows are dropped, not fatal.** poe.ninja doesn't quote CSV fields, so a name containing a line break (Necropolis coffins, a mechanic that never went core) spills one record over several lines. Extraction keeps only rows that start with the league name and have the right field count, and records the drop count next to the Parquet (`*.dropped.json`). Necropolis: 1,422 lines dropped. |
+| 2026-10-21 | **Divination cards** (§2.7): follow only cards NeverSink's loot filter (what FilterBlade serves) shows at Semi-Strict (`EB_LOOT_FILTER_STRICTNESS`), i.e. tiers t1–t4. Each card's set size and reward come from RePoE, in the `divination_card` table. Cards trade on the exchange, so they get hourly prices, and a fixed currency or card reward gets an hourly **turn-in margin** (reward value − set size × card price). |
+| 2026-10-21 | **Built for a new league's data arriving.** At launch every price is null, and GGG publishes each exchange hour only after it ends. A league can be registered before it has any data (`--start`), and every view handles none / one hour / a few days without errors. Day-based comparisons (e.g. "vs. day 1") only appear once there are two days. Keep this in mind for every new view (§2.8). |
+| 2026-10-21 | The demo's KPI cards leave out Chaos (it's the unit everything is priced in), and every price column, axis and tooltip names its unit. |
+| 2026-10-21 | Dump rows with no item name (15 Sanctum relics in the Ancestor dump) are skipped by the loader. |
+| 2026-10-21 | **Phase 2 analyses favour recent leagues.** The economy changes a lot league by league, and the currency exchange (Settlers, 2024-07) was a structural break. So every tool reports per league, newest first, and summaries are recency-weighted: the newest league counts 1, and each *half-life* leagues back halves it (default 2, adjustable in the Analysis tab). Leagues before Settlers are context only. |
+| 2026-10-21 | Launch curves are compared on a **relative** scale: price ÷ the item's day-1 price in the same league, where the day-1 price is the *median* of its first-24-hour hourly prices (thin early markets, like a few junk Mirror trades, would skew an average). Curves whose baseline rests on fewer than six traded hours are flagged. Turn-in margin % is total margin ÷ total set cost, not an average of hourly percentages, which blows up for near-worthless sets. |
 | 2026-10-21 | Demo tables sort by each item's **average price over the window** (volume-weighted, in the selected unit), shown as the "Avg price" column. With nothing selected, the chart shows the five most-traded items. |
 | 2026-10-21 | Exchange item names come from RePoE's base item table. RePoE gives some different items the same name, so an ambiguous name never merges items: each metadata id becomes its own item, labelled `Name (MetadataName)`. None of the tracked items are ambiguous. |
 | 2026-10-21 | A league's `launched_at` is the first hour it trades on the exchange (Mirage: 2026-03-06 20:00 UTC). Hourly `day_offset` is fractional days from then. |
@@ -138,6 +147,7 @@ Follow GGG's terms and rate limits, and cache everything so the same data is nev
 - `<League>.items.csv`: `League;Date;Id;Type;Name;BaseType;Variant;Links;Value;Confidence`. **Daily** values in chaos. Confidence is Low/Medium/High. There are **no listing counts**, so confidence is our only liquidity signal for history.
 - `<League>.currency.csv`: `League;Date;Get;Pay;Value;Confidence`. `Value` is how many `Pay` you give for one `Get`. Both directions are present (Get Divine / Pay Chaos ≈ 86; Get Chaos / Pay Divine ≈ 0.0117).
 - Days 0–1 are thin and noisy (e.g. a Divine at 2 chaos on day 0). Down-weight them.
+- Fields aren't quoted. An item name with a line break (Necropolis coffins) breaks its record over several lines; extraction drops such rows (decision log).
 - Sizes vary a lot: Mirage is 55 MB zipped and 4.8M softcore item rows (11 MB Parquet); Settlers is 106 MB and 8.7M rows.
 - The `Id` column is poe.ninja's item line id and is **stable across leagues** (Headhunter is 607 in Settlers, Mirage and Ancestors). One visible name/base/variant can map to several ids, because of attributes the dump omits (item level on bases and cluster jewels, etc.), so `Id` is the item identity.
 
@@ -156,7 +166,7 @@ Example, Mirage: the league launched at 20:00 UTC on 2026-03-06. The first Divin
 
 ### 2.3 From dumps to the general tables (`eb dumps load`)
 
-- **Scope:** currency and uniques only (`Unique*` item types, the currency file, and currency-like item types such as `Scarab`, `Essence`, `Fossil`, `Oil`, `Omen`, `Tattoo`, `Resonator`, `DeliriumOrb`). Base items, gems, cluster jewels and maps are skipped.
+- **Scope:** currency, divination cards and uniques (`Unique*` item types, the currency file, and currency-like item types: `DivinationCard`, `Scarab`, `Essence`, `Fossil`, `Oil`, `Omen`, `Tattoo`, `Resonator`, `DeliriumOrb`). Base items, gems, cluster jewels and maps are skipped.
 - **`item`**: uniques are one row per poe.ninja `Id` (`ninja:<Id>`) with name, category (`UniqueArmour`, ...), base, variant and links (`'1-4 links'` is stored as 4, meaning "four or fewer"). Currency-like items are `currency:<slug of name>` with category `currency`, `scarab`, `essence`, ... (The `gem_*` columns from earlier are unused now.)
 - **`price_observation`**: one row per item per day. `chaos_value`, `divine_value`, `confidence`, `day_offset` and, for currency, `chaos_ask` / `chaos_bid`. `source = 'poe.ninja-dump'`, and `listing_count` is empty because the dumps don't have it. Zero-value rows are dropped.
 - **`ingest_load`**: what was loaded per league, with an input fingerprint. Each league loads in a single transaction, so an interrupted load leaves it untouched, and re-running with the same inputs is a no-op. Use `--force` to rebuild.
@@ -180,11 +190,12 @@ Mirage, first 14 days: 368 pages (39 MB raw), 1,027 items, 269k hourly rows.
 
 | Group | Items | In Mirage |
 |---|---|---|
-| Currency | poe.ninja's Currency category minus Catalysts (89 names), plus the five core orbs | 88 traded, all with hourly prices (Dead Man's Sulphur is newer than Mirage) |
-| High-tier essences | 20 Deafening + Hysteria, Insanity, Horror, Delirium | 24 |
-| Scarabs | every item named "… Scarab …" | 111 traded |
+| Currency | poe.ninja's current-league Currency list minus Catalysts (88 names) | 87 shown (Dead Man's Sulphur is newer than Mirage) |
+| High-tier essences | Deafening + Hysteria, Insanity, Horror, Delirium, if in the current Essence list | 23 (Deafening Essence of Doubt is no longer listed) |
+| Scarabs | every "… Scarab …" in the current Scarab list | 111 |
+| Divination cards | cards NeverSink's filter shows (361) | 358 with hourly prices |
 
-The demo's "Launch market" page shows KPI cards for Divine, Chaos, Alchemy, Mirror and Mirror Shard. Below them, each group gets a table sorted by average price, and selecting rows charts their hourly prices.
+The demo's "Launch market" page shows KPI cards for Divine, Alchemy, Mirror and Mirror Shard. Below them, each group gets a table sorted by average price, and selecting rows charts their hourly prices.
 
 From day 1 to day 14 in Mirage: Divine 86 → 266 chaos (+208%), Mirror of Kalandra 84 → 678 divines (+710%), Mirror Shard 9.7 → 34 divines, Deafening Essence of Scorn 2.5 → 22.7 chaos.
 
@@ -194,6 +205,22 @@ We looked at Ancestors (an event league, 21 days) before dropping event leagues.
 - About 45–60% as many items were priced as in Mirage, and whole categories (scarabs, essences, divination cards, ...) were missing.
 - Currency quotes were noisy: on day 1 the Divine buy and sell prices were 46% apart, while Mirage's stayed within 1–3% for the first week.
 - Chase uniques moved the opposite way from a normal league: Mageblood fell 18.1k → 8.6k chaos over the first week, while in Mirage it rose 7.8k → 33k.
+
+### 2.7 Divination cards
+
+- **Which cards:** NeverSink's filter lists every card in a tier block (`$type->divination $tier->t1` ... `t5`). Tiers t1–t4 (incl. t4c, t5c) are shown, and t5 is hidden. At Semi-Strict that's 361 shown and 93 hidden (identical up to Strict). Stack-size rules aren't tiers. A card the filter doesn't know yet is shown by its catch-all rule, but we don't follow it until it's tiered. The tiers are fetched with the core pool on each `eb exchange sync` (`data/raw/neversink/divination_tiers.json`).
+- **What a set gives** (RePoE `properties.description` / `stack_size`, parsed in `normalize/divination.py`): followed cards are 67 currency, 5 card, 180 unique, 41 normal, 26 gem, 20 magic and 18 rare rewards (plus 4 disabled). A currency or card reward is *fixed* if its name is exactly one item (`<currencyitem>{10x Exalted Orb}`), or *random* if it's generic (`5x Currency`, `3x Essence`, `Divination Card`). Fixed exchange-priced rewards get `reward_item_id`.
+- **Turn-in margin** (`services/divination.py`): for each hour both the card and its reward traded, set cost = set size × card price, reward value = quantity × reward price, margin = reward value − set cost. This excludes gold fees and the time to buy a full set.
+- **Mirage, first 14 days:** 57 fixed turn-ins priced. 28 were profitable in 90%+ of hours. Examples: The Lake (8 → Reflecting Mist) averaged +18% and was profitable 98% of hours. Seven Years Bad Luck (13 → Mirror Shard) and The Sephirot (11 → 10 Divine) were profitable almost every hour, at thinner margins.
+- **Next: expected value.** Random rewards need an EV over what they can roll, and unique rewards need unique prices (daily dumps). Once the EV exists, a card trading below its reward's EV is an arbitrage target.
+
+### 2.8 Designing for a new league
+
+The upcoming league is what the tool is for, and its data starts empty:
+- **Before launch** it isn't in poe.ninja's dumps. Register it with `eb exchange sync -l "<Name>" --start <launch date>`. The league row is created right away (`exchange_tracked`), the demo shows "waiting for the first hour of trades", and later runs remember the start date.
+- **First hours:** GGG publishes each exchange hour only after it ends, so the first prices appear about an hour after launch. Many items have no trades for hours, and the Divine rate is unknown until the first Chaos/Divine trade. Prices in divines are then null, and averages leave those hours out of both the sum and the weight.
+- **Each re-run** of the sync adds the newly published hours (finished hours are never re-fetched), rebuilds that league's Parquet and reloads its hourly rows in one transaction.
+- **Every view** must handle: no data, one hour, items that haven't traded, days with gaps. The demo's tests (`tests/test_dashboard.py`) run the app headlessly in each of those states.
 
 
 ## 3. Architecture
@@ -220,7 +247,8 @@ ExiledBroker/
 │   │   ├── poe_ninja_dumps.py  # ✔ dump listing, download, zip → Parquet
 │   │   ├── currency_exchange.py # ✔ GGG hourly exchange: find launch, fetch window, → Parquet
 │   │   ├── item_names.py       # ✔ RePoE metadata id → name
-│   │   ├── poe_ninja_categories.py # ✔ poe.ninja's Currency category list (running union)
+│   │   ├── core_pool.py        # ✔ core drop pool: current-league lists + config/core_pool.toml
+│   │   ├── loot_filter.py      # ✔ NeverSink filter divination tiers
 │   │   ├── poe_ninja_live.py   # live economy overview (phase 6)
 │   │   └── patch_notes.py      # scrape raw text → store
 │   ├── storage/
@@ -230,7 +258,9 @@ ExiledBroker/
 │   ├── normalize/
 │   │   ├── dump_loader.py      # ✔ dump Parquet → item / price_observation (currency + uniques)
 │   │   ├── exchange_loader.py  # ✔ exchange Parquet → hourly prices (one transaction per league)
-│   │   ├── tracked.py          # ✔ price mapping groups: currency, high-tier essences, scarabs
+│   │   ├── tracked.py          # ✔ price mapping groups: currency, essences, scarabs, divination cards
+│   │   ├── divination.py       # ✔ card set size + reward parsing
+│   │   ├── mappings.py         # ✔ rebuild tracked_item + divination_card after each load
 │   │   ├── leagues.py          # ✔ day_offset, league ids, challenge/ruthless/event tagging
 │   │   ├── entities.py         # name resolution, renames, variants
 │   │   └── currency.py         # chaos/divine normalization
@@ -244,18 +274,20 @@ ExiledBroker/
 │   │   ├── impact.py           # patch-adjusted curve
 │   │   └── backtest.py         # leave-one-league-out evaluation
 │   ├── signals/                # ranking, buy/sell windows, risk
-│   ├── services/               # ✔ read-side queries shared by the demo and the API (overview, prices, market)
+│   ├── analysis/
+│   │   └── launch_patterns.py  # ✔ phase 2: unique moves by tier, launch curves, group timing, card turn-ins across leagues, recency weights
+│   ├── services/               # ✔ read-side queries shared by the demo and the API (overview, prices, market, divination)
 │   ├── api/app.py              # ✔ FastAPI, read-only (/api/leagues, /api/market/<league>/groups/<group>, /api/market/<league>/hourly, ...)
 │   └── cli.py                  # ✔ `eb dumps list|sync|load`, `eb exchange sync|status`, `eb serve`, `eb init-db`
 ├── app/
 │   ├── dashboard.py            # ✔ Streamlit entry point (navigation, credit)
 │   ├── common.py               # ✔ cached loaders + formatting
-│   └── app_pages/              # ✔ market.py (launch market for the price mappings), data.py (loads, calendar, refresh)
+│   └── app_pages/              # ✔ market.py (launch market), cards.py (card turn-ins), analysis.py (phase 2 tools), data.py
 ├── .streamlit/config.toml      # ✔ demo theme
 ├── scripts/ingest.sh           # ✔ unattended, resumable ingest runner
+├── config/core_pool.toml       # ✔ manual core-pool overrides (exclude / include by name)
 ├── web/                        # hosted public frontend (later; framework TBD)
 ├── data/                       # ✔ gitignored: raw/{poe_ninja/{dumps,categories}, ggg/currency_exchange, repoe}, processed/{poe_ninja/dumps, ggg/currency_exchange}, logs/, exiledbroker.duckdb
-├── notebooks/                  # exploration
 └── tests/                      # ✔
 ```
 
@@ -264,9 +296,11 @@ ExiledBroker/
 ## 5. Core data model
 
 ```
-League(id, game, name, version, start_at, end_at, mechanic, kind, dump_name, launched_at)
+League(id, game, name, version, start_at, end_at, mechanic, kind, dump_name, launched_at, exchange_tracked)
 Item(id, canonical_name, category, base_type, variant, links, ninja_id, metadata_id)
-TrackedItem(item_id, group_id, group_label, sort_order)   -- price mappings: currency | essence | scarab
+TrackedItem(item_id, group_id, group_label, sort_order)   -- price mappings: currency | essence | scarab | divination
+DivinationCard(item_id, name, stack_size, reward_kind, reward_name, reward_quantity,
+               reward_item_id, reward_fixed, reward_text, filter_tier, followed)
 ItemAlias(alias, item_id, valid_from_league)     -- handles renames/reworks
 PriceObservation(item_id, league_id, observed_at, day_offset,
                  chaos_value, divine_value, listing_count, source,
@@ -311,6 +345,26 @@ There are only about 15–25 leagues with usable data, so we start simple:
 - **Exchange volume scale:** GGG's `volume_traded` figures are very large (e.g. ~5 billion chaos traded against Divines in Mirage's first 14 days). The prices they produce match poe.ninja, so they're reliable for relative comparisons, but don't read the absolute volume as exact until it's understood better.
 - **RePoE names:** some metadata ids share or carry a wrong name (e.g. a Harbinger Delirium Orb named "Fine Delirium Orb"). Ambiguous names are kept apart (see the decision log), but an exchange item's name is only as good as RePoE's.
 - **DuckDB single writer:** loads need the write lock. If one collides with a dashboard refresh, re-run it; nothing is lost.
+
+## 9. Findings (phase 2)
+
+Each finding is reproducible from the Analysis tab, with the leagues it rests on.
+
+### 9.1 Mid- and low-value uniques lose most of their value over launch week
+
+*Tool: Analysis → Unique moves. Divine prices, day 2 → day 14, High-confidence prices on both days, the six most recent challenge leagues (Affliction → Mirage).*
+
+| Day-2 price | Median day-14 ÷ day-2 | Share that rose | Leagues where it held |
+|---|---|---|---|
+| chase (≥ 50 div) | ≈ 1.3–1.4× | ≈ 67% | small sample (6–16 item-leagues) |
+| mid (5–50 div) | ≈ 0.27× | ≈ 26% | 6 of 6 |
+| low (0.5–5 div) | ≈ 0.21× | ≈ 15% | 6 of 6 |
+| cheap (< 0.5 div) | ≈ 0.69× | ≈ 26% | 6 of 6 |
+
+- In every league, mid- and low-value uniques lost about **65–80%** of their divine price between day 2 and day 14. Starting from day 3, they still lost about 60–70%.
+- It's **stronger in the exchange era:** the median was 0.18–0.22× in Settlers, Mercenaries, Keepers and Mirage, against 0.27–0.33× in Necropolis and Affliction.
+- **Implication:** sell non-chase uniques as early as possible. Holding a 5–50 div unique through week one has been a reliable loss in every recent league. Chase uniques are the exception, but there are too few of them to call it yet.
+- **Caveats:** daily data only (uniques aren't on the exchange); survivorship (an item needs a price on both days); and High-confidence filtering leaves out the thinnest markets.
 
 ---
 

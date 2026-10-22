@@ -1,16 +1,17 @@
 import sys
 from contextlib import contextmanager
+from datetime import date
 from typing import Annotated
 
 import typer
 import uvicorn
 
 from exiledbroker.config import get_settings
+from exiledbroker.ingest import core_pool, item_names
 from exiledbroker.ingest import currency_exchange as cx
-from exiledbroker.ingest import item_names, poe_ninja_categories
 from exiledbroker.ingest import poe_ninja_dumps as dumps_mod
 from exiledbroker.ingest.http import PoliteClient, is_complete, part_path_for
-from exiledbroker.normalize import dump_loader, exchange_loader
+from exiledbroker.normalize import dump_loader, exchange_loader, mappings
 from exiledbroker.normalize.leagues import CHALLENGE, LEAGUE_KINDS
 from exiledbroker.storage import db
 from exiledbroker.storage import dumps as dump_store
@@ -208,13 +209,52 @@ def dumps_load(
                 typer.echo(f"{prefix}: {result.items:,} items, {result.rows:,} price rows")
 
 
-def _exchange_leagues(settings, client, leagues: list[str]):
+def _parse_start(value: str | None):
+    if value is None:
+        return None
+    try:
+        return date.fromisoformat(value[:10])
+    except ValueError as e:
+        raise typer.BadParameter("--start must look like 2026-11-20") from e
+
+
+def _exchange_leagues(settings, client, leagues: list[str], start: date | None):
+    """Leagues to sync. A league not in the dumps (the current or upcoming one) needs
+    --start the first time; after that its row in the database remembers it."""
     index = dumps_mod.cached_index(settings) or dumps_mod.fetch_index(client, settings)
-    history_start = cx.HISTORY_START.date()
-    if leagues:
-        return index, _select(index, leagues, "all", None)
-    eligible = [d for d in index if d.kind == CHALLENGE and d.max_date >= history_start]
-    return index, eligible
+    if not leagues:
+        history_start = cx.HISTORY_START.date()
+        eligible = [d for d in index if d.kind == CHALLENGE and d.max_date >= history_start]
+        return index, eligible
+
+    by_name = {d.league_name.lower(): d for d in index}
+    known = {}
+    if settings.db_path.exists():
+        with db.session(read_only=True) as con:
+            q = "SELECT name, CAST(start_at AS DATE) FROM league"
+            known = {name.lower(): (name, d) for name, d in db.rows(con, q)}
+    selected = []
+    for name in leagues:
+        if name.lower() in by_name:
+            selected.append(by_name[name.lower()])
+            continue
+        stored_name, stored_start = known.get(name.lower(), (name, None))
+        first_day = start or stored_start
+        if first_day is None:
+            raise typer.BadParameter(
+                f"{name!r} has no poe.ninja dump yet. For a current or upcoming league, "
+                "pass its launch date once: --start YYYY-MM-DD"
+            )
+        selected.append(dumps_mod.DumpInfo(stored_name, "", first_day, None, CHALLENGE))
+    return index, selected
+
+
+def _report_pool(pool) -> None:
+    sizes = ", ".join(f"{g} {len(n)}" for g, n in sorted(pool.listed.items()))
+    sizes = sizes.replace("divination", "divination cards shown by the loot filter")
+    included = sum(len(n) for n in pool.include.values())
+    extra = f"; {len(pool.exclude)} excluded, {included} included by config/core_pool.toml"
+    typer.echo(f"Core pool from poe.ninja ({pool.league}): {sizes}{extra}")
 
 
 @exchange_app.command("sync")
@@ -228,19 +268,26 @@ def exchange_sync(
         ),
     ] = None,
     days: int = typer.Option(14, help="Days after launch to fetch."),
+    start: str | None = typer.Option(
+        None,
+        help="Launch date (YYYY-MM-DD) for a league with no poe.ninja dump yet, i.e. the "
+        "current or upcoming league. Only needed the first time.",
+    ),
     force: bool = typer.Option(False, help="Rebuild Parquet and reload even if unchanged."),
 ) -> None:
     """Fetch hourly exchange history, then process it into the database.
 
     One request per hour of history, spaced politely. Interrupt any time (Ctrl-C) and
-    re-run the same command: finished hours are never fetched again.
+    re-run the same command: finished hours are never fetched again. For a live league,
+    each re-run adds the hours published since the last one.
     """
     settings = get_settings()
     with resumable(), PoliteClient(settings) as client:
-        index, selected = _exchange_leagues(settings, client, league or [])
+        index, selected = _exchange_leagues(settings, client, league or [], _parse_start(start))
         item_names.ensure_base_items(client, settings)
         names = item_names.load_base_items(settings)
-        currency_names = poe_ninja_categories.refresh_currency_names(client, settings)
+        pool = core_pool.refresh_pool(client, settings)
+        _report_pool(pool)
         typer.echo(f"{len(selected)} league(s), first {days} days each.")
 
         for i, dump in enumerate(selected, 1):
@@ -253,11 +300,22 @@ def exchange_sync(
                     last["day"] = day
                     typer.echo(f"  {prefix}: hour {done}/{total} ({fetched} fetched)")
 
+            # Register the league first, so the demo can show it while it has no data yet.
+            with db.session() as con:
+                db.init_schema(con)
+                dump_store.upsert_leagues(con, _calendar_leagues(index, [dump]))
+                con.execute(
+                    "UPDATE league SET exchange_tracked = TRUE WHERE id = ?", [dump.league_id]
+                )
+
             result = cx.sync_league(
                 client, settings, dump.league_name, dump.min_date, days, progress
             )
             if result.window is None:
-                typer.echo(f"{prefix}: not on the exchange yet")
+                typer.echo(
+                    f"{prefix}: no trades published yet (GGG publishes each hour after it "
+                    "ends). Re-run later to pick them up."
+                )
                 continue
             w = result.window
             note = (
@@ -271,13 +329,9 @@ def exchange_sync(
                 cx.sidecar_path(settings, dump.league_name).unlink(missing_ok=True)
             cx.extract_league(settings, w)
             with db.session() as con:
-                db.init_schema(con)
-                dump_store.upsert_leagues(con, _calendar_leagues(index, [dump]))
-                loaded = exchange_loader.load_league(
-                    con, settings, w, names, force=force, currency_names=currency_names
-                )
-                # The currency list can change without the league's inputs changing.
-                exchange_loader.refresh_tracked(con, currency_names)
+                loaded = exchange_loader.load_league(con, settings, w, names, force=force)
+                # The pool can change without the league's inputs changing.
+                mappings.refresh_mappings(con, settings)
             if loaded.skipped:
                 typer.echo(f"{prefix}: already loaded")
             else:

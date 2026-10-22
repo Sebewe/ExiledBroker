@@ -16,6 +16,8 @@ page = st.navigation(
             icon=":material/candlestick_chart:",
             default=True,
         ),
+        st.Page("app_pages/cards.py", title="Card turn-ins", icon=":material/style:"),
+        st.Page("app_pages/analysis.py", title="Analysis", icon=":material/insights:"),
         st.Page("app_pages/data.py", title="Data", icon=":material/database:"),
     ]
 )

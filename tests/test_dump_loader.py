@@ -25,6 +25,7 @@ Mirage;2026-03-08;1;UniqueAccessory;Mageblood;Heavy Belt;;;12000;High
 Mirage;2026-03-08;2;SkillGem;Perforate;Perforate;21/20c;;5;High
 Mirage;2026-03-08;5;BaseType;Leather Belt;Leather Belt;;;3;High
 Mirage;2026-03-08;6;Scarab;Gilded Breach Scarab;Gilded Breach Scarab;;;2;High
+Mirage;2026-03-08;8;UniqueRelic;;Censer Relic;;;40;Low
 Mirage;2026-03-08;3;UniqueArmour;Tabula Rasa;Simple Robe;;6 links;20;High
 Mirage;2026-03-08;4;UniqueArmour;Zero Value;Simple Robe;;;0;Low
 Hardcore Mirage;2026-03-08;1;UniqueAccessory;Mageblood;Heavy Belt;;;99999;Low

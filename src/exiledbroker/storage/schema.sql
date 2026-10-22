@@ -124,3 +124,25 @@ CREATE TABLE IF NOT EXISTS tracked_item (
     sort_order  INTEGER NOT NULL,
     PRIMARY KEY (item_id, group_id)
 );
+
+-- Leagues followed on the hourly exchange, including ones with no data yet (a new
+-- league is registered before its first hour is published).
+ALTER TABLE league ADD COLUMN IF NOT EXISTS exchange_tracked BOOLEAN DEFAULT FALSE;
+
+-- Divination cards: what a full set turns into, and whether we follow the card.
+-- Rebuilt from RePoE (set size, reward) and NeverSink's filter (tier) on each load.
+CREATE TABLE IF NOT EXISTS divination_card (
+    item_id         VARCHAR PRIMARY KEY,     -- currency:<slug>, same id as its prices
+    name            VARCHAR NOT NULL,
+    stack_size      INTEGER,                 -- cards in a full set
+    reward_kind     VARCHAR,                 -- currency | divination | unique | gem | rare | magic | normal | other
+    reward_name     VARCHAR,                 -- e.g. 'Exalted Orb', 'Headhunter'
+    reward_quantity INTEGER,                 -- e.g. 10 for '10x Exalted Orb'
+    reward_item_id  VARCHAR,                 -- set when the reward is priced on the exchange
+    reward_text     VARCHAR,                 -- raw reward text, incl. extras like 'Corrupted'
+    filter_tier     VARCHAR,                 -- NeverSink tier: t1 ... t5 (hidden), null if unlisted
+    followed        BOOLEAN NOT NULL         -- shown by the filter and in the core pool
+);
+-- Fixed reward = one specific item; random rewards ("5x Currency") need an expected value.
+-- Only decided for currency and card rewards for now; null for uniques, gems, etc.
+ALTER TABLE divination_card ADD COLUMN IF NOT EXISTS reward_fixed BOOLEAN;

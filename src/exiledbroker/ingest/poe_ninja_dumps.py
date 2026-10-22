@@ -6,6 +6,7 @@ We keep the challenge league's own files, optionally its hardcore twin, and conv
 them to one Parquet file per league and kind.
 """
 
+import io
 import os
 import shutil
 import zipfile
@@ -23,7 +24,7 @@ from exiledbroker.normalize.leagues import LeagueWindow, classify_league, league
 
 GAME = "poe1"
 # Bump when the Parquet output changes so existing files are rebuilt.
-PARSER_VERSION = 1
+PARSER_VERSION = 2
 KINDS = ("items", "currency")
 
 ITEM_SCHEMA = {
@@ -59,7 +60,7 @@ class DumpInfo:
     league_name: str
     zip_name: str
     min_date: date
-    max_date: date
+    max_date: date | None  # None for a league still running (no dump yet)
     kind: str
 
     @property
@@ -140,6 +141,31 @@ def member_names(dump: DumpInfo, kind: str, include_hardcore: bool) -> list[str]
     return names
 
 
+def copy_clean_csv(fin, fout, member: str, kind: str) -> int:
+    """Copy one CSV member, keeping only well-formed rows. Returns rows dropped.
+
+    poe.ninja doesn't quote fields, so an item name containing a line break (e.g.
+    Necropolis coffins) spills one record over several lines. A row is kept only if it
+    starts with the member's league name and has the right number of fields.
+    """
+    text = io.TextIOWrapper(fin, encoding="utf-8-sig", newline="")
+    header = text.readline().rstrip("\r\n")
+    if header != HEADERS[kind]:
+        raise ValueError(f"{member}: unexpected header {header!r}")
+    league = member.rsplit(f".{kind}.csv", 1)[0]
+    prefix = f"{league};"
+    separators = HEADERS[kind].count(";")
+    dropped = 0
+    fout.write(header + "\n")
+    for line in text:
+        line = line.rstrip("\r\n")
+        if line.startswith(prefix) and line.count(";") == separators:
+            fout.write(line + "\n")
+        elif line:
+            dropped += 1
+    return dropped
+
+
 def extract_dump(settings: Settings, dump: DumpInfo, include_hardcore: bool = False) -> list[Path]:
     """Convert a downloaded dump zip to Parquet. Skips outputs already built from this zip."""
     src = zip_path(settings, dump)
@@ -176,14 +202,14 @@ def extract_dump(settings: Settings, dump: DumpInfo, include_hardcore: bool = Fa
             work.mkdir(parents=True)
             try:
                 frames = []
+                dropped = 0
                 for m in members:
                     csv = work / m
-                    with zf.open(m) as fin, open(csv, "wb") as fout:
-                        shutil.copyfileobj(fin, fout, 1 << 20)
-                    with open(csv, encoding="utf-8-sig") as f:
-                        header = f.readline().strip()
-                    if header != HEADERS[kind]:
-                        raise ValueError(f"{src.name}/{m}: unexpected header {header!r}")
+                    with zf.open(m) as fin, open(csv, "w", encoding="utf-8") as fout:
+                        try:
+                            dropped += copy_clean_csv(fin, fout, m, kind)
+                        except ValueError as e:
+                            raise ValueError(f"{src.name}/{e}") from None
                     lf = pl.scan_csv(
                         csv, separator=";", has_header=False, skip_rows=1, schema=SCHEMAS[kind]
                     )
@@ -196,7 +222,9 @@ def extract_dump(settings: Settings, dump: DumpInfo, include_hardcore: bool = Fa
                 out.parent.mkdir(parents=True, exist_ok=True)
                 pl.concat(frames).sink_parquet(tmp)
                 os.replace(tmp, out)
+                # Malformed rows are recorded next to the output, not part of the fingerprint.
                 write_json_atomic(sidecar, fingerprint)
+                write_json_atomic(out.with_name(out.name + ".dropped.json"), {"rows": dropped})
                 written.append(out)
             finally:
                 shutil.rmtree(work, ignore_errors=True)
