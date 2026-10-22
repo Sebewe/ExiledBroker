@@ -43,16 +43,28 @@ def _unit(unit: str) -> str:
     return UNIT_COLUMN[unit]
 
 
-def followed_cards(con: duckdb.DuckDBPyConnection) -> pl.DataFrame:
-    """Every followed card: tier, set size and reward."""
+CARD_COLUMNS = (
+    "item_id, name, filter_tier, stack_size, reward_kind, reward_name, "
+    "reward_quantity, reward_item_id, reward_fixed, reward_text"
+)
+
+
+def followed_cards(con: duckdb.DuckDBPyConnection, names: list[str] | None = None) -> pl.DataFrame:
+    """Every followed card (or just the named ones): tier, set size and reward."""
+    where, params = "", []
+    if names is not None:
+        if not names:
+            names = [""]
+        where = f"AND name IN ({', '.join('?' for _ in names)})"
+        params = list(names)
     return db.frame(
         con,
-        """
-        SELECT item_id, name, filter_tier, stack_size, reward_kind, reward_name,
-               reward_quantity, reward_item_id, reward_fixed, reward_text
-        FROM divination_card WHERE followed
+        f"""
+        SELECT {CARD_COLUMNS}
+        FROM divination_card WHERE followed {where}
         ORDER BY filter_tier, name
         """,
+        params,
     )
 
 
@@ -87,12 +99,11 @@ def hourly_turn_ins(
                c.volume AS card_volume
         FROM divination_card d
         JOIN price_observation c ON c.item_id = d.item_id
-        JOIN league l ON l.id = c.league_id
         JOIN price_observation r ON r.item_id = d.reward_item_id
              AND r.league_id = c.league_id AND r.observed_at = c.observed_at
              AND r.source = c.source
         WHERE d.followed AND d.reward_item_id IS NOT NULL
-          AND l.name = ? AND c.source = ? {where}
+          AND c.league_id = (SELECT id FROM league WHERE name = ?) AND c.source = ? {where}
         ORDER BY c.observed_at
         """,
         params,
@@ -109,60 +120,50 @@ def turn_in_summary(
     100x its price) that would dominate an average. Aggregated in the database, so it
     returns one row per card instead of every card-hour (cost issue #5)."""
     col = _unit(unit)
-    cards = followed_cards(con).filter(pl.col("reward_item_id").is_not_null())
-    stats = db.frame(
+    out = db.frame(
         con,
         f"""
         WITH t AS (
-            SELECT d.name AS card, c.volume AS card_volume,
+            SELECT d.item_id, c.volume AS card_volume,
                    d.stack_size * c.{col} AS set_cost,
                    d.reward_quantity * r.{col} AS reward_value,
                    d.reward_quantity * r.{col} - d.stack_size * c.{col} AS margin
             FROM divination_card d
             JOIN price_observation c ON c.item_id = d.item_id
-            JOIN league l ON l.id = c.league_id
             JOIN price_observation r ON r.item_id = d.reward_item_id
                  AND r.league_id = c.league_id AND r.observed_at = c.observed_at
                  AND r.source = c.source
             WHERE d.followed AND d.reward_item_id IS NOT NULL
-              AND l.name = ? AND c.source = ?
+              AND c.league_id = (SELECT id FROM league WHERE name = ?) AND c.source = ?
               AND c.{col} IS NOT NULL AND r.{col} IS NOT NULL
+        ),
+        s AS (
+            SELECT item_id,
+                   count(*) AS hours,
+                   avg(CASE WHEN margin > 0 THEN 1.0 ELSE 0.0 END) AS profitable_share,
+                   percentile_cont(0.5) WITHIN GROUP (ORDER BY margin) AS margin,
+                   percentile_cont(0.5) WITHIN GROUP (ORDER BY margin / nullif(set_cost, 0))
+                       AS margin_pct,
+                   percentile_cont(0.5) WITHIN GROUP (ORDER BY set_cost) AS set_cost,
+                   percentile_cont(0.5) WITHIN GROUP (ORDER BY reward_value) AS reward_value,
+                   sum(card_volume) AS cards_traded
+            FROM t GROUP BY item_id
         )
-        SELECT card,
-               count(*) AS hours,
-               avg(CASE WHEN margin > 0 THEN 1.0 ELSE 0.0 END) AS profitable_share,
-               percentile_cont(0.5) WITHIN GROUP (ORDER BY margin) AS margin,
-               percentile_cont(0.5) WITHIN GROUP (ORDER BY margin / nullif(set_cost, 0))
-                   AS margin_pct,
-               percentile_cont(0.5) WITHIN GROUP (ORDER BY set_cost) AS set_cost,
-               percentile_cont(0.5) WITHIN GROUP (ORDER BY reward_value) AS reward_value,
-               sum(card_volume) AS cards_traded
-        FROM t GROUP BY card
+        -- Every card with an exchange-priced reward, traded or not, in one query.
+        SELECT {", ".join(f"d.{c}" for c in CARD_COLUMNS.split(", "))},
+               coalesce(s.hours, 0) AS hours, s.profitable_share, s.margin, s.margin_pct,
+               s.set_cost, s.reward_value, s.cards_traded
+        FROM divination_card d LEFT JOIN s ON s.item_id = d.item_id
+        WHERE d.followed AND d.reward_item_id IS NOT NULL
         """,
         [league, HOURLY],
     )
-    if stats.is_empty():
-        stats = pl.DataFrame(
-            schema={
-                "card": pl.String,
-                "hours": pl.Int64,
-                "profitable_share": pl.Float64,
-                "margin": pl.Float64,
-                "margin_pct": pl.Float64,
-                "set_cost": pl.Float64,
-                "reward_value": pl.Float64,
-                "cards_traded": pl.Float64,
-            }
-        )
-    return (
-        cards.join(stats, left_on="name", right_on="card", how="left")
-        .with_columns(
-            hours=pl.col("hours").fill_null(0).cast(pl.UInt32),
-            # Full sets' worth of cards traded: how quickly a set can be bought.
-            sets_traded=pl.col("cards_traded") / pl.col("stack_size"),
-        )
-        .sort("margin", descending=True, nulls_last=True)
-    )
+    return out.with_columns(
+        hours=pl.col("hours").cast(pl.UInt32),
+        cards_traded=pl.col("cards_traded").cast(pl.Float64),
+        # Full sets' worth of cards traded: how quickly a set can be bought.
+        sets_traded=pl.col("cards_traded").cast(pl.Float64) / pl.col("stack_size"),
+    ).sort(["margin", "filter_tier", "name"], descending=[True, False, False], nulls_last=True)
 
 
 # --- Scoring -------------------------------------------------------------------------

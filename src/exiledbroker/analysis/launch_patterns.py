@@ -7,6 +7,7 @@ import polars as pl
 
 from exiledbroker.normalize.dump_loader import SOURCE as DAILY
 from exiledbroker.normalize.exchange_loader import SOURCE as HOURLY
+from exiledbroker.services import leagues as league_ids
 from exiledbroker.storage import db
 
 # The currency exchange arrived with Settlers; earlier leagues are context only.
@@ -38,29 +39,34 @@ def unique_moves(
     Day 1 is mostly low-confidence, so the default base is day 2. With `confidence`
     set, both prices must have it, to keep thin early listings out.
     """
-    rows = db.frame(
+    # Paired in the database: one row per item-league instead of every day-row.
+    conf = "AND p.confidence = ?" if confidence else ""
+    params = [DAILY, since or date(2000, 1, 1), base_day, end_day]
+    params += [confidence] if confidence else []
+    moves = db.frame(
         con,
-        """
+        f"""
+        WITH d AS (
+            SELECT p.league_id, p.item_id, p.day_offset, p.divine_value
+            FROM price_observation p
+            JOIN item i ON i.id = p.item_id
+            JOIN league l ON l.id = p.league_id
+            WHERE p.source = ? AND l.kind = 'challenge' AND i.category LIKE 'Unique%'
+              AND l.start_at >= ? AND p.day_offset IN (?, ?) AND p.divine_value > 0 {conf}
+        )
         SELECT l.name AS league, l.start_at, i.id AS item_id, i.canonical_name AS name,
-               i.category, p.day_offset, p.divine_value, p.confidence
-        FROM price_observation p
-        JOIN item i ON i.id = p.item_id
-        JOIN league l ON l.id = p.league_id
-        WHERE p.source = ? AND l.kind = 'challenge' AND i.category LIKE 'Unique%'
-          AND l.start_at >= ? AND p.day_offset IN (?, ?) AND p.divine_value > 0
+               i.category, b.divine_value AS base, e.divine_value AS "end"
+        FROM d b
+        JOIN d e ON e.league_id = b.league_id AND e.item_id = b.item_id AND e.day_offset = ?
+        JOIN item i ON i.id = b.item_id
+        JOIN league l ON l.id = b.league_id
+        WHERE b.day_offset = ?
         """,
-        [DAILY, since or date(2000, 1, 1), base_day, end_day],
+        [*params, end_day, base_day],
     )
-    if confidence:
-        rows = rows.filter(pl.col("confidence") == confidence)
-    keys = ["league", "start_at", "item_id", "name", "category"]
-    base = rows.filter(pl.col("day_offset") == base_day).select(*keys, base=pl.col("divine_value"))
-    end = rows.filter(pl.col("day_offset") == end_day).select(*keys, end=pl.col("divine_value"))
-    return (
-        base.join(end, on=keys)
-        .with_columns(ratio=pl.col("end") / pl.col("base"), tier=_tier("base"))
-        .with_columns(exchange_era=pl.col("start_at") >= pl.lit(EXCHANGE_ERA))
-    )
+    return moves.with_columns(
+        ratio=pl.col("end") / pl.col("base"), tier=_tier("base")
+    ).with_columns(exchange_era=pl.col("start_at") >= pl.lit(EXCHANGE_ERA))
 
 
 def by_tier(moves: pl.DataFrame, per_league: bool = True) -> pl.DataFrame:
@@ -124,7 +130,7 @@ CURVE_SCHEMA = {
 
 
 def _curves_sql(
-    item_filter: str, leagues: list[str], unit: str, bucket_hours: int, days: int
+    item_filter: str, ids: list[str], unit: str, bucket_hours: int, days: int
 ) -> tuple[str, list]:
     """SQL (and the params after the item filter's) for per-league, per-item bucketed
     curves with a median day-1 baseline. Shared by launch_curves and group_curves so
@@ -143,7 +149,7 @@ def _curves_sql(
             WHERE p.source = ? AND p.{col} IS NOT NULL AND p.volume > 0
               AND p.day_offset >= 0 AND p.day_offset < ?
               AND {item_filter}
-              AND l.name IN ({", ".join("?" for _ in leagues)})
+              AND p.league_id IN ({league_ids.marks(ids)})
         ),
         pb AS (SELECT p.*, floor(day_offset / ?) * ? AS bucket_day FROM p),
         b AS (
@@ -164,7 +170,7 @@ def _curves_sql(
             FROM b LEFT JOIN d1 ON d1.league = b.league AND d1.item_id = b.item_id
         )
     """
-    return sql, [*leagues, width, width]
+    return sql, [*ids, width, width]
 
 
 def launch_curves(
@@ -187,7 +193,7 @@ def launch_curves(
     if not item_ids or not leagues:
         return pl.DataFrame(schema=CURVE_SCHEMA)
     item_filter = f"i.id IN ({', '.join('?' for _ in item_ids)})"
-    sql, params = _curves_sql(item_filter, leagues, unit, bucket_hours, days)
+    sql, params = _curves_sql(item_filter, league_ids.ids(con, leagues), unit, bucket_hours, days)
     out = db.frame(
         con,
         sql + "SELECT * FROM curves ORDER BY league, item_id, name, bucket_day",
@@ -260,7 +266,7 @@ def group_curves(
     if not leagues:
         return pl.DataFrame(schema=GROUP_CURVE_SCHEMA)
     item_filter = "i.id IN (SELECT item_id FROM tracked_item WHERE group_id = ?)"
-    sql, params = _curves_sql(item_filter, leagues, unit, bucket_hours, days)
+    sql, params = _curves_sql(item_filter, league_ids.ids(con, leagues), unit, bucket_hours, days)
     out = db.frame(
         con,
         sql

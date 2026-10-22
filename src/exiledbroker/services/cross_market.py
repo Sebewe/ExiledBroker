@@ -25,6 +25,7 @@ from datetime import datetime
 import duckdb
 import polars as pl
 
+from exiledbroker.services import leagues as league_ids
 from exiledbroker.services.scoring import rank_score
 from exiledbroker.storage import db
 
@@ -76,8 +77,10 @@ def hourly(
     pull a league's whole history."""
     if not leagues or item_ids == []:
         return pl.DataFrame(schema=HOURLY_SCHEMA)
-    params: list = list(leagues)
-    where = f"l.name IN ({', '.join('?' for _ in leagues)})"
+    params: list = league_ids.ids(con, leagues)
+    if not params:
+        return pl.DataFrame(schema=HOURLY_SCHEMA)
+    where = f"x.league_id IN ({league_ids.marks(params)})"
     if item_ids is not None:
         where += f" AND x.item_id IN ({', '.join('?' for _ in item_ids)})"
         params += item_ids
@@ -134,7 +137,9 @@ def summarize(
         raise ValueError(f"direction must be one of {', '.join(DIRECTIONS)}")
     if not leagues:
         return pl.DataFrame()
-    marks = ", ".join("?" for _ in leagues)
+    ids = league_ids.ids(con, leagues)
+    if not ids:
+        return pl.DataFrame()
     out = db.frame(
         con,
         f"""
@@ -147,7 +152,7 @@ def summarize(
             FROM cross_market_hour x
             JOIN league l ON l.id = x.league_id
             JOIN item i ON i.id = x.item_id
-            WHERE l.name IN ({marks})
+            WHERE x.league_id IN ({league_ids.marks(ids)})
         )
         SELECT league, item_id, name,
                count(*) AS hours,
@@ -165,7 +170,7 @@ def summarize(
         GROUP BY league, item_id, name
         HAVING count(*) >= ?
         """,
-        [*leagues, buffer, buffer, buffer, min_hours],
+        [*ids, buffer, buffer, buffer, min_hours],
     )
     return out.with_columns(pl.col("hours").cast(pl.UInt32))
 

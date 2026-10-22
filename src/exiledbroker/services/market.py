@@ -106,8 +106,8 @@ def daily(
         FROM price_observation p
         JOIN item i ON i.id = p.item_id
         JOIN tracked_item t ON t.item_id = i.id
-        JOIN league l ON l.id = p.league_id
-        WHERE l.name = ? AND t.group_id IN ({marks}) AND p.source = ?
+        WHERE p.league_id = (SELECT id FROM league WHERE name = ?)
+          AND t.group_id IN ({marks}) AND p.source = ?
           AND p.day_offset >= 0 AND p.day_offset < ?
         GROUP BY i.id, i.canonical_name, t.group_id, CAST(floor(p.day_offset) AS INTEGER)
         ORDER BY name, day
@@ -171,8 +171,8 @@ def hourly(
                p.volume
         FROM price_observation p
         JOIN item i ON i.id = p.item_id
-        JOIN league l ON l.id = p.league_id
-        WHERE l.name = ? AND p.item_id IN ({marks}) AND p.source = ?
+        WHERE p.league_id = (SELECT id FROM league WHERE name = ?)
+          AND p.item_id IN ({marks}) AND p.source = ?
           AND p.day_offset < ?
         ORDER BY p.observed_at
         """,

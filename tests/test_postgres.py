@@ -149,18 +149,13 @@ def test_every_service_gives_the_same_answer_on_postgres(engines):
 
 
 # The queries behind the live pages run every hour for every visitor's cache miss.
-# Known finding (to fix): these filter the league through a join on league.name, so
-# Postgres gets no league_id to seek on and reads every league's recent index range.
-SEEKS_ALL_LEAGUES = pytest.mark.xfail(
-    strict=True, reason="league filtered by joined name, not league_id (perf finding)"
-)
 LIVE_QUERIES = [
     "live.live_leagues",
     "live.latest_hour",
-    pytest.param("live.live_loops", marks=SEEKS_ALL_LEAGUES),
-    pytest.param("live.live_card_flips", marks=SEEKS_ALL_LEAGUES),
-    pytest.param("divination.hourly_turn_ins(since)", marks=SEEKS_ALL_LEAGUES),
-    pytest.param("cross_market.hourly(since)", marks=SEEKS_ALL_LEAGUES),
+    "live.live_loops",
+    "live.live_card_flips",
+    "divination.hourly_turn_ins(since)",
+    "cross_market.hourly(since)",
 ]
 
 

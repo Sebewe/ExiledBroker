@@ -1,6 +1,7 @@
 import duckdb
 import polars as pl
 
+from exiledbroker.services import leagues as league_ids
 from exiledbroker.storage import db
 
 UNITS = {"chaos": "chaos_value", "divine": "divine_value"}
@@ -12,17 +13,17 @@ def _in_list(values: list[str]) -> str:
 
 def item_names(con: duckdb.DuckDBPyConnection, leagues: list[str]) -> list[str]:
     """Item names priced in any of the given leagues."""
-    if not leagues:
+    ids = league_ids.ids(con, leagues)
+    if not ids:
         return []
     q = f"""
         SELECT DISTINCT i.canonical_name
         FROM price_observation p
         JOIN item i ON i.id = p.item_id
-        JOIN league l ON l.id = p.league_id
-        WHERE l.name IN ({_in_list(leagues)})
+        WHERE p.league_id IN ({_in_list(ids)})
     """
     # Sorted here: Postgres orders text by locale, DuckDB bytewise.
-    return sorted(r[0] for r in db.rows(con, q, leagues))
+    return sorted(r[0] for r in db.rows(con, q, ids))
 
 
 def item_curve(
@@ -35,7 +36,8 @@ def item_curve(
     """Daily price by day_offset, one series per league and variant/links combination."""
     if unit not in UNITS:
         raise ValueError(f"unit must be one of {', '.join(UNITS)}")
-    if not leagues:
+    ids = league_ids.ids(con, leagues)
+    if not ids:
         return pl.DataFrame()
     q = f"""
         SELECT p.day_offset,
@@ -46,7 +48,8 @@ def item_curve(
         FROM price_observation p
         JOIN item i ON i.id = p.item_id
         JOIN league l ON l.id = p.league_id
-        WHERE l.name IN ({_in_list(leagues)}) AND i.canonical_name = ? AND p.day_offset <= ?
+        WHERE p.league_id IN ({_in_list(ids)})
+          AND i.canonical_name = ? AND p.day_offset <= ?
         ORDER BY p.day_offset
     """
-    return db.frame(con, q, [*leagues, item_name, max_day])
+    return db.frame(con, q, [*ids, item_name, max_day])

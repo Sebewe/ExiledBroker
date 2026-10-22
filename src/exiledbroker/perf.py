@@ -78,7 +78,20 @@ def measure_storage(settings: Settings) -> dict:
         for table in TABLES:
             total = db.scalar(con, f"SELECT count(*) FROM {table}")
             if table == "item":
-                tables[table] = {"rows": total, "hosted_rows": total}
+                # A hosted database gets only the items its league's rows refer to (the
+                # exchange loader inserts no others); local dumps add every past unique.
+                mine = db.scalar(
+                    con,
+                    """
+                    SELECT count(*) FROM item WHERE id IN (
+                        SELECT item_id FROM price_observation
+                        WHERE league_id = (SELECT id FROM league WHERE name = ?)
+                        UNION SELECT item_id FROM cross_market_hour
+                        WHERE league_id = (SELECT id FROM league WHERE name = ?))
+                    """,
+                    [hosted, hosted],
+                )
+                tables[table] = {"rows": total, "hosted_rows": mine}
                 continue
             mine = db.scalar(
                 con,

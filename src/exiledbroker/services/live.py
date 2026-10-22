@@ -131,7 +131,7 @@ def live_card_flips(
     hours = hours.drop_nulls("margin")
     if hours.is_empty():
         return pl.DataFrame()
-    cards = divination.followed_cards(con).select(
+    cards = divination.followed_cards(con, hours["card"].unique().to_list()).select(
         "name", "item_id", "stack_size", "reward_quantity", "reward_name"
     )
     last = hours.sort("observed_at").group_by("card").agg(pl.all().last().name.prefix("last_"))

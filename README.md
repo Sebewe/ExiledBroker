@@ -107,16 +107,16 @@ So the effect of a change on cost can be seen, not guessed:
 - **`ingest_run`**: each live update records requests, bytes received, 304s, pages fetched, hours and rows added or removed, seconds, and its state or error. Rows are kept for 90 days. The site doesn't read it.
 - **`eb perf report`** (local only): page reads on the local database, rows stored overall and for the league that would be hosted, and the worker's last 7 days from `ingest_run`. It is saved to `data/perf/` and compared with the previous report, so growth over 25% or a failing page is flagged. A server-side view, such as a dev panel, can come later if needed. Nothing is on the public site.
 
-### Performance findings to fix (from the tooling, 2026-10-22)
+### Performance findings (from the tooling, 2026-10-22)
 
-Found while building the tools above. They are recorded here to fix next, not yet changed.
+Found while building the tools above, then fixed. Each fix was checked against the previous version on the full local database: identical results for every changed query (old leagues, the live league, several leagues at once, an unknown league).
 
-| # | Finding | Measured | Status |
-|---|---|---|---|
-| P1 | Live queries filter the league through a join on `league.name`, so Postgres gets no `league_id` to seek on. It reads the recent part of every league's index range. Affects `cross_market.hourly(since=)` (the Live and Arbitrage pages), `live_card_flips`, `hourly_turn_ins(since=)` and `live_loops`. | Postgres plan: index condition on `observed_at` only. Small while only the live league is hosted, and grows with every league stored. | ⬜ open (strict `xfail` in `test_postgres.py`, so the fix shows up) |
-| P2 | Analysis › Unique moves reads raw daily dump rows and filters and joins them in Python. | 85,723 rows (6 MB) per cold view on the local database. Daily history isn't hosted, but it's the Analysis page's default tool. | ⬜ open |
-| P3 | `followed_cards` (the whole card table, 361 rows) is read again inside several services on one page view. | Card turn-ins tool: 12 queries, 2,115 rows (230 KB); Cards page: 948 rows (100 KB). | ⬜ open |
-| P4 | Every `item` row (8,523, including every past league's uniques) would be hosted, though the live league uses far fewer. | 8,523 rows | ⬜ open (check against "store only what the site reads") |
+| # | Finding | Fix | Result | Status |
+|---|---|---|---|---|
+| P1 | Queries picked the league by joining `league` and filtering on its name. That gives Postgres no `league_id` to seek the (league, time) indexes, so it read the recent rows of every stored league. This includes `cross_market.hourly(since=)` (Live, Arbitrage), `live_card_flips`, `hourly_turn_ins(since=)` and `live_loops`. | A single league is filtered with `league_id = (SELECT id FROM league WHERE name = ?)`. A list of leagues looks up the ids first (`services/leagues.ids`) and filters with `league_id IN (?, …)`. `IN (SELECT …)` isn't enough, because Postgres turns it into a hash semi-join that can't seek. Joins to `league` that were only used for the filter are gone. | All six live queries seek the index on Postgres 17 (`test_postgres.py`, with no expected failures left). | ✅ done |
+| P2 | Analysis › Unique moves read raw daily rows and paired base and end days in Python. | Paired in SQL (a self-join), one row per item and league. | Default view: 21,056 rows (1.6 MB) → 7,488 (0.5 MB), 189 → 14 ms. Analysis page cold view: 85,723 rows (6 MB) → 29,381 (2 MB). | ✅ done. It's still the biggest read, but it's local-only history. |
+| P3 | `followed_cards` (the whole card table) was read again inside services. | `turn_in_summary` joins the card table in SQL (1 query instead of 2). `live_card_flips` reads only the cards it shows. | A turn-in summary is 57 rows instead of ~418. The Card turn-ins tool goes from 2,115 rows (230 KB) to 322 (50 KB), Cards from 948 to 587, and Live from 1,023 rows (165 KB) to 692 (102 KB). | ✅ done |
+| P4 | Every `item` row (8,523) looked like it would be hosted. | Nothing to fix. The exchange loader inserts only items its league's rows refer to; the other 7,121 are past leagues' uniques from local dumps. `eb perf report` now counts it that way. | Hosted: 911 items | ✅ not an issue |
 
 Fixed on the way, because Postgres rejected them or answered differently:
 - `cross_market.hourly` selected `item_id` twice (`x.item_id, …, x.*`). DuckDB renames the duplicate; Postgres can't build the frame. It now lists the columns it needs.
