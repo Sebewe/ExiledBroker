@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 
 import polars as pl
 import pytest
@@ -8,7 +8,17 @@ from exiledbroker.ingest import currency_exchange as cx
 from exiledbroker.normalize import exchange_loader
 from exiledbroker.services import cross_market as xm
 from exiledbroker.storage import db
-from test_currency_exchange import ALCH, CHAOS, DIVINE, NAMES, T0, FakeExchange, client_for, market
+from test_currency_exchange import (
+    ALCH,
+    CHAOS,
+    DIVINE,
+    LAUNCH,
+    NAMES,
+    T0,
+    FakeExchange,
+    client_for,
+    market,
+)
 from test_dashboard import register
 
 
@@ -66,22 +76,46 @@ def test_loop_edges_at_worst_prices(con):
         xm.hourly(con, ["Mirage"], direction="sideways")
 
 
-def test_buffer_and_missing_leagues():
-    hours = pl.DataFrame(
+def _cross_rows(con, edges: list[float]) -> None:
+    """Replace the cross-market hours with one row per edge (Chaos-first loop):
+    divine_low = rate_low = 1, so edge = 1 / chaos_high - 1."""
+    con.execute("DELETE FROM cross_market_hour")
+    for i, edge in enumerate(edges):
+        con.execute(
+            "INSERT INTO cross_market_hour VALUES ('poe1-mirage', 'currency:orb-of-alchemy', "
+            "?, ?, 2.0, 100, 1.9, ?, 0.02, 50, 1, 1.1, 100, 1, 100)",
+            [LAUNCH.replace(tzinfo=None) + timedelta(hours=i), i / 24, 1 / (1 + edge)],
+        )
+
+
+def test_summarize_buffer_and_capacity(con):
+    _cross_rows(con, [0.05, 0.01, -0.2])
+    row = xm.summarize(con, ["Mirage"], buffer=0.02, min_hours=1).row(0, named=True)
+    assert (row["hours"], row["share"]) == (3, pytest.approx(1 / 3))
+    assert row["edge_when_paying"] == pytest.approx(0.05)
+    # Overlap: min(100 bought with chaos, 50 sold for divines) × 2c = 100c per hour.
+    assert row["overlap_chaos"] == pytest.approx(300)
+    assert row["capacity_chaos"] == pytest.approx(0.05 * 100)
+    assert xm.summarize(con, ["Mirage"], min_hours=4).is_empty()
+    with pytest.raises(ValueError):
+        xm.summarize(con, ["Mirage"], direction="sideways")
+
+
+def test_across_leagues_counts_missing_leagues_as_zero():
+    per = pl.DataFrame(
         {
-            "league": ["A", "A", "A", "B"],
-            "item_id": ["x"] * 4,
-            "name": ["X"] * 4,
-            "edge": [0.05, 0.01, -0.2, 0.3],
-            "gap": [0.1, 0.1, 0.1, 0.4],
-            "chaos_price": [2.0] * 4,
-            "overlap_chaos": [100.0] * 4,
+            "league": ["A", "B"],
+            "item_id": ["x", "x"],
+            "name": ["X", "X"],
+            "hours": [3, 1],
+            "share": [1 / 3, 1.0],
+            "edge_when_paying": [0.05, 0.3],
+            "median_gap": [0.1, 0.4],
+            "chaos_price": [2.0, 2.0],
+            "overlap_chaos": [300.0, 100.0],
+            "capacity_chaos": [5.0, 30.0],
         }
     )
-    per = xm.per_league(hours, buffer=0.02, min_hours=1)
-    a = per.filter(league="A").row(0, named=True)
-    assert (a["hours"], a["share"], a["edge_when_paying"]) == (3, pytest.approx(1 / 3), 0.05)
-    assert a["capacity_chaos"] == pytest.approx(5.0)
     both = xm.across_leagues(per, ["A", "B"], {"A": 1.0, "B": 1.0}).row(0, named=True)
     assert both["weighted_share"] == pytest.approx((1 / 3 + 1) / 2)
     assert both["worst_league_share"] == pytest.approx(1 / 3)

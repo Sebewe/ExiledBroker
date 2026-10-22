@@ -276,7 +276,10 @@ def exchange_sync(
         help="Launch date (YYYY-MM-DD) for a league with no poe.ninja dump yet, i.e. the "
         "current or upcoming league. Only needed the first time.",
     ),
-    force: bool = typer.Option(False, help="Rebuild Parquet and reload even if unchanged."),
+    force: bool = typer.Option(False, help="Rebuild the league's rows even if unchanged."),
+    refresh: bool = typer.Option(
+        False, help="Re-fetch the core pool and loot-filter tiers now (normally daily)."
+    ),
 ) -> None:
     """Fetch hourly exchange history, then process it into the database.
 
@@ -287,9 +290,17 @@ def exchange_sync(
     settings = get_settings()
     with resumable(), PoliteClient(settings) as client:
         index, selected = _exchange_leagues(settings, client, league or [], _parse_start(start))
-        item_names.ensure_base_items(client, settings)
-        names = item_names.load_base_items(settings)
-        pool = core_pool.refresh_pool(client, settings)
+        # Reference data lives in the database and is refreshed on a schedule
+        # (RePoE weekly, the core pool and card tiers daily), or now with --refresh.
+        with db.session() as con:
+            db.init_schema(con)
+            item_names.ensure_base_items(client, settings, con)
+            names = item_names.load_base_items(con)
+            pool = (
+                core_pool.refresh_pool(client, con, settings)
+                if refresh
+                else core_pool.refresh_pool_if_stale(client, con, settings)
+            )
         _report_pool(pool)
         typer.echo(f"{len(selected)} league(s), first {days} days each.")
 
@@ -380,12 +391,9 @@ live_app = typer.Typer(
 app.add_typer(live_app, name="live")
 
 
-def _live_once(client, settings, league: str | None, lookback_hours: int, names, pool_due):
+def _live_once(client, settings, league: str | None, lookback_hours: int) -> str:
     name = league or live_mod.current_league(client, settings)
-    status = live_mod.sync_live(
-        client, settings, name, names, lookback_hours, refresh_core_pool=pool_due
-    )
-    return str(status)
+    return str(live_mod.sync_live(client, settings, name, lookback_hours))
 
 
 @live_app.command("sync")
@@ -400,9 +408,7 @@ def live_sync(
     """Load the latest published exchange hours of a running league, once."""
     settings = get_settings()
     with resumable(), PoliteClient(settings) as client:
-        item_names.ensure_base_items(client, settings)
-        names = item_names.load_base_items(settings)
-        typer.echo(_live_once(client, settings, league, lookback_hours, names, True))
+        typer.echo(_live_once(client, settings, league, lookback_hours))
 
 
 @live_app.command("watch")
@@ -420,17 +426,13 @@ def live_watch(
     """Keep a running league's latest hours loaded: update now, then shortly after every
     hour. Ctrl-C to stop; re-running picks up where it left off."""
     settings = get_settings()
-    runs = 0
     with resumable(), PoliteClient(settings) as client:
-        item_names.ensure_base_items(client, settings)
-        names = item_names.load_base_items(settings)
         while True:
             try:
-                # The core pool changes rarely; refresh it every 24 updates.
-                status = _live_once(client, settings, league, lookback_hours, names, runs % 24 == 0)
-            except (httpx.HTTPError, OSError, ValueError) as e:
+                # Reference data (names, core pool) refreshes itself when stale.
+                status = _live_once(client, settings, league, lookback_hours)
+            except (httpx.HTTPError, OSError, ValueError, LookupError) as e:
                 status = f"update failed ({e}); retrying next hour"
-            runs += 1
             now = datetime.now(UTC)
             next_run = now.replace(minute=0, second=0, microsecond=0) + timedelta(
                 hours=1, minutes=delay_minutes

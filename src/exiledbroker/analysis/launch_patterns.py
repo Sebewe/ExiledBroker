@@ -123,6 +123,50 @@ CURVE_SCHEMA = {
 }
 
 
+def _curves_sql(
+    item_filter: str, leagues: list[str], unit: str, bucket_hours: int, days: int
+) -> tuple[str, list]:
+    """SQL (and the params after the item filter's) for per-league, per-item bucketed
+    curves with a median day-1 baseline. Shared by launch_curves and group_curves so
+    the aggregation happens in the database (cost issue #5)."""
+    if unit not in UNIT_COLUMN:
+        raise ValueError(f"unit must be one of {', '.join(UNIT_COLUMN)}")
+    col = UNIT_COLUMN[unit]
+    width = bucket_hours / 24
+    sql = f"""
+        WITH p AS (
+            SELECT l.name AS league, i.id AS item_id, i.canonical_name AS name,
+                   p.day_offset, p.{col} AS value, p.volume
+            FROM price_observation p
+            JOIN item i ON i.id = p.item_id
+            JOIN league l ON l.id = p.league_id
+            WHERE p.source = ? AND p.{col} IS NOT NULL AND p.volume > 0
+              AND p.day_offset >= 0 AND p.day_offset < ?
+              AND {item_filter}
+              AND l.name IN ({", ".join("?" for _ in leagues)})
+        ),
+        pb AS (SELECT p.*, floor(day_offset / ?) * ? AS bucket_day FROM p),
+        b AS (
+            SELECT league, item_id, name, bucket_day,
+                   sum(value * volume) / sum(volume) AS value, sum(volume) AS volume
+            FROM pb GROUP BY league, item_id, name, bucket_day
+        ),
+        d1 AS (
+            SELECT league, item_id,
+                   percentile_cont(0.5) WITHIN GROUP (ORDER BY value) AS day1,
+                   count(*) AS baseline_hours
+            FROM p WHERE day_offset < 1 GROUP BY league, item_id
+        ),
+        curves AS (
+            SELECT b.league, b.item_id, b.name, b.bucket_day, b.value,
+                   b.value / d1.day1 AS relative, b.volume,
+                   coalesce(d1.baseline_hours, 0) AS baseline_hours
+            FROM b LEFT JOIN d1 ON d1.league = b.league AND d1.item_id = b.item_id
+        )
+    """
+    return sql, [*leagues, width, width]
+
+
 def launch_curves(
     con: duckdb.DuckDBPyConnection,
     item_ids: list[str],
@@ -142,49 +186,16 @@ def launch_curves(
         raise ValueError(f"unit must be one of {', '.join(UNIT_COLUMN)}")
     if not item_ids or not leagues:
         return pl.DataFrame(schema=CURVE_SCHEMA)
-    col = UNIT_COLUMN[unit]
-    rows = db.frame(
+    item_filter = f"i.id IN ({', '.join('?' for _ in item_ids)})"
+    sql, params = _curves_sql(item_filter, leagues, unit, bucket_hours, days)
+    out = db.frame(
         con,
-        f"""
-        SELECT l.name AS league, i.id AS item_id, i.canonical_name AS name,
-               p.day_offset, p.{col} AS value, p.volume
-        FROM price_observation p
-        JOIN item i ON i.id = p.item_id
-        JOIN league l ON l.id = p.league_id
-        WHERE p.source = ? AND p.{col} IS NOT NULL AND p.volume > 0
-          AND p.day_offset >= 0 AND p.day_offset < ?
-          AND i.id IN ({", ".join("?" for _ in item_ids)})
-          AND l.name IN ({", ".join("?" for _ in leagues)})
-        """,
-        [HOURLY, days, *item_ids, *leagues],
+        sql + "SELECT * FROM curves ORDER BY league, item_id, name, bucket_day",
+        [HOURLY, days, *item_ids, *params],
     )
-    if rows.is_empty():
+    if out.is_empty():
         return pl.DataFrame(schema=CURVE_SCHEMA)
-    width = bucket_hours / 24
-    keys = ["league", "item_id", "name"]
-    bucketed = (
-        rows.with_columns(bucket_day=(pl.col("day_offset") / width).floor() * width)
-        .group_by(*keys, "bucket_day")
-        .agg(
-            ((pl.col("value") * pl.col("volume")).sum() / pl.col("volume").sum()).alias("value"),
-            pl.col("volume").sum(),
-        )
-    )
-    day1 = (
-        rows.filter(pl.col("day_offset") < 1)
-        .group_by(keys)
-        .agg(pl.col("value").median().alias("day1"), pl.len().alias("baseline_hours"))
-    )
-    return (
-        bucketed.join(day1, on=keys, how="left")
-        .with_columns(
-            relative=pl.col("value") / pl.col("day1"),
-            baseline_hours=pl.col("baseline_hours").fill_null(0).cast(pl.UInt32),
-        )
-        .drop("day1")
-        .sort(*keys, "bucket_day")
-        .select(list(CURVE_SCHEMA))
-    )
+    return out.select(list(CURVE_SCHEMA)).cast(CURVE_SCHEMA)
 
 
 def weighted_curve(curves: pl.DataFrame, weights: dict[str, float]) -> pl.DataFrame:
@@ -225,6 +236,14 @@ def turning_points(curve: pl.DataFrame) -> dict:
 # --- Group timing (hourly) -----------------------------------------------------------
 
 
+GROUP_CURVE_SCHEMA = {
+    "league": pl.String,
+    "bucket_day": pl.Float64,
+    "relative": pl.Float64,
+    "items": pl.UInt32,
+}
+
+
 def group_curves(
     con: duckdb.DuckDBPyConnection,
     group_id: str,
@@ -232,31 +251,33 @@ def group_curves(
     unit: str = "chaos",
     bucket_hours: int = 6,
     min_baseline_hours: int = 6,
+    days: int = 14,
 ) -> pl.DataFrame:
-    """Median relative curve per league across a tracked group's items.
+    """Median relative curve per league across a tracked group's items, computed in the
+    database (one row per league and bucket).
 
     Items need at least `min_baseline_hours` traded hours on day 1 for a baseline."""
-    ids = [
-        r[0]
-        for r in db.rows(con, "SELECT item_id FROM tracked_item WHERE group_id = ?", [group_id])
-    ]
-    curves = launch_curves(con, ids, leagues, unit, bucket_hours)
-    if curves.is_empty():
-        return pl.DataFrame(
-            schema={
-                "league": pl.String,
-                "bucket_day": pl.Float64,
-                "relative": pl.Float64,
-                "items": pl.UInt32,
-            }
-        )
-    return (
-        curves.filter(pl.col("baseline_hours") >= min_baseline_hours)
-        .drop_nulls("relative")
-        .group_by("league", "bucket_day")
-        .agg(pl.col("relative").median(), pl.col("item_id").n_unique().alias("items"))
-        .sort("league", "bucket_day")
+    if not leagues:
+        return pl.DataFrame(schema=GROUP_CURVE_SCHEMA)
+    item_filter = "i.id IN (SELECT item_id FROM tracked_item WHERE group_id = ?)"
+    sql, params = _curves_sql(item_filter, leagues, unit, bucket_hours, days)
+    out = db.frame(
+        con,
+        sql
+        + """
+        SELECT league, bucket_day,
+               percentile_cont(0.5) WITHIN GROUP (ORDER BY relative) AS relative,
+               count(DISTINCT item_id) AS items
+        FROM curves
+        WHERE baseline_hours >= ? AND relative IS NOT NULL
+        GROUP BY league, bucket_day
+        ORDER BY league, bucket_day
+        """,
+        [HOURLY, days, group_id, *params, min_baseline_hours],
     )
+    if out.is_empty():
+        return pl.DataFrame(schema=GROUP_CURVE_SCHEMA)
+    return out.cast(GROUP_CURVE_SCHEMA)
 
 
 # --- Card turn-ins across leagues ----------------------------------------------------

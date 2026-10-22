@@ -56,11 +56,24 @@ class PoliteClient:
     def get_text(self, url: str) -> str:
         return self._get(url).text
 
-    def _get(self, url: str) -> httpx.Response:
+    def get_if_changed(
+        self, url: str, etag: str | None = None, last_modified: str | None = None
+    ) -> httpx.Response | None:
+        """GET with the validators of the copy we have. None means "304 Not Modified":
+        it hasn't changed, and nothing was downloaded."""
+        headers = {}
+        if etag:
+            headers["If-None-Match"] = etag
+        if last_modified:
+            headers["If-Modified-Since"] = last_modified
+        r = self._get(url, headers)
+        return None if r.status_code == 304 else r
+
+    def _get(self, url: str, headers: dict[str, str] | None = None) -> httpx.Response:
         for attempt in range(self.settings.http_retries + 1):
             self.throttle()
             try:
-                r = self._client.get(url)
+                r = self._client.get(url, headers=headers)
             except httpx.TransportError:
                 if attempt == self.settings.http_retries:
                     raise
@@ -69,7 +82,8 @@ class PoliteClient:
             if r.status_code in RETRYABLE_STATUS and attempt < self.settings.http_retries:
                 self.backoff(attempt, r)
                 continue
-            r.raise_for_status()
+            if r.status_code != 304:
+                r.raise_for_status()
             return r
         raise RuntimeError("unreachable")
 

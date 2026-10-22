@@ -12,10 +12,12 @@ of blocks like:
 """
 
 import re
-from datetime import UTC, datetime
+from datetime import timedelta
+
+import duckdb
 
 from exiledbroker.config import Settings
-from exiledbroker.ingest.files import read_json, write_json_atomic
+from exiledbroker.ingest import reference
 from exiledbroker.ingest.http import PoliteClient
 
 BLOCK = re.compile(
@@ -40,22 +42,36 @@ def parse_card_tiers(filter_text: str) -> dict[str, tuple[str, bool]]:
     return tiers
 
 
-def tiers_path(settings: Settings):
-    return settings.raw_dir / "neversink" / "divination_tiers.json"
+KEY = "neversink/divination_tiers"
 
 
-def refresh_card_tiers(client: PoliteClient, settings: Settings) -> dict:
-    url = settings.loot_filter_url.format(strictness=settings.loot_filter_strictness)
-    tiers = parse_card_tiers(client.get_text(url))
-    snapshot = {
-        "strictness": settings.loot_filter_strictness,
-        "fetched_at": datetime.now(UTC).isoformat(),
+def _snapshot(filter_text: str, strictness: str) -> dict:
+    tiers = parse_card_tiers(filter_text)
+    return {
+        "strictness": strictness,
         "tiers": {name: tier for name, (tier, _) in sorted(tiers.items())},
         "shown": sorted(name for name, (_, shown) in tiers.items() if shown),
     }
-    write_json_atomic(tiers_path(settings), snapshot)
-    return snapshot
 
 
-def load_card_tiers(settings: Settings) -> dict | None:
-    return read_json(tiers_path(settings))
+def refresh_card_tiers(
+    client: PoliteClient,
+    settings: Settings,
+    con: duckdb.DuckDBPyConnection,
+    max_age: timedelta = timedelta(0),
+) -> dict:
+    """The filter's card tiers, downloaded only if the filter file changed (conditional
+    request) and checked at most every `max_age`."""
+    url = settings.loot_filter_url.format(strictness=settings.loot_filter_strictness)
+    return reference.fetch_if_changed(
+        con,
+        client,
+        KEY,
+        url,
+        parse=lambda text: _snapshot(text, settings.loot_filter_strictness),
+        max_age=max_age,
+    ).value
+
+
+def load_card_tiers(con: duckdb.DuckDBPyConnection) -> dict | None:
+    return reference.get(con, KEY)

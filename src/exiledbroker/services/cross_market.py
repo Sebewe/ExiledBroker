@@ -110,29 +110,61 @@ def hourly(
     )
 
 
-def per_league(hours: pl.DataFrame, buffer: float = 0.02, min_hours: int = 24) -> pl.DataFrame:
-    """Per item and league: hours in both markets, share of hours the loop beat
-    `buffer`, median edge in those hours, median VWAP gap and overlap volume."""
-    if hours.is_empty():
+EDGE_SQL = {
+    "chaos_first": "x.divine_low * x.divine_rate_low / x.chaos_high - 1",
+    "divine_first": "x.chaos_low / (x.divine_high * x.divine_rate_high) - 1",
+}
+
+
+def summarize(
+    con: duckdb.DuckDBPyConnection,
+    leagues: list[str],
+    direction: str = "chaos_first",
+    buffer: float = 0.02,
+    min_hours: int = 24,
+) -> pl.DataFrame:
+    """Per item and league, computed in the database: hours in both markets, share of
+    hours the loop beat `buffer`, median edge in those hours, median VWAP gap, median
+    price, overlap volume and the upper-bound profit. Returns ~one row per item and
+    league instead of every item-hour (cost issue #4)."""
+    if direction not in EDGE_SQL:
+        raise ValueError(f"direction must be one of {', '.join(DIRECTIONS)}")
+    if not leagues:
         return pl.DataFrame()
-    paying = pl.col("edge") > buffer
-    return (
-        hours.group_by("league", "item_id", "name")
-        .agg(
-            pl.len().alias("hours"),
-            paying.mean().alias("share"),
-            pl.col("edge").filter(paying).median().alias("edge_when_paying"),
-            pl.col("gap").median().alias("median_gap"),
-            pl.col("chaos_price").median().alias("chaos_price"),
-            pl.col("overlap_chaos").sum().alias("overlap_chaos"),
-            # Upper bound: the edge on everything that traded in both markets.
-            (pl.col("edge").clip(lower_bound=0) * pl.col("overlap_chaos"))
-            .filter(paying)
-            .sum()
-            .alias("capacity_chaos"),
+    marks = ", ".join("?" for _ in leagues)
+    out = db.frame(
+        con,
+        f"""
+        WITH h AS (
+            SELECT l.name AS league, x.item_id, i.canonical_name AS name,
+                   {EDGE_SQL[direction]} AS edge,
+                   x.divine_price * x.divine_rate / x.chaos_price - 1 AS gap,
+                   x.chaos_price,
+                   least(x.chaos_volume, x.divine_volume) * x.chaos_price AS overlap_chaos
+            FROM cross_market_hour x
+            JOIN league l ON l.id = x.league_id
+            JOIN item i ON i.id = x.item_id
+            WHERE l.name IN ({marks})
         )
-        .filter(pl.col("hours") >= min_hours)
+        SELECT league, item_id, name,
+               count(*) AS hours,
+               avg(CASE WHEN edge IS NULL THEN NULL WHEN edge > ? THEN 1.0 ELSE 0.0 END)
+                   AS share,
+               percentile_cont(0.5) WITHIN GROUP (ORDER BY edge) FILTER (WHERE edge > ?)
+                   AS edge_when_paying,
+               percentile_cont(0.5) WITHIN GROUP (ORDER BY gap) AS median_gap,
+               percentile_cont(0.5) WITHIN GROUP (ORDER BY chaos_price) AS chaos_price,
+               sum(overlap_chaos) AS overlap_chaos,
+               -- Upper bound: the edge on everything that traded in both markets.
+               coalesce(sum(greatest(edge, 0) * overlap_chaos) FILTER (WHERE edge > ?), 0)
+                   AS capacity_chaos
+        FROM h
+        GROUP BY league, item_id, name
+        HAVING count(*) >= ?
+        """,
+        [*leagues, buffer, buffer, buffer, min_hours],
     )
+    return out.with_columns(pl.col("hours").cast(pl.UInt32))
 
 
 def across_leagues(

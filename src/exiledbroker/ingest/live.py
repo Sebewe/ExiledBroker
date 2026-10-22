@@ -10,10 +10,10 @@ from datetime import UTC, datetime
 
 from exiledbroker.config import Settings
 from exiledbroker.ingest import currency_exchange as cx
+from exiledbroker.ingest import item_names
 from exiledbroker.ingest import poe_ninja_dumps as dumps_mod
-from exiledbroker.ingest.core_pool import refresh_pool
+from exiledbroker.ingest.core_pool import refresh_pool_if_stale
 from exiledbroker.ingest.http import PoliteClient
-from exiledbroker.ingest.item_names import BaseItem
 from exiledbroker.normalize import exchange_loader
 from exiledbroker.normalize.leagues import CHALLENGE
 from exiledbroker.storage import db
@@ -86,9 +86,7 @@ def sync_live(
     client: PoliteClient,
     settings: Settings,
     league: str,
-    names: dict[str, BaseItem],
     lookback_hours: int = 14 * 24,
-    refresh_core_pool: bool = False,
     now: datetime | None = None,
     earliest: datetime = cx.HISTORY_START,
 ) -> LiveStatus:
@@ -100,14 +98,19 @@ def sync_live(
     last = cx.latest_published_hour(client, settings, now)
     if last is None or not cx.league_in_page(cx.fetch_page(client, settings, last), league):
         return LiveStatus(league, "not_running")
+    # Reference data from the database, refreshed only when stale (RePoE weekly, the
+    # core pool and card tiers daily), so a fresh container doesn't re-download it.
+    with db.session() as con:
+        db.init_schema(con)
+        item_names.ensure_base_items(client, settings, con)
+        names = item_names.load_base_items(con)
+        refresh_pool_if_stale(client, con, settings)
     launched_at = _known_launch(settings, lid)
     if launched_at is None:
         launched_at = cx.find_launch(client, settings, league, now=now, earliest=earliest)
         if launched_at is None:
             return LiveStatus(league, "not_running")
         _register(settings, league, launched_at)
-    if refresh_core_pool:
-        refresh_pool(client, settings)
     # Fetch only the hours the database doesn't have yet (all of them on a rebuild),
     # so a worker whose disk is wiped between runs makes one request per new hour.
     with db.session(read_only=True) as con:

@@ -182,3 +182,18 @@ CREATE TABLE IF NOT EXISTS exchange_hour_loaded (
 -- In DuckDB they're cheap (no measurable file growth; 21 ms → 1 ms on Allflame).
 CREATE INDEX IF NOT EXISTS price_obs_league_time ON price_observation (league_id, source, observed_at);
 CREATE INDEX IF NOT EXISTS cross_market_league_time ON cross_market_hour (league_id, observed_at);
+
+-- Reference data the worker needs on every run (RePoE item names, the core-pool lists,
+-- the loot filter's card tiers). Kept in the database, the worker's only persistent
+-- store, so a wiped disk doesn't mean re-downloading it every hour (cost issue #6).
+CREATE TABLE IF NOT EXISTS reference_data (
+    key        VARCHAR PRIMARY KEY,   -- e.g. 'repoe/base_items', 'core_pool/currency'
+    fetched_at TIMESTAMP NOT NULL,
+    content    VARCHAR NOT NULL       -- JSON
+);
+-- Conditional requests: a check sends these back and gets "304 Not Modified" (no body)
+-- when nothing changed, so reference data we already have is never downloaded again.
+ALTER TABLE reference_data ADD COLUMN IF NOT EXISTS source_url VARCHAR;
+ALTER TABLE reference_data ADD COLUMN IF NOT EXISTS etag VARCHAR;
+ALTER TABLE reference_data ADD COLUMN IF NOT EXISTS last_modified VARCHAR;
+ALTER TABLE reference_data ADD COLUMN IF NOT EXISTS checked_at TIMESTAMP;  -- last check, changed or not

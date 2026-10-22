@@ -105,24 +105,59 @@ def turn_in_summary(
     """One row per card with an exchange-priced reward, best typical margin first.
 
     set_cost, reward_value, margin and margin_pct are medians over the hours both the
-    card and its reward traded."""
+    card and its reward traded: thin card markets have junk hours (one card sold at
+    100x its price) that would dominate an average. Aggregated in the database, so it
+    returns one row per card instead of every card-hour (cost issue #5)."""
+    col = _unit(unit)
     cards = followed_cards(con).filter(pl.col("reward_item_id").is_not_null())
-    hourly = hourly_turn_ins(con, league, unit=unit).drop_nulls("margin")
-    stats = hourly.group_by("card").agg(
-        pl.len().alias("hours"),
-        (pl.col("margin") > 0).mean().alias("profitable_share"),
-        # The typical (median) hour: thin card markets have junk hours (one card sold
-        # at 100x its price) that would dominate an average.
-        pl.col("margin").median().alias("margin"),
-        (pl.col("margin") / pl.col("set_cost")).median().alias("margin_pct"),
-        pl.col("set_cost").median().alias("set_cost"),
-        pl.col("reward_value").median().alias("reward_value"),
-        pl.col("card_volume").sum().alias("cards_traded"),
+    stats = db.frame(
+        con,
+        f"""
+        WITH t AS (
+            SELECT d.name AS card, c.volume AS card_volume,
+                   d.stack_size * c.{col} AS set_cost,
+                   d.reward_quantity * r.{col} AS reward_value,
+                   d.reward_quantity * r.{col} - d.stack_size * c.{col} AS margin
+            FROM divination_card d
+            JOIN price_observation c ON c.item_id = d.item_id
+            JOIN league l ON l.id = c.league_id
+            JOIN price_observation r ON r.item_id = d.reward_item_id
+                 AND r.league_id = c.league_id AND r.observed_at = c.observed_at
+                 AND r.source = c.source
+            WHERE d.followed AND d.reward_item_id IS NOT NULL
+              AND l.name = ? AND c.source = ?
+              AND c.{col} IS NOT NULL AND r.{col} IS NOT NULL
+        )
+        SELECT card,
+               count(*) AS hours,
+               avg(CASE WHEN margin > 0 THEN 1.0 ELSE 0.0 END) AS profitable_share,
+               percentile_cont(0.5) WITHIN GROUP (ORDER BY margin) AS margin,
+               percentile_cont(0.5) WITHIN GROUP (ORDER BY margin / nullif(set_cost, 0))
+                   AS margin_pct,
+               percentile_cont(0.5) WITHIN GROUP (ORDER BY set_cost) AS set_cost,
+               percentile_cont(0.5) WITHIN GROUP (ORDER BY reward_value) AS reward_value,
+               sum(card_volume) AS cards_traded
+        FROM t GROUP BY card
+        """,
+        [league, HOURLY],
     )
+    if stats.is_empty():
+        stats = pl.DataFrame(
+            schema={
+                "card": pl.String,
+                "hours": pl.Int64,
+                "profitable_share": pl.Float64,
+                "margin": pl.Float64,
+                "margin_pct": pl.Float64,
+                "set_cost": pl.Float64,
+                "reward_value": pl.Float64,
+                "cards_traded": pl.Float64,
+            }
+        )
     return (
         cards.join(stats, left_on="name", right_on="card", how="left")
         .with_columns(
-            hours=pl.col("hours").fill_null(0),
+            hours=pl.col("hours").fill_null(0).cast(pl.UInt32),
             # Full sets' worth of cards traded: how quickly a set can be bought.
             sets_traded=pl.col("cards_traded") / pl.col("stack_size"),
         )

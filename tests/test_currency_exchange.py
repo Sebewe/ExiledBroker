@@ -323,16 +323,20 @@ def test_refresh_pool_replaces_snapshot_and_reads_overrides(settings, tmp_path):
             return httpx.Response(200, json=[{"id": "Allflame", "name": "Allflame"}])
         return httpx.Response(200, json={"items": lists[request.url.params["type"]]})
 
-    old = core_pool.snapshot_path(settings, "currency")
-    old.parent.mkdir(parents=True)
-    old.write_text('{"league": "Old", "names": ["Old League Orb"]}')
+    from exiledbroker.ingest import reference
+
+    con = db.connect(settings.db_path)
+    db.init_schema(con)
+    reference.put(
+        con, core_pool.snapshot_key("currency"), {"league": "Old", "names": ["Old League Orb"]}
+    )
     settings.core_pool_file = tmp_path / "core_pool.toml"
     settings.core_pool_file.write_text(
         'exclude = ["Exalted Orb"]\n[include]\ncurrency = ["Coffin"]\n'
     )
 
     with PoliteClient(settings, transport=httpx.MockTransport(handler)) as client:
-        pool = core_pool.refresh_pool(client, settings)
+        pool = core_pool.refresh_pool(client, con, settings)
     # Replaced, not merged: the old league's orb is gone. Catalysts are left out.
     assert pool.listed["currency"] == {"Exalted Orb", "Foulborn Exalted Orb"}
     assert pool.league == "Allflame"
@@ -343,7 +347,14 @@ def test_refresh_pool_replaces_snapshot_and_reads_overrides(settings, tmp_path):
     assert pool.allows("essence", "Deafening Essence of Rage") is False
     assert pool.allows("divination", "The Doctor") is True
     assert pool.allows("divination", "Rain of Chaos") is False  # hidden tier
-    assert core_pool.load_pool(settings).listed == pool.listed
+    assert core_pool.load_pool(con, settings).listed == pool.listed
+    # Fresh snapshots aren't re-fetched; stale ones are.
+    with PoliteClient(settings, transport=httpx.MockTransport(lambda r: 1 / 0)) as client:
+        assert core_pool.refresh_pool_if_stale(client, con, settings).listed == pool.listed
+    con.execute("UPDATE reference_data SET fetched_at = fetched_at - INTERVAL 2 DAY")
+    with PoliteClient(settings, transport=httpx.MockTransport(handler)) as client:
+        assert core_pool.refresh_pool_if_stale(client, con, settings).listed == pool.listed
+    con.close()
 
 
 def test_turn_in_margins(settings):

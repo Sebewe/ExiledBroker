@@ -15,10 +15,9 @@ import streamlit as st
 from streamlit.testing.v1 import AppTest
 
 from exiledbroker.config import Settings
-from exiledbroker.ingest import core_pool, item_names, loot_filter
+from exiledbroker.ingest import core_pool, item_names, loot_filter, reference
 from exiledbroker.ingest import currency_exchange as cx
-from exiledbroker.ingest.files import write_json_atomic
-from exiledbroker.ingest.http import meta_path_for
+from exiledbroker.ingest.http import PoliteClient
 from exiledbroker.ingest.live import sync_live
 from exiledbroker.storage import db
 from test_currency_exchange import FakeExchange, client_for
@@ -37,22 +36,30 @@ def settings(tmp_path, monkeypatch):
     monkeypatch.setenv("EB_DATA_DIR", str(tmp_path))
     st.cache_data.clear()
     s = Settings(data_dir=tmp_path, request_min_interval=0)
-    # Names (RePoE) and the core pool / loot-filter snapshots, as `eb live` leaves them.
-    path = item_names.base_items_path(s)
-    path.parent.mkdir(parents=True)
-    path.write_text(json.dumps(FIXTURE["base_items"]))
-    write_json_atomic(meta_path_for(path), {"size": path.stat().st_size})
+    # Names (RePoE) and the core pool / loot-filter snapshots, stored in the database
+    # (reference_data) as `eb live` leaves them, fresh so nothing is re-fetched.
     names = {v["name"] for v in FIXTURE["base_items"].values()}
-    for group in core_pool.SOURCES:
-        write_json_atomic(
-            core_pool.snapshot_path(s, group), {"league": "Mirage", "names": sorted(names)}
-        )
     cards = sorted(
         v["name"] for v in FIXTURE["base_items"].values() if v.get("item_class") == "DivinationCard"
     )
-    write_json_atomic(
-        loot_filter.tiers_path(s), {"tiers": {c: "t1" for c in cards}, "shown": cards}
-    )
+    ninja = f"{s.poe_ninja_base_url}/poe1/api/economy"
+    with db.session(s.db_path) as con:
+        db.init_schema(con)
+        reference.put(con, item_names.KEY, FIXTURE["base_items"], s.repoe_base_items_url)
+        reference.put(con, core_pool.LEAGUES_KEY, [{"id": "Mirage"}], f"{ninja}/leagues")
+        for group, (ninja_type, _) in core_pool.SOURCES.items():
+            reference.put(
+                con,
+                core_pool.snapshot_key(group),
+                {"league": "Mirage", "names": sorted(names)},
+                f"{ninja}/exchange/current/overview?league=Mirage&type={ninja_type}",
+            )
+        reference.put(
+            con,
+            loot_filter.KEY,
+            {"tiers": {c: "t1" for c in cards}, "shown": cards},
+            s.loot_filter_url.format(strictness=s.loot_filter_strictness),
+        )
     return s
 
 
@@ -73,7 +80,6 @@ def run_every_page() -> dict:
 
 
 def test_live_league_hour_by_hour(settings):
-    names = item_names.load_base_items(settings)
     server = FakeExchange(PAGES, now=LAUNCH)
     earliest = cx.from_ts(LAUNCH - 72 * 3600)
 
@@ -81,7 +87,7 @@ def test_live_league_hour_by_hour(settings):
         server.now = LAUNCH + hours_in * 3600  # this hour is still being traded
         now = cx.from_ts(server.now) + timedelta(minutes=10)
         with client_for(settings, server) as client:
-            return sync_live(client, settings, "Mirage", names, now=now, earliest=earliest)
+            return sync_live(client, settings, "Mirage", now=now, earliest=earliest)
 
     # Before the first hour is published, the league isn't trading anywhere yet.
     status = update(0)
@@ -133,7 +139,6 @@ def test_live_league_hour_by_hour(settings):
 
 def test_live_update_survives_an_interrupted_hour(settings):
     """A crash mid-update leaves no partial pages; the next update just carries on."""
-    names = item_names.load_base_items(settings)
     server = FakeExchange(PAGES, now=LAUNCH + 6 * 3600)
     now = cx.from_ts(server.now) + timedelta(minutes=10)
     earliest = cx.from_ts(LAUNCH - 72 * 3600)
@@ -147,13 +152,13 @@ def test_live_update_survives_an_interrupted_hour(settings):
 
     server.handler = flaky
     with client_for(settings, server) as client, pytest.raises(KeyboardInterrupt):
-        sync_live(client, settings, "Mirage", names, now=now, earliest=earliest)
+        sync_live(client, settings, "Mirage", now=now, earliest=earliest)
     assert not list(settings.exchange_raw_dir.glob("*.tmp"))
     assert cx.page_path(settings, LAUNCH + 2 * 3600).exists()
     assert not cx.page_path(settings, crash_at).exists()
     server.handler = real
     with client_for(settings, server) as client:
-        status = sync_live(client, settings, "Mirage", names, now=now, earliest=earliest)
+        status = sync_live(client, settings, "Mirage", now=now, earliest=earliest)
     assert status.state == "updated" and status.latest_hour == cx.from_ts(LAUNCH + 5 * 3600)
 
 
@@ -169,14 +174,13 @@ def test_worker_with_a_wiped_disk_fetches_only_new_hours(settings, monkeypatch):
 
     from exiledbroker.normalize import exchange_loader
 
-    names = item_names.load_base_items(settings)
     server = FakeExchange(PAGES, now=LAUNCH + 8 * 3600)
     earliest = cx.from_ts(LAUNCH - 72 * 3600)
 
     def update():
         now = cx.from_ts(server.now) + timedelta(minutes=10)
         with client_for(settings, server) as client:
-            return sync_live(client, settings, "Mirage", names, now=now, earliest=earliest)
+            return sync_live(client, settings, "Mirage", now=now, earliest=earliest)
 
     assert update().state == "updated" and _hours_loaded(settings) == 8
     shutil.rmtree(settings.exchange_raw_dir)  # a fresh container: no pages on disk
@@ -196,3 +200,70 @@ def test_worker_with_a_wiped_disk_fetches_only_new_hours(settings, monkeypatch):
     monkeypatch.setattr(exchange_loader, "LOADER_VERSION", exchange_loader.LOADER_VERSION + 1)
     status = update()
     assert status.state == "updated" and _hours_loaded(settings) == 9
+
+
+def test_reference_data_is_never_downloaded_again_if_unchanged(settings):
+    """RePoE names, the core pool and the loot filter live in the database. A due check
+    sends our version tag and an unchanged source answers 304 with no body; between
+    checks there are no reference requests at all (cost issue #6)."""
+    import httpx
+
+    server = FakeExchange(PAGES, now=LAUNCH + 3 * 3600)
+    reference_hosts = {"repoe-fork.github.io", "raw.githubusercontent.com", "poe.ninja"}
+    log = []  # (host, status, body bytes)
+    current = {"etag": '"v1"', "repoe": FIXTURE["base_items"]}
+
+    def handler(request):
+        host = request.url.host
+        if host not in reference_hosts:
+            return server.handler(request)
+        if request.headers.get("If-None-Match") == current["etag"]:
+            log.append((host, 304, 0))
+            return httpx.Response(304)
+        if host == "repoe-fork.github.io":
+            r = httpx.Response(200, json=current["repoe"], headers={"ETag": current["etag"]})
+        else:  # only RePoE changes in this test
+            return httpx.Response(304)
+        log.append((host, 200, len(r.content)))
+        return r
+
+    with db.session(settings.db_path) as con:  # every source last checked 8 days ago
+        con.execute(
+            "UPDATE reference_data SET etag = ?, checked_at = fetched_at - INTERVAL 8 DAY",
+            ['"v1"'],
+        )
+
+    def update():
+        now = cx.from_ts(server.now) + timedelta(minutes=10)
+        with PoliteClient(settings, transport=httpx.MockTransport(handler)) as client:
+            return sync_live(
+                client, settings, "Mirage", now=now, earliest=cx.from_ts(LAUNCH - 72 * 3600)
+            )
+
+    # 1. Checks are due: every source is asked "changed since v1?" and nothing downloads.
+    assert update().state == "updated"
+    assert log and all(status == 304 and size == 0 for _, status, size in log)
+    assert {host for host, _, _ in log} == reference_hosts
+
+    # 2. Within the check interval: no reference requests at all.
+    log.clear()
+    server.now += 3600
+    assert update().state == "updated"
+    assert log == []
+
+    # 3. RePoE really changes: due again, it's downloaded once with its new tag.
+    current.update(etag='"v2"', repoe={**FIXTURE["base_items"]})
+    with db.session(settings.db_path) as con:
+        con.execute(
+            "UPDATE reference_data SET checked_at = checked_at - INTERVAL 8 DAY WHERE key = ?",
+            [item_names.KEY],
+        )
+    server.now += 3600
+    update()
+    downloads = [(h, s_) for h, s_, size in log if size > 0]
+    assert downloads == [("repoe-fork.github.io", 200)]
+    with db.session(settings.db_path, read_only=True) as con:
+        assert (
+            db.scalar(con, "SELECT etag FROM reference_data WHERE key = ?", [item_names.KEY])
+            == '"v2"'
+        )

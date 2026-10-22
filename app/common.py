@@ -110,13 +110,12 @@ def turn_ins_across(leagues: tuple[str, ...], half_life: float) -> pl.DataFrame:
         )
 
 
-@st.cache_data(ttl="10m", show_spinner="Pricing loops through both markets…")
+@st.cache_data(ttl="10m", show_spinner="Pricing loops through both markets…", max_entries=64)
 def cross_market_per_league(
     leagues: tuple[str, ...], direction: str, buffer: float, min_hours: int
 ) -> pl.DataFrame:
     with db.session(read_only=True) as con:
-        hours = cross_market.hourly(con, list(leagues), direction=direction)
-    return cross_market.per_league(hours, buffer, min_hours)
+        return cross_market.summarize(con, list(leagues), direction, buffer, min_hours)
 
 
 @st.cache_data(ttl="10m", show_spinner=False, max_entries=64)
