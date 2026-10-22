@@ -1,4 +1,5 @@
 -- Core schema. Statements are idempotent so `eb init-db` can be re-run safely.
+-- Keep to SQL that runs on both DuckDB (local) and Postgres (Supabase, hosted).
 
 CREATE TABLE IF NOT EXISTS league (
     id          VARCHAR PRIMARY KEY,           -- e.g. 'poe1-settlers'
@@ -9,6 +10,10 @@ CREATE TABLE IF NOT EXISTS league (
     end_at      TIMESTAMP,
     mechanic    VARCHAR                        -- headline league mechanic
 );
+
+-- Added in phase 1. ADD COLUMN IF NOT EXISTS keeps older local databases working.
+ALTER TABLE league ADD COLUMN IF NOT EXISTS kind VARCHAR;       -- challenge | ruthless | event
+ALTER TABLE league ADD COLUMN IF NOT EXISTS dump_name VARCHAR;  -- name used by poe.ninja dumps
 
 CREATE TABLE IF NOT EXISTS item (
     id             VARCHAR PRIMARY KEY,
@@ -33,9 +38,9 @@ CREATE TABLE IF NOT EXISTS price_observation (
     item_id       VARCHAR NOT NULL REFERENCES item (id),
     league_id     VARCHAR NOT NULL REFERENCES league (id),
     observed_at   TIMESTAMP NOT NULL,
-    day_offset    DOUBLE NOT NULL,             -- days since league start
-    chaos_value   DOUBLE,
-    divine_value  DOUBLE,
+    day_offset    DOUBLE PRECISION NOT NULL,             -- days since league start
+    chaos_value   DOUBLE PRECISION,
+    divine_value  DOUBLE PRECISION,
     listing_count INTEGER,
     source        VARCHAR NOT NULL,            -- 'poe.ninja-dump' | 'poe.ninja-live' | ...
     PRIMARY KEY (item_id, league_id, observed_at, source)
@@ -60,7 +65,7 @@ CREATE TABLE IF NOT EXISTS patch_change (
     change_type   VARCHAR,
     direction     SMALLINT,                    -- -1 nerf, 0 neutral, +1 buff
     magnitude     SMALLINT,                    -- 0-3
-    confidence    DOUBLE,
+    confidence    DOUBLE PRECISION,
     extracted_by  VARCHAR,
     reviewed      BOOLEAN DEFAULT FALSE
 );
@@ -77,9 +82,9 @@ CREATE TABLE IF NOT EXISTS prediction (
     league_id   VARCHAR NOT NULL REFERENCES league (id),
     item_id     VARCHAR NOT NULL REFERENCES item (id),
     horizon_day INTEGER NOT NULL,
-    p10         DOUBLE,
-    p50         DOUBLE,
-    p90         DOUBLE,
+    p10         DOUBLE PRECISION,
+    p50         DOUBLE PRECISION,
+    p90         DOUBLE PRECISION,
     rationale   VARCHAR,
     created_at  TIMESTAMP DEFAULT current_timestamp,
     PRIMARY KEY (run_id, league_id, item_id, horizon_day)

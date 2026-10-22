@@ -219,7 +219,12 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# ExiledBroker
+# ExiledBroker: market data stays local and is never committed.
 data/*
 !data/.gitkeep
 .env
+*.duckdb
+*.duckdb.wal
+*.parquet
+*.part
+*.part.json
