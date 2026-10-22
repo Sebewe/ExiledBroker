@@ -31,8 +31,8 @@ export default function Cards() {
     () => [
       col.accessor('name', { header: 'Card' }),
       col.accessor('score', { header: 'Score', cell: (c) => <ScoreBar value={c.getValue()} />, meta: { numeric: true } }),
-      col.accessor('set_cost', { header: 'Set cost', cell: (c) => price(c.getValue(), unit), meta: { numeric: true } }),
-      col.accessor('reward_value', { header: 'Reward', cell: (c) => price(c.getValue(), unit), meta: { numeric: true } }),
+      col.accessor('set_cost', { header: 'Set cost (median)', cell: (c) => price(c.getValue(), unit), meta: { numeric: true, hint: 'Median over the hours both traded, at each hour\'s average price' } }),
+      col.accessor('reward_value', { header: 'Reward (median)', cell: (c) => price(c.getValue(), unit), meta: { numeric: true, hint: 'Median over the hours both traded, at each hour\'s average price' } }),
       col.accessor('margin', {
         header: 'Margin',
         cell: (c) => <span className={tone(c.getValue())}>{price(c.getValue(), unit)}</span>,

@@ -50,7 +50,16 @@ export default function Live() {
     () => [
       loop.accessor('name', { header: 'Item' }),
       loop.accessor('score', { header: 'Score', cell: (c) => <ScoreBar value={c.getValue()} />, meta: { numeric: true } }),
-      loop.accessor('price', { header: 'Price', cell: (c) => money(c.getValue()), meta: { numeric: true } }),
+      loop.accessor('price_low', {
+        header: 'Price (low)',
+        cell: (c) => money(c.getValue()),
+        meta: { numeric: true, hint: 'Lowest Chaos price traded in its latest published hour, not a live price' },
+      }),
+      loop.accessor('price_high', {
+        header: 'Price (high)',
+        cell: (c) => money(c.getValue()),
+        meta: { numeric: true, hint: 'Highest Chaos price traded in its latest published hour, not a live price' },
+      }),
       loop.accessor('last_edge', {
         header: 'Edge now',
         cell: (c) => <span className={tone(c.getValue())}>{signedPct(c.getValue())}</span>,
@@ -81,8 +90,16 @@ export default function Live() {
     () => [
       flip.accessor('name', { header: 'Card' }),
       flip.accessor('score', { header: 'Score', cell: (c) => <ScoreBar value={c.getValue()} />, meta: { numeric: true } }),
-      flip.accessor('set_cost', { header: 'Set cost', cell: (c) => money(c.getValue()), meta: { numeric: true } }),
-      flip.accessor('reward_value', { header: 'Reward', cell: (c) => money(c.getValue()), meta: { numeric: true } }),
+      flip.accessor('set_cost', {
+        header: 'Set cost (hour avg)',
+        cell: (c) => money(c.getValue()),
+        meta: { numeric: true, hint: "A full set at the card's average traded price in its latest published hour" },
+      }),
+      flip.accessor('reward_value', {
+        header: 'Reward (hour avg)',
+        cell: (c) => money(c.getValue()),
+        meta: { numeric: true, hint: "The reward at its average traded price in the latest published hour" },
+      }),
       flip.accessor('last_margin', {
         header: 'Margin',
         cell: (c) => <span className={tone(c.getValue())}>{money(c.getValue())}</span>,
@@ -105,8 +122,8 @@ export default function Live() {
   const header = (
     <PageHeader title="Live market">
       What pays right now in the running league. GGG publishes each hour of exchange trades a few minutes after it
-      ends, so "now" is the latest published hour, about an hour behind real time. These are hourly summaries, not
-      an order book: check the in-game exchange before trading.
+      ends, so "now" is the latest published hour, about an hour behind real time. Prices are that hour's lowest and
+      highest trades, its range and volatility, not live quotes: check the in-game exchange before trading.
     </PageHeader>
   )
   const fallback = queryFallback(status)
@@ -146,7 +163,7 @@ export default function Live() {
           </div>
           <Section
             title="Best loops right now"
-            description={`Chaos ↔ Divine: the edge at the worst prices of the item's latest hour, and how often it paid over the last 6 hours. Select a row for its last 3 days: the gap between the two price lines is the margin, the bars how much traded in both markets.`}
+            description={`Chaos ↔ Divine: the range the item traded at in its latest published hour, the edge at that hour's worst prices, and how often it paid over the last 6 hours. Select a row for its last 3 days: the gap between the two price lines is the margin, the bars how much traded in both markets.`}
           >
             {queryFallback(loops) ??
               (loops.data!.length ? (
@@ -162,7 +179,7 @@ export default function Live() {
           </Section>
           <Section
             title="Card turn-ins paying right now"
-            description="Buy a full set of cards, turn it in, sell the reward. Margin is at the latest hour's prices."
+            description="Buy a full set of cards, turn it in, sell the reward. Costs and margin use the average prices traded in the latest published hour, not live prices."
           >
             {queryFallback(flips) ??
               (flips.data!.length ? (

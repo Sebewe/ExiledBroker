@@ -48,16 +48,19 @@ export default function Launch() {
     () => [
       col.accessor('name', { header: 'Item' }),
       col.accessor('average', { header: 'Avg price', cell: (c) => price(c.getValue(), unit), meta: { numeric: true, hint: 'Volume-weighted over the launch window' } }),
-      col.accessor('day_1', { header: 'Day 1', cell: (c) => price(c.getValue(), unit), meta: { numeric: true } }),
-      col.accessor('day_3', { header: 'Day 3', cell: (c) => price(c.getValue(), unit), meta: { numeric: true } }),
-      col.accessor('day_7', { header: 'Day 7', cell: (c) => price(c.getValue(), unit), meta: { numeric: true } }),
-      col.accessor('day_14', { header: 'Day 14', cell: (c) => price(c.getValue(), unit), meta: { numeric: true } }),
+      ...([1, 3, 7, 14] as const).map((d) =>
+        col.accessor(`day_${d}`, {
+          header: `Day ${d} avg`,
+          cell: (c) => price(c.getValue(), unit),
+          meta: { numeric: true, hint: `Volume-weighted average of the prices traded on day ${d}` },
+        }),
+      ),
       col.accessor('change', {
         header: 'vs day 1',
         cell: (c) => <span className={tone(c.getValue())}>{signedPct(c.getValue(), 0)}</span>,
         meta: { numeric: true, hint: 'Latest traded day against day 1' },
       }),
-      col.accessor('peak', { header: 'Peak', cell: (c) => price(c.getValue(), unit), meta: { numeric: true } }),
+      col.accessor('peak', { header: 'Peak day avg', cell: (c) => price(c.getValue(), unit), meta: { numeric: true, hint: 'The highest daily average, not the highest single trade' } }),
       col.accessor('trend', { header: 'Trend', cell: (c) => <Sparkline values={c.getValue()} />, enableSorting: false }),
       col.accessor('chaos_volume', { header: 'Traded (c)', cell: (c) => count(c.getValue()), meta: { numeric: true } }),
     ],

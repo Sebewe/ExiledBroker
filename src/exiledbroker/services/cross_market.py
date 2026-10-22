@@ -48,6 +48,8 @@ HOURLY_SCHEMA = {
     "observed_at": pl.Datetime,
     "day_offset": pl.Float64,
     "chaos_price": pl.Float64,
+    "chaos_low": pl.Float64,
+    "chaos_high": pl.Float64,
     "via_divines": pl.Float64,
     "gap": pl.Float64,
     "edge": pl.Float64,

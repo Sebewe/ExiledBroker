@@ -118,6 +118,10 @@ def live_loops(
             hour_items=pl.col("last_overlap_chaos") / pl.col("last_chaos_price"),
             last_gap=pl.col("last_gap"),
             price=pl.col("last_chaos_price"),
+            # The range traded in the Chaos market that hour: what the site shows,
+            # since an hourly summary has no current price.
+            price_low=pl.col("last_chaos_low"),
+            price_high=pl.col("last_chaos_high"),
             last_hour=pl.col("last_observed_at"),
             hours_since=(pl.lit(latest) - pl.col("last_observed_at")).dt.total_hours(),
         )

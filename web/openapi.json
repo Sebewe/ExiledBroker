@@ -818,6 +818,28 @@
             ],
             "title": "Price"
           },
+          "price_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price High"
+          },
+          "price_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Low"
+          },
           "score": {
             "anyOf": [
               {
@@ -853,6 +875,8 @@
           "hour_items",
           "last_gap",
           "price",
+          "price_low",
+          "price_high",
           "last_hour",
           "hours_since",
           "edge_now_rank",

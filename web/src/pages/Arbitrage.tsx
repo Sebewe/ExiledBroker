@@ -35,7 +35,7 @@ export default function Arbitrage() {
     () => [
       col.accessor('name', { header: 'Item' }),
       col.accessor('score', { header: 'Score', cell: (c) => <ScoreBar value={c.getValue()} />, meta: { numeric: true } }),
-      col.accessor('chaos_price', { header: 'Price', cell: (c) => price(c.getValue()), meta: { numeric: true, hint: 'Median Chaos price' } }),
+      col.accessor('chaos_price', { header: 'Price (median)', cell: (c) => price(c.getValue()), meta: { numeric: true, hint: "Median of the item's hourly average Chaos prices" } }),
       col.accessor('weighted_edge', {
         header: 'Edge when paying',
         cell: (c) => <span className={tone(c.getValue())}>{signedPct(c.getValue())}</span>,

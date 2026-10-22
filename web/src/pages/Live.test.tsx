@@ -35,7 +35,7 @@ const league = (latest: string | null) => ({
 })
 const loop = {
   item_id: 'currency:x', name: 'Legion Scarab', hours: 6, paying_share: 1, overlap_chaos: 900, last_edge: 0.35,
-  last_gap: 0.4, price: 100, hour_volume: 3000, hour_items: 30, last_hour: '2026-10-22T08:00:00Z', hours_since: 0, edge_now_rank: 1,
+  last_gap: 0.4, price: 100, price_low: 100, price_high: 104, hour_volume: 3000, hour_items: 30, last_hour: '2026-10-22T08:00:00Z', hours_since: 0, edge_now_rank: 1,
   consistency_rank: 1, volume_rank: 1, freshness_rank: 1, score: 0.79,
 }
 
@@ -91,7 +91,7 @@ describe('Live market', () => {
     expect(await screen.findByRole('cell', { name: '100.0c' })).toBeInTheDocument()
     const calls = vi.mocked(fetch).mock.calls.length
     fireEvent.click(screen.getByRole('radio', { name: 'Divine' }))
-    expect(await screen.findByRole('cell', { name: '0.500div' })).toBeInTheDocument() // 100c / 200c
+    expect(await screen.findByRole('cell', { name: '0.500div' })).toBeInTheDocument() // low 100c / 200c
     expect(screen.getByRole('cell', { name: '15.0div' })).toBeInTheDocument() // volume 3000c
     expect(vi.mocked(fetch).mock.calls.length).toBe(calls)
   })

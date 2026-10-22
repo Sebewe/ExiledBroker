@@ -9,7 +9,9 @@ body at all. The pages' default views are computed in the background as soon as 
 hour is loaded (api/warm.py), so visitors don't wait for them either.
 
 The data version (when the latest load finished) is read from the database at most
-every VERSION_TTL seconds, so a burst of requests costs one tiny query."""
+every VERSION_TTL seconds, so a burst of requests costs one tiny query. ETags also
+carry the code version, so a deploy that changes a response (a new field, a new
+calculation) isn't answered with 304 for data browsers cached from the old code."""
 
 import gzip
 import hashlib
@@ -20,6 +22,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
 import polars as pl
@@ -32,6 +35,21 @@ from exiledbroker.storage import db
 
 VERSION_TTL = 15.0  # seconds a data version is trusted before it's read again
 CACHE_CONTROL = "public, max-age=30"  # browsers revalidate with the ETag after this
+
+
+def _code_version() -> str:
+    """A hash of the package's code and SQL: the same on every replica of a deploy,
+    different after any change to it."""
+    root = Path(__file__).resolve().parent.parent
+    h = hashlib.sha1()
+    for f in sorted(root.rglob("*")):
+        if f.suffix in (".py", ".sql"):
+            h.update(f.relative_to(root).as_posix().encode())
+            h.update(f.read_bytes())
+    return h.hexdigest()[:12]
+
+
+CODE_VERSION = _code_version()
 
 _ready: set[str] = set()
 _version_lock = threading.Lock()
@@ -148,7 +166,9 @@ def payload(view: View) -> Payload:
         adapter = _adapter(view.model)
         checked = adapter.validate_python(rows)
         body = adapter.dump_json(checked)
-        tag = hashlib.sha1(repr((view.name, view.args, version)).encode()).hexdigest()[:20]
+        tag = hashlib.sha1(
+            repr((CODE_VERSION, view.name, view.args, version)).encode()
+        ).hexdigest()[:20]
         return Payload(checked, body, gzip.compress(body, compresslevel=6), f'W/"{tag}"')
 
     return results.get_or_compute((view.name, view.args, version), build)

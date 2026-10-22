@@ -72,6 +72,7 @@ Why things are the way they are, grouped by topic and dated. Add new decisions u
 | 2026-10-22 | **Streamlit retired.** The React site covers Live market, Arbitrage, Card turn-ins and Launch market. Page tests became API tests (every endpoint after every replayed hour), page budgets became endpoint budgets. The analysis tools stay in `analysis/` for local research. |
 | 2026-10-22 | **Live and trading charts show the last 3 days** (`hours`, default 72, up to 28 days for a later "expand"), not the whole window, which left a weeks-long gap in the zoom bar and sent data nobody looked at. The loop chart shows the Chaos price and the price via Divines (at that hour's rate) as lines, so the gap is the margin, with Chaos volume in both markets as bars. |
 | 2026-10-22 | **Live market tables:** one "Prices in" switch for both tables, converted in the browser at the league's latest Divine price (from `/api/status`). The loop chart stays in Chaos: converting history at today's rate would misstate it. The look-back control and "Last seen" are gone (scoring keeps 6 hours). Loops show **volume per hour** (Chaos value in both markets in the latest hour) and **items per hour** (units traded in both markets). GGG publishes units, not trade counts. Number boxes can be emptied while typing; empty counts as 0. |
+| 2026-10-22 | **Price columns say what kind of price they are**, because the data is hourly, not live. Live loops show **Price (low)** and **Price (high)**, the range traded in the Chaos market in the latest published hour (`price_low`/`price_high`; `price`, the hour's average, still drives the min-price filter). Other columns name their aggregate: *hour avg* (live card turn-ins), *median* (Arbitrage, Card turn-ins: medians of hourly averages), *Day N avg* and *Peak day avg* (Launch: daily volume-weighted averages). |
 
 ## Hosting and performance
 
@@ -84,6 +85,7 @@ Why things are the way they are, grouped by topic and dated. Add new decisions u
 | 2026-10-22 | **Tables are served from a cache, never computed per request.** Each is computed once per data version, gzipped once, and sent with an ETag (`304` for a returning client). The data version is trusted for 15 s, so a cached request makes no query. Default tables are precomputed as soon as an hour loads. |
 | 2026-10-22 | **Text primary keys stay** (cost issue 8): integer keys would save ~37 MB at hosted scale, not worth a refactor touching everything. Revisit at ~10× the rows. |
 | 2026-10-22 | **Performance measurements stay off the site.** The query meter, budgets and `eb perf report` are local and CI tools; live numbers would go in a server-side dev panel later. |
+| 2026-10-22 | **ETags include the code version** (a hash of the package's code and SQL, `deps.CODE_VERSION`), not just the data version. Otherwise a deploy that adds a field is answered with 304 and browsers keep the old body until the next hour loads (found when the new loop low/high columns showed blank). Each deploy costs every visitor one full download per view. |
 
 ## Tooling
 

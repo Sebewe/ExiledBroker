@@ -78,7 +78,10 @@ def test_every_endpoint_as_a_league_arrives(client, settings):  # noqa: F811
         assert status["leagues"][0]["hours"] == hours_in
 
     # After 30 hours there is something to trade.
-    assert client.get(f"/api/live/{LEAGUE}/loops?lookback=48&min_price=0").json()
+    loops = client.get(f"/api/live/{LEAGUE}/loops?lookback=48&min_price=0").json()
+    assert loops
+    # The site shows the latest hour's traded range; its average lies within it.
+    assert all(lp["price_low"] <= lp["price"] <= lp["price_high"] for lp in loops)
     arbitrage = client.get(f"/api/arbitrage?league={LEAGUE}&min_hours=1&min_price=0").json()
     assert arbitrage and arbitrage[0]["score"] >= arbitrage[-1]["score"]
     hourly = client.get(f"/api/market/{LEAGUE}/hourly?item_id=currency:divine-orb").json()
@@ -111,6 +114,18 @@ def test_tables_are_computed_once_per_data_version(client, settings, monkeypatch
     with db.metered() as fresh:
         r4 = client.get(path, headers={"If-None-Match": r1.headers["etag"]})
     assert fresh.queries and r4.status_code == 200 and r4.headers["etag"] != r1.headers["etag"]
+
+
+def test_a_deploy_invalidates_browser_caches(client, settings, monkeypatch):  # noqa: F811
+    """New code with the same data must not answer 304: the browser's cached body
+    came from the old code and may lack fields the new pages read."""
+    update(settings, FakeExchange(PAGES, now=LAUNCH), 6)
+    path = f"/api/live/{LEAGUE}/loops"
+    before = client.get(path).headers["etag"]
+    monkeypatch.setattr(deps, "CODE_VERSION", "a-new-deploy")
+    deps.reset()  # the new process starts with an empty cache
+    r = client.get(path, headers={"If-None-Match": before})
+    assert r.status_code == 200 and r.headers["etag"] != before
 
 
 def test_default_pages_are_precomputed(client, settings, monkeypatch):  # noqa: F811

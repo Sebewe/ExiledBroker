@@ -36,7 +36,9 @@ class Loop(Ranks):
     hour_volume: float | None  # Chaos value traded in both markets, latest hour
     hour_items: float | None  # items traded in both markets, latest hour (not trade count)
     last_gap: float | None
-    price: float | None
+    price: float | None  # volume-weighted Chaos price, latest hour
+    price_low: float | None  # lowest and highest Chaos price traded, latest hour
+    price_high: float | None
     last_hour: datetime
     hours_since: int
     edge_now_rank: float | None

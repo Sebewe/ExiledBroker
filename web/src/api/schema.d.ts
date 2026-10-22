@@ -462,6 +462,10 @@ export interface components {
             paying_share: number | null;
             /** Price */
             price: number | null;
+            /** Price High */
+            price_high: number | null;
+            /** Price Low */
+            price_low: number | null;
             /** Score */
             score: number | null;
             /** Volume Rank */
