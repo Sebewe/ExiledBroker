@@ -31,4 +31,7 @@ def rank_score(df: pl.DataFrame, factors: Factors, weights: dict[str, float]) ->
     if total == 0:
         return out.with_columns(score=pl.lit(None, pl.Float64))
     score = sum(pl.col(f"{name}_rank") * w[name] for name in factors) / total
-    return out.with_columns(score=score).sort("score", descending=True)
+    # Ties broken by item, so the order doesn't depend on the order rows came in
+    # (which differs between DuckDB and Postgres).
+    keys = ["score", *(["item_id"] if "item_id" in out.columns else [])]
+    return out.with_columns(score=score).sort(keys, descending=[True, False][: len(keys)])

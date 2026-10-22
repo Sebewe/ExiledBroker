@@ -27,6 +27,7 @@ from test_live_pipeline import LAUNCH, PAGES, store_reference_data
 PG_URL = os.environ.get("EB_TEST_POSTGRES_URL")
 pytestmark = pytest.mark.skipif(not PG_URL, reason="EB_TEST_POSTGRES_URL is not set")
 LEAGUE = "Mirage"
+LOCAL: dict = {}  # where the engines fixture's DuckDB file lives
 BIG_TABLES = {"price_observation", "cross_market_hour"}
 
 
@@ -35,6 +36,7 @@ def engines(tmp_path_factory):
     import psycopg
 
     s = Settings(data_dir=tmp_path_factory.mktemp("pg"), request_min_interval=0)
+    LOCAL["data_dir"] = s.data_dir
     store_reference_data(s)
     server = FakeExchange(PAGES, now=LAUNCH + 30 * 3600)
     with client_for(s, server) as client:
@@ -257,3 +259,46 @@ def test_live_worker_writes_postgres_like_duckdb(engines, tmp_path):
             )
         runs = db.rows(pg, "SELECT state, requests FROM ingest_run ORDER BY started_at")
     assert [r[0] for r in runs] == ["updated"] * 7
+
+
+def _same_json(a, b, path=""):
+    if isinstance(a, dict):
+        assert a.keys() == b.keys(), path
+        for k in a:
+            _same_json(a[k], b[k], f"{path}.{k}")
+    elif isinstance(a, list):
+        assert len(a) == len(b), path
+        for i, (x, y) in enumerate(zip(a, b, strict=True)):
+            _same_json(x, y, f"{path}[{i}]")
+    elif isinstance(a, float) and isinstance(b, float):
+        assert b == pytest.approx(a, rel=1e-9, abs=1e-9), path
+    else:
+        assert a == b, path
+
+
+def test_api_answers_the_same_on_postgres(engines, monkeypatch):
+    """The site's API, served from Postgres, returns what it returns from DuckDB."""
+    from fastapi.testclient import TestClient
+
+    from exiledbroker.api import app as app_module
+    from exiledbroker.api import cache, deps
+    from test_api import endpoints
+
+    def serve(url: str) -> dict:
+        monkeypatch.setenv("EB_DATA_DIR", str(LOCAL["data_dir"]))
+        monkeypatch.setenv("EB_DATABASE_URL", url)
+        cache.results.clear()
+        deps._ready.clear()
+        client = TestClient(app_module.create_app())
+        out = {}
+        for path in endpoints(LEAGUE)[1:]:  # status carries timestamps of its own
+            r = client.get(path)
+            assert r.status_code == 200, (url, path, r.text)
+            out[path] = r.json()
+        return out
+
+    from_duck, from_pg = serve(""), serve(PG_URL)
+    for path in from_duck:
+        if path.endswith("/leagues"):  # the calendar counts every source; Postgres has hourly only
+            continue
+        _same_json(from_duck[path], from_pg[path], path)

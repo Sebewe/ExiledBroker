@@ -32,25 +32,40 @@ def session(
         con.close()
 
 
+_pools: dict[str, object] = {}
+_pools_lock = threading.Lock()
+
+
+def _pool(url: str):
+    """One small connection pool per database URL, opened on first use. Autocommit
+    (each read is its own statement) and no prepared statements, so Supabase's
+    transaction pooler works."""
+    with _pools_lock:
+        if url not in _pools:
+            from psycopg_pool import ConnectionPool
+
+            _pools[url] = ConnectionPool(
+                url,
+                min_size=1,
+                max_size=5,
+                kwargs={"autocommit": True, "prepare_threshold": None},
+                open=True,
+            )
+        return _pools[url]
+
+
 @contextmanager
 def site_session(settings=None, *, read_only: bool = True) -> Iterator:
-    """A connection to what the site reads: Postgres when `EB_DATABASE_URL` is set,
-    otherwise the local DuckDB file. The API and the live worker use this; research
-    commands keep `session` (always DuckDB)."""
+    """A read connection to what the site serves: Postgres (pooled) when
+    `EB_DATABASE_URL` is set, otherwise the local DuckDB file. The API uses this;
+    the live worker writes through `site_writer`; research commands keep `session`."""
     settings = settings or get_settings()
     if not settings.database_url:
         with session(settings.db_path, read_only=read_only) as con:
             yield con
         return
-    import psycopg
-
-    # Autocommit: each read is its own statement, and writers open their own
-    # transactions. No prepared statements, so Supabase's transaction pooler works.
-    con = psycopg.connect(settings.database_url, autocommit=True, prepare_threshold=None)
-    try:
+    with _pool(settings.database_url).connection() as con:
         yield con
-    finally:
-        con.close()
 
 
 _schema_ready: set[str] = set()

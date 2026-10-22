@@ -57,15 +57,13 @@ def followed_cards(con: duckdb.DuckDBPyConnection, names: list[str] | None = Non
             names = [""]
         where = f"AND name IN ({', '.join('?' for _ in names)})"
         params = list(names)
-    return db.frame(
+    cards = db.frame(
         con,
-        f"""
-        SELECT {CARD_COLUMNS}
-        FROM divination_card WHERE followed {where}
-        ORDER BY filter_tier, name
-        """,
+        f"SELECT {CARD_COLUMNS} FROM divination_card WHERE followed {where}",
         params,
     )
+    # Sorted here, not in SQL: Postgres orders text by locale, DuckDB bytewise.
+    return cards.sort("filter_tier", "name", nulls_last=True)
 
 
 def hourly_turn_ins(
@@ -88,7 +86,7 @@ def hourly_turn_ins(
     if since is not None:
         where += " AND c.observed_at > ?"
         params.append(since)
-    return db.frame(
+    out = db.frame(
         con,
         f"""
         SELECT c.observed_at, c.day_offset, d.name AS card,
@@ -104,10 +102,11 @@ def hourly_turn_ins(
              AND r.source = c.source
         WHERE d.followed AND d.reward_item_id IS NOT NULL
           AND c.league_id = (SELECT id FROM league WHERE name = ?) AND c.source = ? {where}
-        ORDER BY c.observed_at
         """,
         params,
     )
+    # Sorted here, not in SQL: Postgres orders text by locale, DuckDB bytewise.
+    return out.sort("observed_at", "card")
 
 
 def turn_in_summary(

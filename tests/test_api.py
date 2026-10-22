@@ -1,20 +1,135 @@
+"""The site's API on the real-data replay (Mirage's first 30 hours, see
+test_live_pipeline.py): every endpoint after every update, from no data at all to a
+day and a half, plus validation, the result cache and serving the frontend."""
+
+from datetime import timedelta
+
+import pytest
 from fastapi.testclient import TestClient
 
-from exiledbroker.api.app import app
+from exiledbroker.api import app as app_module
+from exiledbroker.api import cache, deps
+from exiledbroker.ingest import currency_exchange as cx
+from exiledbroker.ingest.live import sync_live
+from exiledbroker.storage import db
+from test_currency_exchange import FakeExchange, client_for
+from test_live_pipeline import LAUNCH, PAGES, settings  # noqa: F401
+
+LEAGUE = "Mirage"
+CARD = "currency:the-doctor"
 
 
-def test_health():
-    r = TestClient(app).get("/api/health")
-    assert r.status_code == 200
-    assert r.json()["game"] == "poe1"
+@pytest.fixture
+def client():
+    cache.results.clear()
+    deps._ready.clear()
+    return TestClient(app_module.create_app())
 
 
-def test_leagues_endpoint(tmp_path, monkeypatch):
-    from exiledbroker.storage import db
+def update(s, server, hours_in: int):
+    server.now = LAUNCH + hours_in * 3600
+    now = cx.from_ts(server.now) + timedelta(minutes=10)
+    with client_for(s, server) as c:
+        return sync_live(c, s, LEAGUE, now=now, earliest=cx.from_ts(LAUNCH - 72 * 3600))
 
-    monkeypatch.setenv("EB_DATA_DIR", str(tmp_path))
-    with db.session(tmp_path / "exiledbroker.duckdb") as con:
+
+def endpoints(league: str) -> list[str]:
+    return [
+        "/api/status",
+        f"/api/live/{league}/loops",
+        f"/api/live/{league}/card-flips?lookback=48",
+        f"/api/arbitrage?league={league}&min_hours=1",
+        f"/api/arbitrage/hourly?league={league}&item_id=currency:exalted-orb",
+        f"/api/cards/{league}",
+        f"/api/cards/{league}/{CARD}/hourly",
+        "/api/market/leagues",
+        "/api/market/groups",
+        f"/api/market/{league}/summary?group=currency&group=divination",
+        f"/api/market/{league}/hourly?item_id=currency:divine-orb&unit=divine",
+        "/api/leagues",
+    ]
+
+
+def test_health(client):
+    r = client.get("/api/health")
+    assert r.status_code == 200 and r.json()["game"] == "poe1"
+
+
+def test_no_data_yet(client, settings):  # noqa: F811
+    """Before anything is loaded every data endpoint says so, rather than erroring."""
+    settings.db_path.unlink()
+    assert client.get("/api/status").status_code == 503
+    with db.session(settings.db_path) as con:  # a schema but no loads yet
         db.init_schema(con)
-    client = TestClient(app)
-    assert client.get("/api/leagues").json() == []
-    assert client.get("/api/leagues/Mirage/items/Mageblood/curve").status_code == 404
+    deps._ready.clear()
+    r = client.get("/api/status")
+    assert r.status_code == 200 and r.json()["data_version"] is None
+
+
+def test_every_endpoint_as_a_league_arrives(client, settings):  # noqa: F811
+    server = FakeExchange(PAGES, now=LAUNCH)
+    assert update(settings, server, 0).state == "not_running"
+    for hours_in in (1, 2, 3, 6, 12, 24, 30):
+        assert update(settings, server, hours_in).state == "updated"
+        for path in endpoints(LEAGUE):
+            r = client.get(path)
+            assert r.status_code == 200, (hours_in, path, r.text)
+        status = client.get("/api/status").json()
+        assert status["leagues"][0]["name"] == LEAGUE
+        assert status["leagues"][0]["hours"] == hours_in
+
+    # After 30 hours there is something to trade.
+    assert client.get(f"/api/live/{LEAGUE}/loops?lookback=48&min_price=0").json()
+    arbitrage = client.get(f"/api/arbitrage?league={LEAGUE}&min_hours=1&min_price=0").json()
+    assert arbitrage and arbitrage[0]["score"] >= arbitrage[-1]["score"]
+    hourly = client.get(f"/api/market/{LEAGUE}/hourly?item_id=currency:divine-orb").json()
+    assert hourly[-1]["observed_at"].endswith("Z")  # UTC, explicitly
+
+
+def test_results_are_cached_until_new_data(client, settings):  # noqa: F811
+    server = FakeExchange(PAGES, now=LAUNCH)
+    update(settings, server, 6)
+    path = f"/api/cards/{LEAGUE}"
+    with db.metered() as first:
+        client.get(path)
+    with db.metered() as again:
+        client.get(path)
+    # A repeat reads only the connection check and the data version.
+    assert again.rows < first.rows and len(again.queries) <= 2
+    update(settings, server, 12)  # a new hour loaded: recomputed
+    with db.metered() as fresh:
+        client.get(path)
+    assert len(fresh.queries) > len(again.queries)
+
+
+def test_cache_is_bounded():
+    c = cache.ResultCache(max_entries=3)
+    for i in range(10):
+        c.get_or_compute(("k", i), lambda i=i: i)
+    assert len(c) == 3
+    assert c.get_or_compute(("k", 9), lambda: "recomputed") == 9  # newest kept
+
+
+def test_validation(client, settings):  # noqa: F811
+    update(settings, FakeExchange(PAGES, now=LAUNCH), 3)
+    assert client.get("/api/live/Nowhere/loops").status_code == 404
+    assert client.get(f"/api/live/{LEAGUE}/loops?direction=sideways").status_code == 422
+    assert client.get(f"/api/live/{LEAGUE}/loops?buffer=5").status_code == 422
+    assert client.get(f"/api/live/{LEAGUE}/loops?weights=luck:3").status_code == 422
+    assert client.get(f"/api/live/{LEAGUE}/loops?weights=volume:x").status_code == 422
+    assert client.get(f"/api/live/{LEAGUE}/loops?weights=volume:0").status_code == 200
+    assert client.get(f"/api/market/{LEAGUE}/summary?group=gems").status_code == 404
+
+
+def test_serves_the_frontend(tmp_path, settings):  # noqa: F811
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text("<div id=root></div>")
+    (dist / "assets" / "app.js").write_text("console.log(1)")
+    c = TestClient(app_module.create_app(web_dist=dist))
+    assert c.get("/").text == "<div id=root></div>"
+    assert c.get("/arbitrage").text == "<div id=root></div>"  # client-side route
+    assert c.get("/assets/app.js").text == "console.log(1)"
+    assert c.get("/../pyproject.toml").text == "<div id=root></div>"  # no escaping dist
+    assert c.get("/api/health").json()["status"] == "ok"
+    assert c.get("/api/nope").status_code == 404  # API paths never fall through

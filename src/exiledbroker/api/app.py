@@ -1,15 +1,22 @@
-from typing import Annotated
+"""The site's JSON API. It only reads, through `services/`, from the site's database
+(Postgres at EB_DATABASE_URL, or the local DuckDB file). Results are cached per data
+version (api/cache.py). The built frontend (web/dist), when present, is served too."""
 
-from fastapi import FastAPI, HTTPException, Query
+from pathlib import Path
+
+from fastapi import APIRouter, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import FileResponse
 
 from exiledbroker import __version__
+from exiledbroker.api.routes import live, market, trading
 from exiledbroker.config import get_settings
-from exiledbroker.services import market, overview, prices
-from exiledbroker.storage import db
+
+WEB_DIST = Path(__file__).resolve().parents[3] / "web" / "dist"
 
 
-def create_app() -> FastAPI:
+def create_app(web_dist: Path = WEB_DIST) -> FastAPI:
     settings = get_settings()
     app = FastAPI(title="ExiledBroker", version=__version__)
     app.add_middleware(
@@ -18,50 +25,29 @@ def create_app() -> FastAPI:
         allow_methods=["GET"],
         allow_headers=["*"],
     )
+    # JSON tables compress ~5-10x; egress is what hosting bills by.
+    app.add_middleware(GZipMiddleware, minimum_size=1000)
+    api = APIRouter(prefix="/api")
 
-    @app.get("/api/health")
+    @api.get("/health", tags=["meta"])
     def health() -> dict[str, str]:
         return {"status": "ok", "version": __version__, "game": settings.default_game}
 
-    @app.get("/api/overview")
-    def get_overview() -> dict[str, int]:
-        with db.session(read_only=True) as con:
-            return overview.table_counts(con)
+    for routes in (live, trading, market):
+        api.include_router(routes.router)
+    app.include_router(api)
 
-    @app.get("/api/leagues")
-    def get_leagues() -> list[dict]:
-        with db.session(read_only=True) as con:
-            return overview.league_calendar(con).to_dicts()
-
-    @app.get("/api/leagues/{league}/items/{item}/curve")
-    def get_item_curve(
-        league: str, item: str, max_day: int = 30, unit: str = "chaos"
-    ) -> list[dict]:
-        if unit not in prices.UNITS:
-            raise HTTPException(422, f"unit must be one of {', '.join(prices.UNITS)}")
-        with db.session(read_only=True) as con:
-            if league not in overview.leagues_with_prices(con)["name"].to_list():
-                raise HTTPException(404, f"no price data for league {league!r}")
-            return prices.item_curve(con, [league], item, max_day, unit).to_dicts()
-
-    @app.get("/api/market/{league}/groups/{group}")
-    def get_group_summary(league: str, group: str, unit: str = "chaos") -> list[dict]:
-        """Launch-window summary for a tracked group (hourly exchange data)."""
-        if unit not in market.UNIT_COLUMN:
-            raise HTTPException(422, f"unit must be one of {', '.join(market.UNIT_COLUMN)}")
-        with db.session(read_only=True) as con:
-            if group not in market.tracked_groups(con)["group_id"].to_list():
-                raise HTTPException(404, f"unknown group {group!r}")
-            return market.summary(con, league, [group], unit).to_dicts()
-
-    @app.get("/api/market/{league}/hourly")
-    def get_hourly(
-        league: str, item_id: Annotated[list[str], Query()], unit: str = "chaos"
-    ) -> list[dict]:
-        if unit not in market.UNIT_COLUMN:
-            raise HTTPException(422, f"unit must be one of {', '.join(market.UNIT_COLUMN)}")
-        with db.session(read_only=True) as con:
-            return market.hourly(con, league, item_id, unit).to_dicts()
+    if (web_dist / "index.html").exists():
+        # The single-page app: real files as they are, any other path gets index.html
+        # (client-side routes). /api/* never falls through to it.
+        @app.get("/{path:path}", include_in_schema=False)
+        def spa(path: str):
+            if path == "api" or path.startswith("api/"):
+                raise HTTPException(404, "not found")
+            file = (web_dist / path).resolve()
+            if path and file.is_file() and file.is_relative_to(web_dist.resolve()):
+                return FileResponse(file)
+            return FileResponse(web_dist / "index.html")
 
     return app
 

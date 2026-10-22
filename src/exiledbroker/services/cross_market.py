@@ -113,6 +113,8 @@ def hourly(
         )
         .with_columns(gap=pl.col("via_divines") / pl.col("chaos_price") - 1)
         .select(list(HOURLY_SCHEMA))
+        # Sorted here, not in SQL: Postgres orders text by locale, DuckDB bytewise.
+        .sort("observed_at", "league", "item_id")
     )
 
 

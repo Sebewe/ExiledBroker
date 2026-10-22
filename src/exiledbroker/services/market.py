@@ -148,7 +148,8 @@ def summary(
             pl.col("value").drop_nulls().alias("trend"),
         )
         .with_columns(change=pl.col("latest") / pl.col("day_1") - 1)
-        .sort("average", descending=True, nulls_last=True)
+        # Ties (and items with no price yet) in a fixed order, whatever the engine.
+        .sort(["average", "item_id", "group_id"], descending=[True, False, False], nulls_last=True)
     )
     return out
 
@@ -161,20 +162,21 @@ def hourly(
         return pl.DataFrame(schema=HOURLY_SCHEMA)
     col = _unit(unit)
     marks = ", ".join("?" for _ in item_ids)
-    return db.frame(
+    out = db.frame(
         con,
         f"""
         SELECT p.observed_at, p.day_offset, i.canonical_name AS name,
                p.{col} AS value,
-               p.chaos_low * p.{col} / p.chaos_value AS low,
-               p.chaos_high * p.{col} / p.chaos_value AS high,
+               p.chaos_low * p.{col} / nullif(p.chaos_value, 0) AS low,
+               p.chaos_high * p.{col} / nullif(p.chaos_value, 0) AS high,
                p.volume
         FROM price_observation p
         JOIN item i ON i.id = p.item_id
         WHERE p.league_id = (SELECT id FROM league WHERE name = ?)
           AND p.item_id IN ({marks}) AND p.source = ?
           AND p.day_offset < ?
-        ORDER BY p.observed_at
         """,
         [league, *item_ids, HOURLY, LAUNCH_WINDOW_DAYS],
     )
+    # Sorted here, not in SQL: Postgres orders text by locale, DuckDB bytewise.
+    return out.sort("observed_at", "name")

@@ -157,3 +157,54 @@ def test_a_failed_update_is_recorded(settings):  # noqa: F811
         update(settings, server, 3)
     [run] = _runs(settings)
     assert run["state"] == "failed" and "disk full" in run["error"]
+
+
+# --- The site's API ---------------------------------------------------------------
+# Rows read per cold call (cache empty) and the JSON size, at 30 hours. Today's
+# measurements in comments. Cached calls read only the data version.
+API_BUDGET = {
+    "/api/status": (20, 2_000),  # 4 rows, 196 B
+    "/api/live/{league}/loops": (120, 4_000),  # 26 rows, 351 B
+    "/api/live/{league}/card-flips?lookback=48": (100, 8_000),  # 24 rows, 940 B
+    "/api/arbitrage?league={league}&min_hours=1": (60, 8_000),  # 9 rows, 824 B
+    "/api/cards/{league}": (30, 8_000),  # 4 rows, 1.2 KB
+    "/api/market/{league}/summary?group=currency&group=divination": (150, 30_000),  # 32, 5.6 KB
+    "/api/market/{league}/hourly?item_id=currency:divine-orb": (150, 24_000),  # 30, 4.6 KB
+}
+LIVE_ENDPOINTS = [
+    "/api/status",
+    "/api/live/{league}/loops",
+    "/api/live/{league}/card-flips?lookback=48",
+]
+
+
+def endpoint_reads(path: str) -> tuple[db.Meter, int]:
+    from fastapi.testclient import TestClient
+
+    from exiledbroker.api import app as app_module
+    from exiledbroker.api import cache, deps
+
+    cache.results.clear()
+    deps._ready.clear()
+    client = TestClient(app_module.create_app())
+    with db.metered() as meter:
+        r = client.get(path.format(league="Mirage"))
+    assert r.status_code == 200, r.text
+    return meter, len(r.content)
+
+
+@pytest.mark.parametrize("path", list(API_BUDGET))
+def test_endpoint_reads_stay_small(loaded, path):
+    max_rows, max_bytes = API_BUDGET[path]
+    meter, size = endpoint_reads(path)
+    assert meter.rows <= max_rows, describe(meter)
+    assert size <= max_bytes, size
+
+
+@pytest.mark.parametrize("path", LIVE_ENDPOINTS)
+def test_live_endpoints_do_not_grow_with_history(loaded, path):
+    before, _ = endpoint_reads(path)
+    _add_past_leagues(loaded, 4)
+    after, _ = endpoint_reads(path)
+    allowed = 4 * PER_LEAGUE_ROWS["live"]  # a row per league in the league list
+    assert after.rows <= before.rows + allowed, f"{before.rows} → {after.rows}: {describe(after)}"
