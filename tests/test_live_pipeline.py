@@ -40,10 +40,10 @@ def store_reference_data(s: Settings) -> None:
         db.init_schema(con)
         reference.put(con, item_names.KEY, FIXTURE["base_items"], s.repoe_base_items_url)
         reference.put(con, core_pool.LEAGUES_KEY, [{"id": "Mirage"}], f"{ninja}/leagues")
-        for group, (ninja_type, _) in core_pool.SOURCES.items():
+        for ninja_type in {t for types in core_pool.SOURCES.values() for t in types}:
             reference.put(
                 con,
-                core_pool.snapshot_key(group),
+                core_pool.snapshot_key(ninja_type),
                 {"league": "Mirage", "names": sorted(names)},
                 f"{ninja}/exchange/current/overview?league=Mirage&type={ninja_type}",
             )
@@ -151,6 +151,22 @@ def test_live_update_survives_an_interrupted_hour(settings):
     with client_for(settings, server) as client:
         status = sync_live(client, settings, "Mirage", now=now, earliest=earliest)
     assert status.state == "updated" and status.latest_hour == cx.from_ts(LAUNCH + 5 * 3600)
+
+
+def test_forced_live_rebuild_reuses_pages_on_disk(settings):
+    """`eb live sync --force` (after the core pool gains items) rebuilds every loaded
+    hour from the pages on disk: only the latest-hour check goes to the server."""
+    server = FakeExchange(PAGES, now=LAUNCH + 6 * 3600)
+    now = cx.from_ts(server.now) + timedelta(minutes=10)
+    earliest = cx.from_ts(LAUNCH - 72 * 3600)
+    with client_for(settings, server) as client:
+        sync_live(client, settings, "Mirage", now=now, earliest=earliest)
+    before = len(server.requests)
+    with client_for(settings, server) as client:
+        status = sync_live(client, settings, "Mirage", now=now, earliest=earliest, force=True)
+    assert set(server.requests[before:]) <= {LAUNCH + 6 * 3600}  # the unpublished hour
+    assert status.state == "updated" and status.fetched == 0
+    assert _hours_loaded(settings) == 6
 
 
 def _hours_loaded(settings) -> int:

@@ -391,9 +391,11 @@ live_app = typer.Typer(
 app.add_typer(live_app, name="live")
 
 
-def _live_once(client, settings, league: str | None, lookback_hours: int) -> str:
+def _live_once(
+    client, settings, league: str | None, lookback_hours: int, force: bool = False
+) -> str:
     name = league or live_mod.current_league(client, settings)
-    return str(live_mod.sync_live(client, settings, name, lookback_hours))
+    return str(live_mod.sync_live(client, settings, name, lookback_hours, force=force))
 
 
 @live_app.command("sync")
@@ -404,11 +406,16 @@ def live_sync(
     lookback_hours: int = typer.Option(
         14 * 24, help="Keep this many recent hours loaded (or everything since launch)."
     ),
+    force: bool = typer.Option(
+        False,
+        help="Rebuild the league's rows (e.g. after the core pool gains items). Reuses pages "
+        "on disk; any missing page is fetched, so don't use it on a wiped disk.",
+    ),
 ) -> None:
     """Load the latest published exchange hours of a running league, once."""
     settings = get_settings()
     with resumable(), PoliteClient(settings) as client:
-        typer.echo(_live_once(client, settings, league, lookback_hours))
+        typer.echo(_live_once(client, settings, league, lookback_hours, force))
 
 
 @live_app.command("watch")

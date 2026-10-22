@@ -187,7 +187,7 @@ CREATE INDEX IF NOT EXISTS cross_market_league_time ON cross_market_hour (league
 -- the loot filter's card tiers). Kept in the database, the worker's only persistent
 -- store, so a wiped disk doesn't mean re-downloading it every hour (cost issue #6).
 CREATE TABLE IF NOT EXISTS reference_data (
-    key        VARCHAR PRIMARY KEY,   -- e.g. 'repoe/base_items', 'core_pool/currency'
+    key        VARCHAR PRIMARY KEY,   -- e.g. 'repoe/base_items', 'core_pool/type/Currency'
     fetched_at TIMESTAMP NOT NULL,
     content    VARCHAR NOT NULL       -- JSON
 );

@@ -69,7 +69,7 @@ Where ExiledBroker's data comes from, how it becomes rows, and the rules that de
 
 **What's kept.** Hourly price rows are stored only for what the site reads: price-mapping items, followed cards' rewards, and Chaos and Divine (`exchange_loader._keep_used_items`). An item that joins the pool later has no earlier hours until a `--force` rebuild.
 
-**Item names.** RePoE gives some different items the same name. An ambiguous name never merges items: each metadata id becomes `Name (MetadataName)`. None of the tracked items are ambiguous. Some names are simply wrong in RePoE (a Harbinger Delirium Orb named "Fine Delirium Orb").
+**Item names.** RePoE gives some different items the same name. An ambiguous name never merges items: each metadata id becomes `Name (MetadataName)`. Two kinds of twin don't count (`exchange_loader.ambiguous_ids`): a legacy id with no stack size (the classic fragments and breachstones each have one, e.g. `ShaperFragment1` next to the exchange's `CurrencyShaperFragment1`), and a Tencent-realm copy, which never trades on the global exchange. That frees 26 names, so the exchange's Fragment of the Phoenix is the same item as the dump's. Real ambiguities stay apart: some names are simply wrong in RePoE (a Harbinger Delirium Orb named "Fine Delirium Orb"), and the stackable and socketable Chaotic Resonators share names.
 
 **Checks on Mirage:** 368 pages (39 MB raw), 1,027 items, 269k hourly rows. Averaged by day, the Divine rate matches the dump (86.5 vs 85.6 on day 1, 151 vs 145 on day 3), and all 269,018 hourly prices sit inside their hour's low/high range.
 
@@ -85,6 +85,7 @@ What hourly data shows that daily data hides: Mirage launched at 20:00 UTC. The 
 - It keeps two windows: the league's **first 14 days** (for the launch views) and its **last 14 days** (`--lookback-hours`, for the live view), loaded together (`Window.keep_launch_days`). For a league under two weeks old they're the same window.
 - Each hour is fetched about 6 minutes after it ends (GGG publishes within about 3 in practice).
 - What to fetch is decided by the database (`exchange_loader.needs_rebuild` / `loaded_hours`), not by which pages are on disk, so a worker with a wiped disk fetches only the new hour. A rebuild re-fetches the whole window, so data can't shrink.
+- `eb live sync --force` rebuilds the league's rows, e.g. after the core pool gains items (new items otherwise have no hours from before they joined). It reuses pages on disk and fetches only missing ones, so don't run it on a wiped disk.
 - It refuses a league that isn't trading in the latest hour, so an ended league's history can't be replaced by an empty window.
 - Each update is recorded in `ingest_run` (requests, bytes, 304s, hours and rows added or removed, seconds, state or error), kept 90 days.
 - **Reference data** (RePoE names, core-pool snapshots, filter tiers) lives in `reference_data` (`ingest/reference.py`). Sources are checked at most every `max_age` (RePoE weekly, pool and tiers daily; `eb exchange sync --refresh` checks now) with conditional requests, so an unchanged source answers 304 and nothing is downloaded. RePoE is stored trimmed (0.9 MB vs 3 MB).
@@ -97,12 +98,12 @@ What hourly data shows that daily data hides: Mirage launched at 20:00 UTC. The 
 
 | Group | Items | In Mirage |
 |---|---|---|
-| Currency (mirrors included) | poe.ninja's current-league Currency list minus Catalysts (88 names) | 87 (Dead Man's Sulphur is newer than Mirage) |
+| Currency (mirrors, catalysts, fragments and oils included) | poe.ninja's current-league Currency list (99 names, Catalysts included), plus its Fragment (68) and Oil (16) lists: 183 names, all traded on the exchange | 177 |
 | High-tier essences | all Deafening, plus Hysteria, Insanity, Horror, Delirium, if in the current Essence list | 23 |
 | Scarabs | every "… Scarab …" in the current Scarab list | 111 |
 | Divination cards | cards NeverSink's filter shows (361) | 358 with hourly prices |
 
-**The core drop pool** (`ingest/core_pool.py`): only items still in the current drop pool are shown. The pool is poe.ninja's *current-league* exchange lists (`type=Currency/Essence/Scarab`), snapshotted in `reference_data` and **replaced, never merged**, so items whose league mechanic didn't go core drop out. Overrides go in the committed `config/core_pool.toml`: `exclude` hides a name everywhere, `[include]` forces a name into one group. Example: Deafening Essence of Doubt traded in Mirage but isn't in the current list, so it's hidden.
+**The core drop pool** (`ingest/core_pool.py`): only items still in the current drop pool are shown. The pool is poe.ninja's *current-league* exchange lists (`type=Currency/Fragment/Oil/Essence/Scarab`, mapped to groups by `core_pool.SOURCES`), one snapshot per list in `reference_data` (`core_pool/type/<Type>`), **replaced, never merged**. A group is decided by the pool only once all its lists are stored, so items whose league mechanic didn't go core drop out. Overrides go in the committed `config/core_pool.toml`: `exclude` hides a name everywhere, `[include]` forces a name into one group. Example: Deafening Essence of Doubt traded in Mirage but isn't in the current list, so it's hidden.
 
 Launch market numbers, Mirage day 1 → day 14: Divine 86 → 266 chaos (+208%), Mirror of Kalandra 84 → 678 divines (+710%), Mirror Shard 9.7 → 34 divines, Deafening Essence of Scorn 2.5 → 22.7 chaos.
 

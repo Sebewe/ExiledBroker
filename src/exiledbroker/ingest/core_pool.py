@@ -18,12 +18,16 @@ from exiledbroker.ingest import reference
 from exiledbroker.ingest.http import PoliteClient
 from exiledbroker.ingest.loot_filter import load_card_tiers, refresh_card_tiers
 
-# poe.ninja exchange type per group, and categories within it that aren't the group.
+# poe.ninja exchange types per group. Catalysts (in the Currency list), fragments and
+# oils trade on the exchange like any currency, so they're grouped with it.
 SOURCES = {
-    "currency": ("Currency", {"Catalysts"}),
-    "essence": ("Essence", set()),
-    "scarab": ("Scarab", set()),
+    "currency": ("Currency", "Fragment", "Oil"),
+    "essence": ("Essence",),
+    "scarab": ("Scarab",),
 }
+# Snapshot keys from before snapshots were per poe.ninja type (one per group, with
+# Catalysts left out of currency). Deleted on refresh so a stale list can't be read.
+LEGACY_KEYS = tuple(f"core_pool/{group_id}" for group_id in SOURCES)
 
 
 @dataclass
@@ -48,8 +52,8 @@ MAX_AGE = timedelta(days=1)
 LEAGUES_KEY = "poe_ninja/leagues"
 
 
-def snapshot_key(group_id: str) -> str:
-    return f"core_pool/{group_id}"
+def snapshot_key(ninja_type: str) -> str:
+    return f"core_pool/type/{ninja_type}"
 
 
 def load_overrides(settings: Settings) -> tuple[set[str], dict[str, set[str]]]:
@@ -68,11 +72,11 @@ def load_pool(con: duckdb.DuckDBPyConnection, settings: Settings) -> CorePool:
     """The pool from the stored snapshots (reference_data) plus config/core_pool.toml."""
     exclude, include = load_overrides(settings)
     pool = CorePool(exclude=exclude, include=include)
-    for group_id in SOURCES:
-        snap = reference.get(con, snapshot_key(group_id))
-        if snap:
-            pool.listed[group_id] = set(snap["names"])
-            pool.league = snap["league"]
+    for group_id, ninja_types in SOURCES.items():
+        snaps = [reference.get(con, snapshot_key(t)) for t in ninja_types]
+        if all(snaps):  # a group is decided only once all its lists are in
+            pool.listed[group_id] = {n for snap in snaps for n in snap["names"]}
+            pool.league = snaps[0]["league"]
     # Divination cards: the ones NeverSink's filter shows (FilterBlade's tiers).
     tiers = load_card_tiers(con)
     if tiers:
@@ -95,21 +99,24 @@ def refresh_pool(
         con, client, LEAGUES_KEY, f"{base}/leagues", json.loads, max_age
     ).value
     league = leagues[0]["id"]
-    for group_id, (ninja_type, skip) in SOURCES.items():
 
-        def parse(text: str, skip=skip) -> dict:
-            items = json.loads(text).get("items", ())
-            names = sorted(i["name"] for i in items if i.get("category") not in skip)
-            return {"league": league, "names": names}
+    def parse(text: str) -> dict:
+        items = json.loads(text).get("items", ())
+        return {"league": league, "names": sorted(i["name"] for i in items)}
 
+    for ninja_type in sorted({t for types in SOURCES.values() for t in types}):
         reference.fetch_if_changed(
             con,
             client,
-            snapshot_key(group_id),
+            snapshot_key(ninja_type),
             f"{base}/exchange/current/overview?league={league}&type={ninja_type}",
             parse,
             max_age,
         )
+    con.execute(
+        f"DELETE FROM reference_data WHERE key IN ({', '.join('?' for _ in LEGACY_KEYS)})",
+        list(LEGACY_KEYS),
+    )
     refresh_card_tiers(client, settings, con, max_age)
     return load_pool(con, settings)
 

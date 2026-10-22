@@ -258,6 +258,26 @@ def test_ambiguous_names_never_merge_items():
     assert rows[3][2] == "Thing"
 
 
+def test_legacy_and_tencent_twins_dont_make_a_name_ambiguous():
+    """Classic fragments share their name with a legacy, non-stackable id, and some
+    items with a Tencent-realm copy; the one the exchange trades keeps the plain name."""
+    frag, legacy = "Metadata/Items/MapFragments/CurrencyShaperFragment1", "ShaperFragment1"
+    key, tencent = "Metadata/Items/MapFragments/VoidbornVaultKey", "TencentVoidbornVaultKey"
+    names = {
+        frag: BaseItem(frag, "Fragment of the Phoenix", "MapFragment", stackable=True),
+        legacy: BaseItem(legacy, "Fragment of the Phoenix", "MapFragment"),
+        key: BaseItem(key, "Voidborn Reliquary Key", "MapFragment"),
+        tencent: BaseItem(tencent, "Voidborn Reliquary Key", "MapFragment"),
+    }
+    rows = exchange_loader.resolve_names([frag, legacy, key, tencent], names)
+    assert [r[2] for r in rows] == [
+        "Fragment of the Phoenix",
+        "Fragment of the Phoenix (ShaperFragment1)",
+        "Voidborn Reliquary Key",
+        "Voidborn Reliquary Key (TencentVoidbornVaultKey)",
+    ]
+
+
 def test_market_services(settings):
     from exiledbroker.services import market
 
@@ -312,6 +332,8 @@ def test_refresh_pool_replaces_snapshot_and_reads_overrides(settings, tmp_path):
             {"name": "Foulborn Exalted Orb", "category": "Keepers"},
             {"name": "Tainted Catalyst", "category": "Catalysts"},
         ],
+        "Fragment": [{"name": "Simulacrum Splinter", "category": "Splinters"}],
+        "Oil": [{"name": "Golden Oil", "category": "Oils"}],
         "Essence": [{"name": "Deafening Essence of Woe", "category": "Essence"}],
         "Scarab": [{"name": "Horned Scarab of Bloodlines", "category": "Scarab"}],
     }
@@ -328,8 +350,10 @@ def test_refresh_pool_replaces_snapshot_and_reads_overrides(settings, tmp_path):
     con = db.connect(settings.db_path)
     db.init_schema(con)
     reference.put(
-        con, core_pool.snapshot_key("currency"), {"league": "Old", "names": ["Old League Orb"]}
+        con, core_pool.snapshot_key("Currency"), {"league": "Old", "names": ["Old League Orb"]}
     )
+    # A snapshot from before per-type keys (Catalysts left out) is removed on refresh.
+    reference.put(con, "core_pool/currency", {"league": "Old", "names": ["Old League Orb"]})
     settings.core_pool_file = tmp_path / "core_pool.toml"
     settings.core_pool_file.write_text(
         'exclude = ["Exalted Orb"]\n[include]\ncurrency = ["Coffin"]\n'
@@ -337,8 +361,16 @@ def test_refresh_pool_replaces_snapshot_and_reads_overrides(settings, tmp_path):
 
     with PoliteClient(settings, transport=httpx.MockTransport(handler)) as client:
         pool = core_pool.refresh_pool(client, con, settings)
-    # Replaced, not merged: the old league's orb is gone. Catalysts are left out.
-    assert pool.listed["currency"] == {"Exalted Orb", "Foulborn Exalted Orb"}
+    # Replaced, not merged: the old league's orb is gone. Catalysts, fragments and oils
+    # trade on the exchange, so they're currency too.
+    assert pool.listed["currency"] == {
+        "Exalted Orb",
+        "Foulborn Exalted Orb",
+        "Tainted Catalyst",
+        "Simulacrum Splinter",
+        "Golden Oil",
+    }
+    assert reference.get(con, "core_pool/currency") is None
     assert pool.league == "Allflame"
     assert pool.allows("currency", "Exalted Orb") is False  # excluded by config
     assert pool.allows("currency", "Coffin") is True  # included by config
@@ -348,6 +380,12 @@ def test_refresh_pool_replaces_snapshot_and_reads_overrides(settings, tmp_path):
     assert pool.allows("divination", "The Doctor") is True
     assert pool.allows("divination", "Rain of Chaos") is False  # hidden tier
     assert core_pool.load_pool(con, settings).listed == pool.listed
+    # A group with one of its lists missing isn't decided by the pool (fallback instead).
+    con.execute("DELETE FROM reference_data WHERE key = ?", [core_pool.snapshot_key("Oil")])
+    assert "currency" not in core_pool.load_pool(con, settings).listed
+    con.execute("UPDATE reference_data SET fetched_at = fetched_at - INTERVAL 2 DAY")
+    with PoliteClient(settings, transport=httpx.MockTransport(handler)) as client:
+        core_pool.refresh_pool(client, con, settings)
     # Fresh snapshots aren't re-fetched; stale ones are.
     with PoliteClient(settings, transport=httpx.MockTransport(lambda r: 1 / 0)) as client:
         assert core_pool.refresh_pool_if_stale(client, con, settings).listed == pool.listed

@@ -23,6 +23,7 @@ class BaseItem:
     metadata_id: str
     name: str
     item_class: str
+    stackable: bool = False  # has a stack size: the kind of item the exchange trades
 
 
 def _trim(raw: dict) -> dict:
@@ -68,4 +69,12 @@ def load_base_items(con: duckdb.DuckDBPyConnection) -> dict[str, BaseItem]:
     raw = base_items_raw(con)
     if raw is None:
         raise LookupError("RePoE item names aren't loaded yet; run `eb exchange sync`")
-    return {k: BaseItem(k, v["name"], v.get("item_class", "")) for k, v in raw.items()}
+    return {
+        k: BaseItem(
+            k,
+            v["name"],
+            v.get("item_class", ""),
+            "stack_size" in (v.get("properties") or {}),
+        )
+        for k, v in raw.items()
+    }

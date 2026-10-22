@@ -127,16 +127,21 @@ def sync_live(
     lookback_hours: int = 14 * 24,
     now: datetime | None = None,
     earliest: datetime = cx.HISTORY_START,
+    force: bool = False,
 ) -> LiveStatus:
     """One live update for a running league. Safe to interrupt and to repeat.
-    Each update, failed or not, is recorded in ingest_run."""
+    Each update, failed or not, is recorded in ingest_run.
+
+    `force` rebuilds the league's rows from the window's pages, e.g. after the core pool
+    gains items. Pages on disk are reused; missing ones are fetched, so on a wiped disk
+    (the hosted worker) it re-fetches the whole window."""
     lid = dumps_mod.league_id(cx.GAME, league)
     started_at = datetime.now(UTC).replace(tzinfo=None)
     clock = time.perf_counter()
     before = (client.requests, client.bytes_received, client.not_modified)
     status, error = None, None
     try:
-        status = _sync_live(client, settings, league, lookback_hours, now, earliest)
+        status = _sync_live(client, settings, league, lookback_hours, now, earliest, force)
         return status
     except BaseException as e:  # Ctrl-C too: the run is recorded as failed
         error = f"{type(e).__name__}: {e}"[:500]
@@ -166,6 +171,7 @@ def _sync_live(
     lookback_hours: int,
     now: datetime | None,
     earliest: datetime,
+    force: bool = False,
 ) -> LiveStatus:
     lid = dumps_mod.league_id(cx.GAME, league)
     pages_before = _page_count(settings)
@@ -189,7 +195,7 @@ def _sync_live(
     # Fetch only the hours the database doesn't have yet (all of them on a rebuild),
     # so a worker whose disk is wiped between runs makes one request per new hour.
     with db.site_writer(settings) as con:
-        rebuild = exchange_loader.needs_rebuild(con, lid)
+        rebuild = exchange_loader.needs_rebuild(con, lid, force)
         loaded = set() if rebuild else exchange_loader.loaded_hours(con, lid)
     result = cx.sync_recent(
         client,
@@ -205,7 +211,7 @@ def _sync_live(
         return LiveStatus(league, "no_hours")
     with db.site_writer(settings) as con:
         con.execute("UPDATE league SET exchange_tracked = TRUE WHERE id = ?", [lid])
-        loaded = exchange_loader.load_league(con, settings, result.window, names)
+        loaded = exchange_loader.load_league(con, settings, result.window, names, force=force)
     return LiveStatus(
         league,
         "unchanged" if loaded.skipped else "updated",

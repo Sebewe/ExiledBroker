@@ -16,7 +16,7 @@ already in the database. A full rebuild happens only when LOADER_VERSION changes
 or with `force`.
 """
 
-from collections import Counter
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -37,7 +37,8 @@ from exiledbroker.normalize.tracked import (
 from exiledbroker.storage import db
 
 SOURCE = "ggg-exchange-hourly"
-LOADER_VERSION = 5
+# 6: a name shared only with legacy (non-stackable) or Tencent-realm ids isn't ambiguous.
+LOADER_VERSION = 6
 CATEGORY_BY_CLASS = {"StackableCurrency": "currency", "MapFragment": "fragment"}
 
 
@@ -60,20 +61,47 @@ def _category(name: str, item_class: str) -> str:
     return CATEGORY_BY_CLASS.get(item_class, item_class.lower() or "unknown")
 
 
+def _is_tencent(metadata_id: str) -> bool:
+    return metadata_id.rsplit("/", 1)[-1].startswith("Tencent")
+
+
+def ambiguous_ids(names: dict[str, BaseItem]) -> set[str]:
+    """Metadata ids whose name another item shares, so they mustn't use it alone.
+
+    Two kinds of twin don't make a name ambiguous for the id the exchange trades:
+    a legacy id without a stack size (classic fragments and breachstones have one,
+    e.g. ShaperFragment1 next to CurrencyShaperFragment1), and a Tencent-realm copy,
+    which never trades on the global exchange. The twins themselves stay apart."""
+    by_name: dict[str, list[BaseItem]] = defaultdict(list)
+    for b in names.values():
+        by_name[b.name].append(b)
+    out = set()
+    for group in by_name.values():
+        if len(group) < 2:
+            continue
+        global_ids = [b for b in group if not _is_tencent(b.metadata_id)]
+        stackable = [b for b in global_ids if b.stackable]
+        keeps = (
+            stackable[0] if len(stackable) == 1 else global_ids[0] if len(global_ids) == 1 else None
+        )
+        out |= {b.metadata_id for b in group if b is not keeps}
+    return out
+
+
 def resolve_names(metadata_ids: list[str], names: dict[str, BaseItem]) -> list[tuple]:
     """(metadata_id, item_id, name, category) for each id.
 
     RePoE gives some different items the same name (an old and a new id, or a
     mislabelled variant), so an ambiguous name never merges items: each id becomes
-    its own item, labelled with its metadata name.
+    its own item, labelled with its metadata name (see `ambiguous_ids`).
     """
-    counts = Counter(b.name for b in names.values())
+    ambiguous = ambiguous_ids(names)
     rows = []
     for mid in metadata_ids:
         segment = mid.rsplit("/", 1)[-1]
         base = names.get(mid) or BaseItem(mid, segment, "")
         name = base.name
-        if counts[name] > 1:
+        if mid in ambiguous:
             name = f"{name} ({segment})"
         rows.append((mid, currency_item_id(name), name, _category(base.name, base.item_class)))
     return rows
