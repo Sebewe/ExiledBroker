@@ -1,0 +1,14 @@
+.git
+.github
+.venv
+.claude
+.agents
+data
+tests
+app
+.streamlit
+scripts
+**/__pycache__
+web/node_modules
+web/dist
+.env

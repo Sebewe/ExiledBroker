@@ -228,3 +228,6 @@ data/*
 *.parquet
 *.part
 *.part.json
+
+# The Python template above ignores every lib/ (build output); the frontend has source there.
+!web/src/lib/

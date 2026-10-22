@@ -133,3 +133,14 @@ def test_serves_the_frontend(tmp_path, settings):  # noqa: F811
     assert c.get("/../pyproject.toml").text == "<div id=root></div>"  # no escaping dist
     assert c.get("/api/health").json()["status"] == "ok"
     assert c.get("/api/nope").status_code == 404  # API paths never fall through
+
+
+def test_frontend_types_are_up_to_date():
+    """web/openapi.json (the source of the frontend's TS types) matches the API.
+    If this fails: `cd web && npm run gen:api`, then fix any type errors it shows."""
+    from pathlib import Path
+
+    from exiledbroker.api.schema import schema
+
+    committed = Path(__file__).resolve().parents[1] / "web" / "openapi.json"
+    assert committed.read_text() == schema()

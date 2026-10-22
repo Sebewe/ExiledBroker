@@ -17,6 +17,11 @@ def _default_data_dir() -> Path:
     return root / "data" if root else Path("data")
 
 
+def _default_web_dist() -> Path:
+    root = _repo_root()
+    return root / "web" / "dist" if root else Path("web/dist")
+
+
 def _default_core_pool() -> Path:
     root = _repo_root()
     return root / "config" / "core_pool.toml" if root else Path("config/core_pool.toml")
@@ -34,6 +39,8 @@ class Settings(BaseSettings):
     # The site's database (Supabase Postgres when hosted, the compose `db` service
     # locally). Unset: the site reads the local DuckDB file instead.
     database_url: str | None = None
+    # The built frontend the API serves (`npm run build` in web/). Not there: API only.
+    web_dist: Path = Field(default_factory=_default_web_dist)
     # Only PoE1 for now; every league row still carries its game.
     default_game: str = "poe1"
     # Origins allowed to call the API from a browser (the future public frontend).

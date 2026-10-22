@@ -13,11 +13,10 @@ from exiledbroker import __version__
 from exiledbroker.api.routes import live, market, trading
 from exiledbroker.config import get_settings
 
-WEB_DIST = Path(__file__).resolve().parents[3] / "web" / "dist"
 
-
-def create_app(web_dist: Path = WEB_DIST) -> FastAPI:
+def create_app(web_dist: Path | None = None) -> FastAPI:
     settings = get_settings()
+    web_dist = web_dist or settings.web_dist
     app = FastAPI(title="ExiledBroker", version=__version__)
     app.add_middleware(
         CORSMiddleware,

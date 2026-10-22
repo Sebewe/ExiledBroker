@@ -1,0 +1,144 @@
+import { useQuery } from '@tanstack/react-query'
+import { api, unwrap } from './client'
+
+/** Polled every minute: cheap, and its `data_version` changes when a new hour is loaded. */
+export function useStatus() {
+  return useQuery({
+    queryKey: ['status'],
+    queryFn: () => unwrap(api.GET('/api/status')),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  })
+}
+
+/** Every data query is keyed on the data version, so it refetches exactly when the worker
+ *  has loaded new data, and never otherwise. */
+function useVersioned<T>(key: unknown[], fn: () => Promise<T>, enabled = true) {
+  const status = useStatus()
+  const version = status.data?.data_version ?? 'none'
+  return useQuery({
+    queryKey: [...key, version],
+    queryFn: fn,
+    enabled: enabled && status.isSuccess,
+    placeholderData: (previous) => previous, // keep the old table while a new hour loads
+  })
+}
+
+export interface LoopParams {
+  direction: 'chaos_first' | 'divine_first'
+  buffer: number
+  lookback: number
+  min_price: number
+}
+
+export function useLoops(league: string | undefined, p: LoopParams) {
+  return useVersioned(
+    ['loops', league, p],
+    () => unwrap(api.GET('/api/live/{league}/loops', { params: { path: { league: league! }, query: p } })),
+    !!league,
+  )
+}
+
+export function useCardFlips(league: string | undefined, lookback: number, unit: 'chaos' | 'divine') {
+  return useVersioned(
+    ['card-flips', league, lookback, unit],
+    () =>
+      unwrap(
+        api.GET('/api/live/{league}/card-flips', {
+          params: { path: { league: league! }, query: { lookback, unit } },
+        }),
+      ),
+    !!league,
+  )
+}
+
+export interface ArbitrageParams {
+  league: string[]
+  direction: 'chaos_first' | 'divine_first'
+  buffer: number
+  min_hours: number
+  min_price: number
+}
+
+export function useArbitrage(p: ArbitrageParams) {
+  return useVersioned(
+    ['arbitrage', p],
+    () => unwrap(api.GET('/api/arbitrage', { params: { query: p } })),
+    p.league.length > 0,
+  )
+}
+
+export function useArbitrageHourly(
+  itemId: string | undefined,
+  league: string[],
+  direction: 'chaos_first' | 'divine_first',
+) {
+  return useVersioned(
+    ['arbitrage-hourly', itemId, league, direction],
+    () =>
+      unwrap(
+        api.GET('/api/arbitrage/hourly', { params: { query: { item_id: itemId!, league, direction } } }),
+      ),
+    !!itemId && league.length > 0,
+  )
+}
+
+export function useCards(league: string | undefined, unit: 'chaos' | 'divine', preferCheaper: boolean) {
+  return useVersioned(
+    ['cards', league, unit, preferCheaper],
+    () =>
+      unwrap(
+        api.GET('/api/cards/{league}', {
+          params: { path: { league: league! }, query: { unit, prefer_cheaper_sets: preferCheaper } },
+        }),
+      ),
+    !!league,
+  )
+}
+
+export function useCardHourly(league: string | undefined, cardId: string | undefined, unit: 'chaos' | 'divine') {
+  return useVersioned(
+    ['card-hourly', league, cardId, unit],
+    () =>
+      unwrap(
+        api.GET('/api/cards/{league}/{card_id}/hourly', {
+          params: { path: { league: league!, card_id: cardId! }, query: { unit } },
+        }),
+      ),
+    !!league && !!cardId,
+  )
+}
+
+export function useMarketLeagues() {
+  return useVersioned(['market-leagues'], () => unwrap(api.GET('/api/market/leagues')))
+}
+
+export function useGroups() {
+  return useVersioned(['groups'], () => unwrap(api.GET('/api/market/groups')))
+}
+
+export function useMarketSummary(league: string | undefined, group: string[], unit: 'chaos' | 'divine') {
+  return useVersioned(
+    ['market-summary', league, group, unit],
+    () =>
+      unwrap(
+        api.GET('/api/market/{league}/summary', {
+          params: { path: { league: league! }, query: { group, unit } },
+        }),
+      ),
+    !!league && group.length > 0,
+  )
+}
+
+export function useMarketHourly(league: string | undefined, itemIds: string[], unit: 'chaos' | 'divine') {
+  return useVersioned(
+    ['market-hourly', league, itemIds, unit],
+    () =>
+      unwrap(
+        api.GET('/api/market/{league}/hourly', {
+          params: { path: { league: league! }, query: { item_id: itemIds, unit } },
+        }),
+      ),
+    !!league && itemIds.length > 0,
+  )
+}

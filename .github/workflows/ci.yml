@@ -61,3 +61,36 @@ jobs:
         run: pip install -e '.[dev,demo,pg]'
       - name: Test on Postgres
         run: pytest -q tests/test_postgres.py
+
+  # The frontend: types (generated from the API), lint, component tests, production build.
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+  # The image Railway runs builds (not pushed anywhere).
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t exiledbroker:ci .
+      - name: Smoke test (API answers, frontend served)
+        run: |
+          docker run -d --name eb -p 8000:8000 exiledbroker:ci
+          for i in $(seq 1 30); do curl -sf localhost:8000/api/health && break; sleep 1; done
+          curl -sf localhost:8000/ | grep -q '<div id="root">'

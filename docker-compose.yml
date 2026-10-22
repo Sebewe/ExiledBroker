@@ -1,6 +1,8 @@
-# Local copy of the hosted setup. Postgres stands in for Supabase.
-#   docker compose up -d db
-#   EB_DATABASE_URL=postgresql://eb:eb@localhost:55432/exiledbroker eb site seed
+# Local copy of the hosted setup. Postgres stands in for Supabase; `api` and `worker` run
+# the same image Railway runs.
+#   docker compose up -d db                      just the database (dev: eb serve + npm run dev)
+#   docker compose up -d --build api             the site, as hosted, on http://localhost:8000
+#   docker compose --profile worker up -d        also the live worker (it makes requests to GGG)
 services:
   db:
     image: postgres:17
@@ -14,6 +16,23 @@ services:
       test: ["CMD", "pg_isready", "-U", "eb", "-d", "exiledbroker"]
       interval: 5s
       retries: 10
+
+  api:
+    build: .
+    environment:
+      EB_DATABASE_URL: postgresql://eb:eb@db:5432/exiledbroker
+    ports: ["8000:8000"]
+    depends_on:
+      db: { condition: service_healthy }
+
+  worker:
+    build: .
+    command: ["eb", "live", "watch"]
+    environment:
+      EB_DATABASE_URL: postgresql://eb:eb@db:5432/exiledbroker
+    depends_on:
+      db: { condition: service_healthy }
+    profiles: [worker]
 
 volumes:
   pgdata:

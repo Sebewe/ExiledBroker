@@ -1,0 +1,53 @@
+@import 'tailwindcss';
+@import '@fontsource/fira-sans/400.css';
+@import '@fontsource/fira-sans/500.css';
+@import '@fontsource/fira-sans/600.css';
+@import '@fontsource/fira-code/500.css';
+
+/* Design tokens. Dark only: traders keep this open next to the game. Green and red mean
+   profit and loss and nothing else; gold is the brand accent (links, focus, selection). */
+@theme {
+  --font-sans: 'Fira Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Fira Code', ui-monospace, monospace;
+
+  --color-bg: #0b1120;
+  --color-surface: #111a2e;
+  --color-surface-2: #17223a;
+  --color-border: #24314d;
+  --color-text: #e6ebf4;
+  --color-muted: #94a3b8;
+  --color-faint: #64748b;
+  --color-accent: #d4a657;
+  --color-accent-strong: #e8bd6c;
+  --color-positive: #34d399;
+  --color-negative: #f87171;
+  --color-warning: #fbbf24;
+  --color-info: #60a5fa;
+}
+
+@layer base {
+  html {
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    -webkit-font-smoothing: antialiased;
+  }
+  /* Numbers line up in columns. */
+  table,
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      transition-duration: 0ms !important;
+      animation-duration: 0ms !important;
+    }
+  }
+}
