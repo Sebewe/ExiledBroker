@@ -19,7 +19,7 @@ A Path of Exile market speculation tool. It uses historical price data and the n
 | 4 | Baseline + backtest | First honest accuracy numbers | ⬜ Not started |
 | 5 | Signals | Ranked list: "farm X", "buy Y on day 2, sell day 6" | ⬜ Not started |
 | 6 | Live mode | Hourly ingest of the running league; live view of what's best to arbitrage; later, alerts when prices drift from prediction | 🟨 Live feed (`eb live watch`) and the Live market page built; prediction alerts not started |
-| 7 | UI | Streamlit demo (local) → hosted public frontend on the JSON API | 🟨 Streamlit demo: launch market, card turn-ins, data; handles leagues with no data yet |
+| 7 | UI | Hosted site: React frontend on the JSON API, Postgres (Supabase) + Railway | 🟨 Site database (Postgres via `EB_DATABASE_URL`, local compose), worker writing Postgres, API for the launch pages done; React frontend next; Streamlit demo retires after parity |
 
 Legend: ⬜ Not started · 🟨 In progress · ✅ Done
 
@@ -38,7 +38,12 @@ python3 -m venv .venv && .venv/bin/pip install -e '.[dev,demo]'
 .venv/bin/eb exchange sync -l "<New League>" --start 2026-11-20   # register the upcoming league (see §2.8)
 .venv/bin/eb live watch                # keep the current league's latest hours loaded (Live market page)
 .venv/bin/streamlit run app/dashboard.py   # local demo (run from the repo root so the theme loads)
-.venv/bin/eb serve        # API at http://127.0.0.1:8000/api/health (for hosting later)
+.venv/bin/eb serve        # the site's API at http://127.0.0.1:8000/api (interactive docs at /docs)
+
+# Local copy of the hosted setup (Postgres stands in for Supabase):
+docker compose up -d db
+EB_DATABASE_URL=postgresql://eb:eb@localhost:55432/exiledbroker .venv/bin/eb site seed
+EB_DATABASE_URL=postgresql://eb:eb@localhost:55432/exiledbroker .venv/bin/eb serve
 .venv/bin/pytest          # tests
 ```
 
@@ -177,6 +182,9 @@ Fixed on the way, because Postgres rejected them or answered differently:
 | 2026-10-22 | **The running league keeps its launch fortnight.** A live window is the launch's first 14 days *plus* the latest 14 days, loaded together. Loading one window doesn't replace the other, so a league like Allflame (launched 2026-07-24 22:00 UTC) feeds both the Launch market / analysis tools and the Live view. While a new league is under two weeks old, the two windows are the same. A running league has no daily dump until it ends, so the Unique moves tool says so instead of leaving it out silently. |
 | 2026-10-22 | Widgets whose range depends on the data (e.g. "seen in at least N leagues") are hidden when there's only one option. With one league loaded, as at a new league's launch, Streamlit rejects a slider with min = max. |
 | 2026-10-22 | **Charts use linear axes by default**, because they're read by players. Log scale is an opt-in toggle only where values span orders of magnitude (the market chart comparing items, and the card opportunity map). Relative charts say what the numbers mean (1 = the day-1 price). |
+| 2026-10-22 | **The site won't be hosted on Streamlit.** It's a React + Vite + TypeScript frontend on the FastAPI API, with Supabase Postgres and a live worker on Railway: one image, two start commands (web: the API serving the built frontend; worker: `eb live watch`). Locally, Postgres 17 in Docker (`docker-compose.yml`, the same as CI) stands in for Supabase. The Streamlit demo retires once the new UI covers the launch pages. Unique moves and the other Analysis tools aren't in the launch: the focus is investment and trading. |
+| 2026-10-22 | **The worker writes Postgres through DuckDB.** `db.site_writer` attaches Postgres to an in-memory DuckDB (`postgres` extension) and the incremental loader runs unchanged: Parquet, ASOF joins and staging stay in DuckDB, while rows and the transaction are Postgres's. Spike on Mirage: 24 new hours in 1.0 s, identical rows, and a failed load rolls back. The replay test checks the worker's Postgres tables equal the DuckDB pipeline's. |
+| 2026-10-22 | **API results are cached per data version**, not on a timer: the key includes when the latest load finished, so each result is computed once per hourly update for all visitors (bounded LRU, 256 entries). Responses are gzipped. On real Allflame data from Postgres, cached calls take 2–8 ms and the heaviest cold call (arbitrage, 566 loops) about 0.3 s. |
 | 2026-10-22 | **CI on GitHub Actions**, lint plus tests, with a Postgres 17 job. It runs only on the standard `ubuntu-latest` runner, which is free for a public repo, and superseded runs are cancelled. |
 | 2026-10-22 | **Performance measurements stay off the site.** The query meter, the budgets and `eb perf report` are local and CI tools. If live numbers are needed, they'd go into a server-side dev panel later, not a public page. |
 | 2026-10-22 | **Tests never touch `data/`.** `tests/conftest.py` points the default data directory at a temp dir before any fixture runs. It was added after a module-scoped fixture without `EB_DATA_DIR` reached the real database through `sync_live`, which then opened some sessions on the default path instead of `settings.db_path`. That run shrank Mirage's loaded hours to 30. Both are fixed, and Mirage was reloaded from the pages on disk (0 fetched; totals identical to before). |
@@ -329,6 +337,7 @@ ExiledBroker/
 │   ├── storage/
 │   │   ├── db.py               # ✔ DuckDB connection (read-only for the API), query helpers (DuckDB or Postgres), opt-in query meter
 │   │   ├── dumps.py            # ✔ league upsert + Parquet views
+│   │   ├── site.py             # ✔ `eb site seed`: copy leagues into the site's Postgres
 │   │   └── schema.sql          # ✔
 │   ├── normalize/
 │   │   ├── dump_loader.py      # ✔ dump Parquet → item / price_observation (currency + uniques)
@@ -353,8 +362,8 @@ ExiledBroker/
 │   │   └── launch_patterns.py  # ✔ phase 2: unique moves by tier, launch curves, group timing, card turn-ins across leagues, recency weights
 │   ├── services/               # ✔ read-side queries shared by the demo and the API (overview, prices, market, divination, cross_market, scoring, live)
 │   ├── perf.py                 # ✔ `eb perf report`: page reads, storage, worker cost; dated history in data/perf/
-│   ├── api/app.py              # ✔ FastAPI, read-only (/api/leagues, /api/market/<league>/groups/<group>, /api/market/<league>/hourly, ...)
-│   └── cli.py                  # ✔ `eb dumps list|sync|load`, `eb exchange sync|status`, `eb live sync|watch`, `eb perf report`, `eb serve`, `eb init-db`
+│   ├── api/                    # ✔ the site's API: app.py, routes/ (live, trading, market), models.py, cache.py
+│   └── cli.py                  # ✔ `eb dumps list|sync|load`, `eb exchange sync|status`, `eb live sync|watch`, `eb site seed`, `eb perf report`, `eb serve`, `eb init-db`
 ├── app/
 │   ├── dashboard.py            # ✔ Streamlit entry point (navigation, credit)
 │   ├── common.py               # ✔ cached loaders + formatting
@@ -366,6 +375,8 @@ ExiledBroker/
 ├── web/                        # hosted public frontend (later; framework TBD)
 ├── data/                       # ✔ gitignored: raw/{poe_ninja/{dumps,categories}, ggg/currency_exchange, repoe}, processed/{poe_ninja/dumps, ggg/currency_exchange}, logs/, exiledbroker.duckdb
 ├── .github/workflows/ci.yml    # ✔ lint + tests; Postgres 17 job
+├── docker-compose.yml          # ✔ local Postgres standing in for Supabase
+├── .env.example                # ✔ EB_DATABASE_URL etc.
 └── tests/                      # ✔ incl. fixtures/ (real exchange pages for the live replay), performance budgets, Postgres checks
 ```
 

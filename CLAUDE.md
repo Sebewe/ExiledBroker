@@ -18,8 +18,13 @@ docker run -d --name eb-pg -e POSTGRES_PASSWORD=eb -p 55432:5432 postgres:17
 EB_TEST_POSTGRES_URL=postgresql://postgres:eb@localhost:55432/postgres .venv/bin/pytest tests/test_postgres.py   # needs .[pg]
 .venv/bin/eb perf report   # page reads, storage, worker cost; saved to data/perf/, flags growth vs the last report
 
-.venv/bin/streamlit run app/dashboard.py   # demo; run from the repo root so .streamlit/config.toml (theme) loads
-.venv/bin/eb serve                         # FastAPI (hosted-API skeleton)
+.venv/bin/streamlit run app/dashboard.py   # old demo (retiring); run from the repo root so the theme loads
+.venv/bin/eb serve                         # the site's API at http://127.0.0.1:8000/api (docs at /docs)
+
+# Local copy of hosting: Postgres in Docker stands in for Supabase (see .env.example)
+docker compose up -d db
+EB_DATABASE_URL=postgresql://eb:eb@localhost:55432/exiledbroker .venv/bin/eb site seed   # copy the live league in
+EB_DATABASE_URL=postgresql://eb:eb@localhost:55432/exiledbroker .venv/bin/eb serve       # API from Postgres
 
 # Data (all resumable; Ctrl-C and re-run continues)
 .venv/bin/eb dumps sync && .venv/bin/eb dumps load   # daily poe.ninja dumps → tables
@@ -32,7 +37,13 @@ A background run (`nohup … &`) ignores Ctrl-C. Stop it with `pkill -f "eb "`, 
 
 ## Architecture
 
-**Pipeline writes, UI reads.** CLI jobs (`cli.py` → `ingest/` → `normalize/`) fetch data and write a local DuckDB file (`data/exiledbroker.duckdb`) plus Parquet. The Streamlit demo (`app/`) and the FastAPI app (`api/`) only read, and only through `services/`. This split is what lets the site move to **Supabase (Postgres) + Railway** later without rewriting the read side.
+**Pipeline writes, UI reads.** CLI jobs (`cli.py` → `ingest/` → `normalize/`) fetch data and write a local DuckDB file (`data/exiledbroker.duckdb`) plus Parquet. The FastAPI app (`api/`, the site's backend) and the retiring Streamlit demo (`app/`) only read, and only through `services/`.
+
+**The site's database** is Postgres when `EB_DATABASE_URL` is set (Supabase hosted, the compose `db` service locally), else the local DuckDB file. DuckDB stays the research database (all history); Postgres holds only what the site reads (the live league).
+- `db.site_session()`: the API's reads (pooled psycopg). `db.site_writer()`: the live worker's writes, an in-memory DuckDB with Postgres attached (`USE site`), so the incremental loader runs unchanged and its transaction is Postgres's. Code that takes `settings` uses these or `settings.db_path`, never a default path.
+- `eb site seed` copies leagues' site rows from DuckDB into Postgres (development bootstrap only; production data comes from the worker).
+- **API** (`api/routes/*`): thin wrappers over services with pydantic response models (the frontend's TS types come from the OpenAPI schema). Results are cached in a bounded LRU (`api/cache.py`) keyed on the data version (`max(ingest_load.loaded_at)`), so they're recomputed once per load. Timestamps go out as UTC; NaN/inf as null. Unknown league 404, bad args 422, no data yet 503.
+- **Same answers on both engines:** text sorts happen in polars, not SQL `ORDER BY` (Postgres sorts by locale); rankings break ties by `item_id`. `tests/test_postgres.py` compares every service and endpoint.
 
 - **`services/` SQL must stay Postgres-compatible.** No `GROUP BY ALL`, no DuckDB-only functions. The loaders in `normalize/` run locally on DuckDB (they `read_parquet` etc.), so they're exempt. `storage/schema.sql` must run on both engines (`DOUBLE PRECISION`, `ON CONFLICT`, `ADD COLUMN IF NOT EXISTS`). New columns are appended as `ALTER TABLE … ADD COLUMN IF NOT EXISTS` *after* the table's `CREATE`.
 - **DuckDB 2.0:** an `execute()` result stays open until fully fetched. Use the helpers `db.rows` / `db.scalar` / `db.frame` (`storage/db.py`), never `fetchone()` on a connection. The same helpers take a psycopg (Postgres) connection, translating `?` placeholders, and they feed the opt-in query meter (`db.metered()`). Reads that bypass them are invisible to the performance tests. Polars is 2.0 too (e.g. CSVs are read positionally with an explicit header check).
