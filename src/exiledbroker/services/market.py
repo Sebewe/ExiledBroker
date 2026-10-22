@@ -79,10 +79,18 @@ def tracked_groups(con: duckdb.DuckDBPyConnection) -> pl.DataFrame:
     )
 
 
+LAUNCH_WINDOW_DAYS = 14
+
+
 def daily(
-    con: duckdb.DuckDBPyConnection, league: str, group_ids: list[str], unit: str = "chaos"
+    con: duckdb.DuckDBPyConnection,
+    league: str,
+    group_ids: list[str],
+    unit: str = "chaos",
+    max_day: float = LAUNCH_WINDOW_DAYS,
 ) -> pl.DataFrame:
-    """Volume-weighted price per tracked item per launch day (day 1 = first 24 hours)."""
+    """Volume-weighted price per tracked item per launch day (day 1 = first 24 hours),
+    within the first `max_day` days (a live league may have later hours loaded)."""
     col = _unit(unit)
     marks = ", ".join("?" for _ in group_ids)
     return db.frame(
@@ -99,11 +107,12 @@ def daily(
         JOIN item i ON i.id = p.item_id
         JOIN tracked_item t ON t.item_id = i.id
         JOIN league l ON l.id = p.league_id
-        WHERE l.name = ? AND t.group_id IN ({marks}) AND p.source = ? AND p.day_offset >= 0
+        WHERE l.name = ? AND t.group_id IN ({marks}) AND p.source = ?
+          AND p.day_offset >= 0 AND p.day_offset < ?
         GROUP BY i.id, i.canonical_name, t.group_id, CAST(floor(p.day_offset) AS INTEGER)
         ORDER BY name, day
         """,
-        [league, *group_ids, HOURLY],
+        [league, *group_ids, HOURLY, max_day],
     )
 
 
@@ -164,7 +173,8 @@ def hourly(
         JOIN item i ON i.id = p.item_id
         JOIN league l ON l.id = p.league_id
         WHERE l.name = ? AND p.item_id IN ({marks}) AND p.source = ?
+          AND p.day_offset < ?
         ORDER BY p.observed_at
         """,
-        [league, *item_ids, HOURLY],
+        [league, *item_ids, HOURLY, LAUNCH_WINDOW_DAYS],
     )

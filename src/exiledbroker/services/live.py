@@ -1,0 +1,160 @@
+"""Live view: what's best to arbitrage in a running league's latest published hours.
+
+GGG publishes each exchange hour a few minutes after it ends, so "now" means the
+newest loaded hour, roughly an hour behind real time. Everything here looks back
+`lookback_hours` from that hour: the latest edge or margin says where things stand,
+and the share of paying hours over the lookback says whether it's a pattern or a blip.
+
+SQL here must stay Postgres-compatible: Supabase will serve the same queries.
+"""
+
+from datetime import datetime, timedelta
+
+import duckdb
+import polars as pl
+
+from exiledbroker.normalize.exchange_loader import SOURCE as HOURLY
+from exiledbroker.services import cross_market, divination
+from exiledbroker.services.scoring import rank_score
+from exiledbroker.storage import db
+
+LOOP_FACTORS = {
+    "edge_now": ("last_edge", True),
+    "consistency": ("paying_share", True),
+    "volume": ("overlap_chaos", True),
+    "freshness": ("hours_since", False),
+}
+LOOP_WEIGHTS = {"edge_now": 4.0, "consistency": 3.0, "volume": 3.0, "freshness": 2.0}
+CARD_FACTORS = {
+    "margin_now": ("last_margin_pct", True),
+    "consistency": ("profitable_share", True),
+    "volume": ("sets_traded", True),
+    "freshness": ("hours_since", False),
+}
+CARD_WEIGHTS = {"margin_now": 4.0, "consistency": 3.0, "volume": 3.0, "freshness": 2.0}
+
+
+def live_leagues(con: duckdb.DuckDBPyConnection) -> pl.DataFrame:
+    """Leagues followed on the exchange, newest data first: name, latest hour (null
+    until something has traded), hours loaded. A just-launched league is listed before
+    its first trade, so the live view can say it's waiting rather than missing."""
+    return db.frame(
+        con,
+        """
+        SELECT l.name, max(p.observed_at) AS latest_hour,
+               count(DISTINCT p.observed_at) AS hours, l.launched_at
+        FROM league l
+        LEFT JOIN price_observation p ON p.league_id = l.id AND p.source = ?
+        WHERE l.kind = 'challenge' AND (l.exchange_tracked OR p.item_id IS NOT NULL)
+        GROUP BY l.name, l.launched_at
+        ORDER BY coalesce(max(p.observed_at), l.launched_at) DESC NULLS LAST
+        """,
+        [HOURLY],
+    )
+
+
+def latest_hour(con: duckdb.DuckDBPyConnection, league: str) -> datetime | None:
+    q = """
+        SELECT max(p.observed_at) FROM price_observation p JOIN league l ON l.id = p.league_id
+        WHERE l.name = ? AND p.source = ?
+    """
+    rows = db.rows(con, q, [league, HOURLY])
+    return rows[0][0] if rows else None
+
+
+def _since(latest: datetime, lookback_hours: int) -> pl.Expr:
+    return pl.col("observed_at") > pl.lit(latest - timedelta(hours=lookback_hours))
+
+
+def live_loops(
+    con: duckdb.DuckDBPyConnection,
+    league: str,
+    direction: str = "chaos_first",
+    buffer: float = 0.02,
+    lookback_hours: int = 6,
+    min_price: float = 1.0,
+    weights: dict[str, float] | None = None,
+) -> pl.DataFrame:
+    """Chaos/Divine loops in the latest hours, best first."""
+    latest = latest_hour(con, league)
+    if latest is None:
+        return pl.DataFrame()
+    hours = cross_market.hourly(con, [league], direction=direction).filter(
+        _since(latest, lookback_hours)
+    )
+    if hours.is_empty():
+        return pl.DataFrame()
+    last = hours.sort("observed_at").group_by("item_id").agg(pl.all().last().name.prefix("last_"))
+    out = (
+        hours.group_by("item_id", "name")
+        .agg(
+            pl.len().alias("hours"),
+            (pl.col("edge") > buffer).mean().alias("paying_share"),
+            pl.col("overlap_chaos").sum(),
+        )
+        .join(last, on="item_id")
+        .select(
+            "item_id",
+            "name",
+            "hours",
+            "paying_share",
+            "overlap_chaos",
+            last_edge=pl.col("last_edge"),
+            last_gap=pl.col("last_gap"),
+            price=pl.col("last_chaos_price"),
+            last_hour=pl.col("last_observed_at"),
+            hours_since=(pl.lit(latest) - pl.col("last_observed_at")).dt.total_hours(),
+        )
+        .filter(pl.col("price") >= min_price, pl.col("last_edge") > buffer)
+    )
+    return rank_score(out, LOOP_FACTORS, weights or LOOP_WEIGHTS)
+
+
+def live_card_flips(
+    con: duckdb.DuckDBPyConnection,
+    league: str,
+    lookback_hours: int = 6,
+    unit: str = "chaos",
+    weights: dict[str, float] | None = None,
+) -> pl.DataFrame:
+    """Card turn-ins in the latest hours, best first (only ones that paid last time)."""
+    latest = latest_hour(con, league)
+    if latest is None:
+        return pl.DataFrame()
+    hours = divination.hourly_turn_ins(con, league, unit=unit).filter(
+        _since(latest, lookback_hours)
+    )
+    hours = hours.drop_nulls("margin")
+    if hours.is_empty():
+        return pl.DataFrame()
+    cards = divination.followed_cards(con).select(
+        "name", "item_id", "stack_size", "reward_quantity", "reward_name"
+    )
+    last = hours.sort("observed_at").group_by("card").agg(pl.all().last().name.prefix("last_"))
+    out = (
+        hours.group_by("card")
+        .agg(
+            pl.len().alias("hours"),
+            (pl.col("margin") > 0).mean().alias("profitable_share"),
+            pl.col("card_volume").sum().alias("cards_traded"),
+        )
+        .join(last, on="card")
+        .join(cards, left_on="card", right_on="name")
+        .select(
+            pl.col("card").alias("name"),
+            "item_id",
+            "hours",
+            "profitable_share",
+            sets_traded=pl.col("cards_traded") / pl.col("stack_size"),
+            set_cost=pl.col("last_set_cost"),
+            reward_value=pl.col("last_reward_value"),
+            last_margin=pl.col("last_margin"),
+            last_margin_pct=pl.col("last_margin") / pl.col("last_set_cost"),
+            reward=pl.format("{}× {}", pl.col("reward_quantity"), pl.col("reward_name")),
+            stack_size="stack_size",
+            last_hour=pl.col("last_observed_at"),
+            hours_since=(pl.lit(latest) - pl.col("last_observed_at")).dt.total_hours(),
+        )
+        .filter(pl.col("last_margin") > 0)
+    )
+    return rank_score(out, CARD_FACTORS, weights or CARD_WEIGHTS)

@@ -92,10 +92,11 @@ class Window:
     league_name: str
     launched_at: datetime
     end: datetime  # exclusive
+    start: datetime | None = None  # defaults to the launch; later for a live window
 
     @property
     def hours(self) -> range:
-        return range(to_ts(self.launched_at), to_ts(self.end), HOUR)
+        return range(to_ts(self.start or self.launched_at), to_ts(self.end), HOUR)
 
 
 @dataclass
@@ -224,4 +225,92 @@ def extracted_window(settings: Settings, league_name: str) -> Window | None:
         league_name,
         datetime.fromisoformat(meta["launched_at"]),
         from_ts(meta["last"] + HOUR),
+        start=from_ts(meta["first"]),
     )
+
+
+# --- Live ----------------------------------------------------------------------------
+
+
+def current_hour(now: datetime | None = None) -> int:
+    """The hour being traded now; it's published once it ends."""
+    return to_ts(now or datetime.now(UTC))
+
+
+def latest_published_hour(
+    client: PoliteClient, settings: Settings, now: datetime | None = None
+) -> int | None:
+    """The newest finished hour GGG has published: usually the previous hour, or the one
+    before during the few minutes after an hour ends."""
+    current = current_hour(now)
+    for ts in (current - HOUR, current - 2 * HOUR):
+        try:
+            fetch_page(client, settings, ts)
+            return ts
+        except EndOfStream:
+            continue
+    return None
+
+
+def find_launch(
+    client: PoliteClient,
+    settings: Settings,
+    league_name: str,
+    now: datetime | None = None,
+    earliest: datetime = HISTORY_START,
+) -> datetime | None:
+    """First hour a league appears on the exchange, by binary search over history.
+
+    A league is absent before its launch and present every hour after, so this needs
+    about a dozen pages (each cached) to search two years. None if it hasn't launched
+    or nothing has been published for it yet."""
+    lo = to_ts(earliest)
+    last = latest_published_hour(client, settings, now)
+    if (
+        last is None
+        or last < lo
+        or not league_in_page(fetch_page(client, settings, last), league_name)
+    ):
+        return None
+    # The answer is in [lo, hi] and the league is present at hi. Halve until they meet.
+    hi = last
+    while lo < hi:
+        mid = lo + (hi - lo) // HOUR // 2 * HOUR  # always < hi, so the range shrinks
+        if league_in_page(fetch_page(client, settings, mid), league_name):
+            hi = mid
+        else:
+            lo = mid + HOUR
+    return from_ts(lo)
+
+
+def sync_recent(
+    client: PoliteClient,
+    settings: Settings,
+    league_name: str,
+    launched_at: datetime,
+    lookback_hours: int = 14 * 24,
+    now: datetime | None = None,
+    progress: Callable[[int, int, int], None] | None = None,
+) -> SyncResult:
+    """Fetch the latest published hours of a running league: from `lookback_hours` ago
+    (or the launch, if later) up to the hour being traded now. Run it every hour: only
+    the newly published hours are fetched."""
+    end_ts = current_hour(now)
+    start_ts = max(to_ts(launched_at), end_ts - lookback_hours * HOUR)
+    window = Window(league_name, launched_at, from_ts(end_ts), start=from_ts(start_ts))
+    fetched = cached = 0
+    hours = window.hours
+    try:
+        for i, ts in enumerate(hours, 1):
+            if page_path(settings, ts).exists():
+                cached += 1
+            else:
+                fetched += 1
+            fetch_page(client, settings, ts)
+            if progress:
+                progress(i, len(hours), fetched)
+    except EndOfStream:
+        # The last hour isn't published yet (GGG adds a few minutes' delay).
+        window.end = from_ts(ts)
+        return SyncResult(window, fetched, cached, reached_end=True)
+    return SyncResult(window, fetched, cached, reached_end=False)

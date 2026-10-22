@@ -1,14 +1,17 @@
 import sys
+import time
 from contextlib import contextmanager
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from typing import Annotated
 
+import httpx
 import typer
 import uvicorn
 
 from exiledbroker.config import get_settings
 from exiledbroker.ingest import core_pool, item_names
 from exiledbroker.ingest import currency_exchange as cx
+from exiledbroker.ingest import live as live_mod
 from exiledbroker.ingest import poe_ninja_dumps as dumps_mod
 from exiledbroker.ingest.http import PoliteClient, is_complete, part_path_for
 from exiledbroker.normalize import dump_loader, exchange_loader, mappings
@@ -358,3 +361,69 @@ def exchange_status() -> None:
         n, at = rows.get(d.league_id, (0, None))
         loaded = f"{n:,} rows (loaded {at:%Y-%m-%d %H:%M})" if at else "not loaded"
         typer.echo(f"{d.league_name:<14} {span:<36} {loaded}")
+
+
+live_app = typer.Typer(
+    help="Live market: keep the current league's latest exchange hours loaded.",
+    no_args_is_help=True,
+)
+app.add_typer(live_app, name="live")
+
+
+def _live_once(client, settings, league: str | None, lookback_hours: int, names, pool_due):
+    name = league or live_mod.current_league(client, settings)
+    status = live_mod.sync_live(
+        client, settings, name, names, lookback_hours, refresh_core_pool=pool_due
+    )
+    return str(status)
+
+
+@live_app.command("sync")
+def live_sync(
+    league: str | None = typer.Option(
+        None, "--league", "-l", help="Default: poe.ninja's current challenge league."
+    ),
+    lookback_hours: int = typer.Option(
+        14 * 24, help="Keep this many recent hours loaded (or everything since launch)."
+    ),
+) -> None:
+    """Load the latest published exchange hours of a running league, once."""
+    settings = get_settings()
+    with resumable(), PoliteClient(settings) as client:
+        item_names.ensure_base_items(client, settings)
+        names = item_names.load_base_items(settings)
+        typer.echo(_live_once(client, settings, league, lookback_hours, names, True))
+
+
+@live_app.command("watch")
+def live_watch(
+    league: str | None = typer.Option(
+        None, "--league", "-l", help="Default: poe.ninja's current challenge league."
+    ),
+    lookback_hours: int = typer.Option(
+        14 * 24, help="Keep this many recent hours loaded (or everything since launch)."
+    ),
+    delay_minutes: int = typer.Option(
+        6, help="Minutes after each hour to fetch it (GGG publishes with a short delay)."
+    ),
+) -> None:
+    """Keep a running league's latest hours loaded: update now, then shortly after every
+    hour. Ctrl-C to stop; re-running picks up where it left off."""
+    settings = get_settings()
+    runs = 0
+    with resumable(), PoliteClient(settings) as client:
+        item_names.ensure_base_items(client, settings)
+        names = item_names.load_base_items(settings)
+        while True:
+            try:
+                # The core pool changes rarely; refresh it every 24 updates.
+                status = _live_once(client, settings, league, lookback_hours, names, runs % 24 == 0)
+            except (httpx.HTTPError, OSError, ValueError) as e:
+                status = f"update failed ({e}); retrying next hour"
+            runs += 1
+            now = datetime.now(UTC)
+            next_run = now.replace(minute=0, second=0, microsecond=0) + timedelta(
+                hours=1, minutes=delay_minutes
+            )
+            typer.echo(f"{now:%H:%M} UTC  {status}  Next update ~{next_run:%H:%M} UTC.")
+            time.sleep(max(60.0, (next_run - datetime.now(UTC)).total_seconds()))

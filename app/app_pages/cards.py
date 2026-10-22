@@ -153,8 +153,64 @@ if shown.is_empty():
     st.caption("No cards pass these filters. Lower the minimum score or allow unprofitable cards.")
     st.stop()
 
-# --- Opportunity map -------------------------------------------------------------
-with st.container(border=True):
+# --- Ranked table (full width) -----------------------------------------------------
+st.subheader("Ranked turn-ins", icon=":material/leaderboard:")
+st.caption(
+    f"Typical hour, in {unit} ({sfx}). Money first; what the card gives comes last. "
+    "Select a row to see its chart at the bottom of the page."
+)
+event = st.dataframe(
+    shown.select(
+        "name",
+        "score",
+        "set_cost",
+        "reward_value",
+        "margin",
+        "margin_pct",
+        "sets_traded",
+        "profitable_share",
+        "reward",
+        "stack_size",
+    ),
+    hide_index=True,
+    height=520,
+    on_select="rerun",
+    selection_mode="single-row",
+    placeholder="–",
+    key=f"turn-ins-{unit}",
+    column_config={
+        "name": st.column_config.TextColumn("Card", pinned=True, width="medium"),
+        "score": st.column_config.ProgressColumn("Score", format="%.2f", min_value=0, max_value=1),
+        "set_cost": st.column_config.NumberColumn(
+            f"Set cost ({sfx})", format=fmt, help="What a full set of cards costs."
+        ),
+        "reward_value": st.column_config.NumberColumn(
+            f"Reward ({sfx})", format=fmt, help="What the turn-in reward sells for."
+        ),
+        "margin": st.column_config.NumberColumn(f"Margin ({sfx})", format=fmt),
+        "margin_pct": st.column_config.NumberColumn("Margin %", format="percent"),
+        "sets_traded": st.column_config.NumberColumn(
+            "Sets traded", format="compact", help="Full sets' worth of cards traded."
+        ),
+        "profitable_share": st.column_config.ProgressColumn(
+            "Profitable hours",
+            format="percent",
+            min_value=0,
+            max_value=1,
+        ),
+        "reward": st.column_config.TextColumn("Gives"),
+        "stack_size": st.column_config.NumberColumn("Set size", help="Cards in a full set."),
+    },
+    alt="Divination card turn-ins ranked by score",
+)
+
+# --- Charts (bottom) ---------------------------------------------------------------
+pick = (shown[event.selection.rows[0]] if event.selection.rows else shown.head(1)).row(
+    0, named=True
+)
+st.subheader("Charts", icon=":material/show_chart:")
+left, right = st.columns(2)
+with left, st.container(border=True, height="stretch"):
     with st.container(horizontal=True, vertical_alignment="center"):
         st.markdown("**Opportunity map**")
         map_log = st.toggle(
@@ -180,7 +236,7 @@ with st.container(border=True):
             alt.Color("score:Q", title="Score", scale=alt.Scale(scheme="goldorange")),
             tooltip=[
                 alt.Tooltip("name:N", title="Card"),
-                alt.Tooltip("reward:N", title="Reward"),
+                alt.Tooltip("reward:N", title="Gives"),
                 alt.Tooltip("set_cost:Q", title=f"Set cost ({sfx})", format=",.4~f"),
                 alt.Tooltip("margin_pct:Q", title="Margin", format=".1%"),
                 alt.Tooltip("profitable_share:Q", title="Profitable hours", format=".0%"),
@@ -192,59 +248,6 @@ with st.container(border=True):
     )
     st.altair_chart(chart, alt="Card turn-in opportunity map")
 
-# --- Table and detail --------------------------------------------------------------
-left, right = st.columns([3, 2])
-with left, st.container(border=True, height="stretch"):
-    st.markdown("**Ranked turn-ins**")
-    st.caption(f"Typical hour, in {unit} ({sfx}). Select a row to chart it.")
-    event = st.dataframe(
-        shown.select(
-            "name",
-            "score",
-            "reward",
-            "stack_size",
-            "set_cost",
-            "reward_value",
-            "margin",
-            "margin_pct",
-            "profitable_share",
-            "sets_traded",
-            "filter_tier",
-        ),
-        hide_index=True,
-        height=460,
-        on_select="rerun",
-        selection_mode="single-row",
-        placeholder="–",
-        key=f"turn-ins-{unit}",
-        column_config={
-            "name": st.column_config.TextColumn("Card", pinned=True),
-            "score": st.column_config.ProgressColumn(
-                "Score", format="%.2f", min_value=0, max_value=1
-            ),
-            "reward": st.column_config.TextColumn("Reward"),
-            "stack_size": st.column_config.NumberColumn("Set", help="Cards in a full set."),
-            "set_cost": st.column_config.NumberColumn(f"Set cost ({sfx})", format=fmt),
-            "reward_value": st.column_config.NumberColumn(f"Reward ({sfx})", format=fmt),
-            "margin": st.column_config.NumberColumn(f"Margin ({sfx})", format=fmt),
-            "margin_pct": st.column_config.NumberColumn("Margin %", format="percent"),
-            "profitable_share": st.column_config.ProgressColumn(
-                "Profitable hours",
-                format="percent",
-                min_value=0,
-                max_value=1,
-            ),
-            "sets_traded": st.column_config.NumberColumn(
-                "Sets traded", format="compact", help="Full sets' worth of cards traded."
-            ),
-            "filter_tier": st.column_config.TextColumn("Tier", help="NeverSink filter tier."),
-        },
-        alt="Divination card turn-ins ranked by score",
-    )
-
-pick = (shown[event.selection.rows[0]] if event.selection.rows else shown.head(1)).row(
-    0, named=True
-)
 with right, st.container(border=True, height="stretch"):
     st.markdown(f"**{pick['name']}**: {pick['stack_size']} cards → {pick['reward']}")
     series = card_turn_in_hourly(league, pick["item_id"], unit).drop_nulls("margin")

@@ -60,26 +60,33 @@ def register(settings):
 
 
 def test_no_database(settings):
-    at = run_app()
+    at = run_app()  # the default page: Live market
+    assert at.info[0].value.startswith("Start the live feed")
+    at = run_app("app_pages/market.py")
     assert at.info[0].value.startswith("Run ")
-    run_app("app_pages/data.py")
-    run_app("app_pages/analysis.py")
+    for page in ("data", "analysis", "cards", "arbitrage"):
+        run_app(f"app_pages/{page}.py")
 
 
 def test_league_registered_before_first_hour(settings):
     register(settings).close()
-    at = run_app()
+    at = run_app("app_pages/market.py")
     assert "no hourly trades have been published yet" in at.info[0].value
+    # Registered ahead of launch: the live page says it's waiting for the launch.
+    at = run_app()
+    assert "hasn't appeared on the exchange yet" in at.info[0].value
     assert not at.metric and not at.dataframe
     # No cards loaded yet: the turn-ins page says so instead of failing.
     at = run_app("app_pages/cards.py")
     assert at.info[0].value.startswith("Run ")
     # Analysis tools wait for data instead of failing.
     at = run_app("app_pages/analysis.py")
-    for tool in ("Unique moves", "Launch curves", "Group timing", "Card turn-ins", "Cross-market"):
+    for tool in ("Unique moves", "Launch curves", "Group timing", "Card turn-ins"):
         at.get("button_group")[0].set_value(tool).run()
         assert not at.exception, [e.message for e in at.exception]
         assert "No challenge league has" in at.info[0].value
+    at = run_app("app_pages/arbitrage.py")
+    assert at.info[0].value.startswith("Run ")
 
 
 def test_first_hours_with_gaps(settings):
@@ -100,7 +107,7 @@ def test_first_hours_with_gaps(settings):
     exchange_loader.load_league(con, settings, result.window, NAMES)
     con.close()
 
-    at = run_app()
+    at = run_app("app_pages/market.py")
     assert "2 hours since launch" in at.caption[0].value
     cards = {m.label: m.value for m in at.metric}
     assert cards["Divine Orb"] == "30.0 c"
@@ -131,9 +138,12 @@ def test_first_hours_with_gaps(settings):
     st.cache_data.clear()
     # Two hours of one league: every analysis tool still renders.
     at = run_app("app_pages/analysis.py")
-    for tool in ("Unique moves", "Launch curves", "Group timing", "Card turn-ins", "Cross-market"):
+    for tool in ("Unique moves", "Launch curves", "Group timing", "Card turn-ins"):
         at.get("button_group")[0].set_value(tool).run()
         assert not at.exception, [e.message for e in at.exception]
+    # ...and so does arbitrage trading (nothing traded in both markets yet).
+    at = run_app("app_pages/arbitrage.py")
+    assert "traded in both markets" in at.info[0].value
     at = run_app("app_pages/cards.py")
     assert "No hour in Mirage has trades for both" in at.info[0].value
     assert {m.label: m.value for m in at.metric}["Top score"] == "–"

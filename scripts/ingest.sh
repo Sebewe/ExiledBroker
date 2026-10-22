@@ -5,6 +5,7 @@
 #   scripts/ingest.sh exchange -l Mirage --days 14
 #   scripts/ingest.sh dumps            # daily poe.ninja dumps: download, extract, load
 #   scripts/ingest.sh all              # both
+#   scripts/ingest.sh live             # keep the current league's latest hours loaded (runs until stopped)
 #
 # Safe to stop at any time (Ctrl-C, closing the terminal, a crash) and re-run: finished
 # work is never fetched or rewritten again. Logs go to data/logs/, newest at
@@ -13,6 +14,8 @@
 # To run it in the background and check on it later:
 #   nohup scripts/ingest.sh >/dev/null 2>&1 &
 #   tail -f data/logs/latest.log
+# A background run ignores Ctrl-C; stop it with `pkill -f "eb "` (or kill <pid>).
+# That's safe at any point: every file is written in full or not at all.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
@@ -50,6 +53,7 @@ case "$mode" in
   exchange) run exchange sync "$@" ;;
   dumps)    run dumps sync "$@"; run dumps load ;;
   all)      run dumps sync; run dumps load; run exchange sync "$@" ;;
-  *) echo "usage: scripts/ingest.sh [exchange|dumps|all] [eb options]" >&2; exit 2 ;;
+  live)     run live watch "$@" ;;
+  *) echo "usage: scripts/ingest.sh [exchange|dumps|all|live] [eb options]" >&2; exit 2 ;;
 esac
 echo "==> $(date -u +%H:%M:%S) done" | tee -a "$log"

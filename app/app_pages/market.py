@@ -42,7 +42,19 @@ if info["row_count"] == 0:
     )
     st.stop()
 
-hours = info["hours_covered"]
+launch_hours = 14 * 24
+# A live league loaded from its recent hours may not include its launch fortnight.
+past_launch = info["launched_at"] and info["hours_covered"] > launch_hours
+if past_launch and summary(league, ("currency",), "chaos").is_empty():
+    st.info(
+        f"The hours loaded for {league} are from after its first two weeks, so there's "
+        "no launch window to show. The Live market page shows what's trading now; "
+        f'`eb exchange sync -l "{league}"` loads its launch fortnight.',
+        title="Past the launch window",
+        icon=":material/schedule:",
+    )
+    st.stop()
+hours = min(info["hours_covered"], launch_hours)
 covered = f"{hours} hour{'s' if hours != 1 else ''}" if hours < 48 else f"{hours / 24:.0f} days"
 st.caption(
     f"Hourly trades on the in-game currency exchange: {covered} since launch "

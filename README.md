@@ -14,11 +14,11 @@ A Path of Exile market speculation tool. It uses historical price data and the n
 |---|---|---|---|
 | 0 | Scaffolding | Package, CLI, DuckDB schema, config, service layer, Streamlit demo + API skeleton | ✅ Done |
 | 1 | Historical ingest | Daily poe.ninja dumps + hourly GGG exchange → `item` / `price_observation`, league calendar, price mappings, core pool, divination cards | ✅ Done. All 32 challenge leagues daily; hourly for the four exchange-era leagues |
-| 2 | Exploration | Recurring launch-week patterns across recent leagues: `analysis/` module + the demo's Analysis tab | 🟨 Tools built (unique moves, launch curves, group timing, card turn-ins across leagues, cross-market loops); findings in §9 |
+| 2 | Exploration | Recurring launch-week patterns across recent leagues: `analysis/` module, the Analysis tab, and the Card turn-ins / Arbitrage trading pages | 🟨 Tools built; findings in §9 |
 | 3 | Patch corpus | Scraper, extractor, review tool for past leagues | ⬜ Not started |
 | 4 | Baseline + backtest | First honest accuracy numbers | ⬜ Not started |
 | 5 | Signals | Ranked list: "farm X", "buy Y on day 2, sell day 6" | ⬜ Not started |
-| 6 | Live mode | Hourly ingest at launch, alerts when prices drift from prediction | ⬜ Not started |
+| 6 | Live mode | Hourly ingest of the running league; live view of what's best to arbitrage; later, alerts when prices drift from prediction | 🟨 Live feed (`eb live watch`) and the Live market page built; prediction alerts not started |
 | 7 | UI | Streamlit demo (local) → hosted public frontend on the JSON API | 🟨 Streamlit demo: launch market, card turn-ins, data; handles leagues with no data yet |
 
 Legend: ⬜ Not started · 🟨 In progress · ✅ Done
@@ -36,6 +36,7 @@ python3 -m venv .venv && .venv/bin/pip install -e '.[dev,demo]'
 .venv/bin/eb exchange sync -l Mirage   # hourly exchange history, first 14 days (resumable)
 .venv/bin/eb exchange status           # what's on disk and loaded
 .venv/bin/eb exchange sync -l "<New League>" --start 2026-11-20   # register the upcoming league (see §2.8)
+.venv/bin/eb live watch                # keep the current league's latest hours loaded (Live market page)
 .venv/bin/streamlit run app/dashboard.py   # local demo (run from the repo root so the theme loads)
 .venv/bin/eb serve        # API at http://127.0.0.1:8000/api/health (for hosting later)
 .venv/bin/pytest          # tests
@@ -52,16 +53,26 @@ scripts/ingest.sh                      # hourly exchange: first 14 days of every
 scripts/ingest.sh exchange -l Mirage   # one league (any `eb exchange sync` options work)
 scripts/ingest.sh dumps                # daily poe.ninja dumps for every challenge league: download, extract, load
 scripts/ingest.sh all                  # both
+scripts/ingest.sh live                 # live feed for the current league: updates every hour, runs until stopped
 
 # In the background, then check on it whenever:
 nohup scripts/ingest.sh all >/dev/null 2>&1 &
 tail -f data/logs/latest.log
 ```
 
-- **Stop it any time** (Ctrl-C, closing the terminal, sleep, a crash) and run the same command again to continue. Hourly pages, zips and Parquet files are written to a temporary name and renamed when complete. Database loads are one transaction per league. Nothing that's finished is fetched or rewritten again.
+- **Stop it any time** (Ctrl-C, closing the terminal, sleep, a crash) and run the same command again to continue. A run started in the background with `nohup … &` ignores Ctrl-C, so stop it with `pkill -f "eb "`. That's safe at any point. Hourly pages, zips and Parquet files are written to a temporary name and renamed when complete. Database loads are one transaction per league. Nothing that's finished is fetched or rewritten again.
 - On macOS it keeps the machine awake (`caffeinate`) while running. Each run logs to `data/logs/ingest-<time>.log`, and `latest.log` points at the newest.
 - Rough cost: the hourly exchange for the four challenge leagues since Settlers is ~1.5k requests (~30 min, ~150 MB on disk). The daily dumps for all ~30 challenge leagues are about 1 GB of zips.
 - While a run is loading, the demo may briefly fail to open the database (DuckDB allows one writer). Refresh the page.
+
+### Live market (phase 6, started)
+
+The site's default page. It shows what's best to arbitrage **right now** in the running league: Chaos↔Divine loops and card flips, ranked on the latest published hours.
+
+- **Feed:** `scripts/ingest.sh live` (`eb live watch`) picks poe.ninja's current challenge league. If the launch hour isn't known, it finds it by binary search over GGG's exchange history (about a dozen requests). It then keeps the last 14 days loaded (`--lookback-hours`), fetching each new hour about 6 minutes after it ends, because GGG publishes with a short delay. It refuses leagues that aren't trading in the latest hour, so an ended league's history can't be replaced by an empty window.
+- **"Now"** is the latest published hour, about an hour behind real time. The page shows how old it is, warns if the feed looks stopped, and with **Live updates** on it re-reads the data every minute. The page never fetches; the feed does. On Railway this becomes a worker running `eb live watch` next to the web app.
+- **Before the first trade:** a just-launched league shows "waiting for the first trades" rather than nothing. Mirage's launch hour was published with no trades in it.
+- **Tested on real API output:** `tests/test_live_pipeline.py` replays Mirage's first 30 hours exactly as GGG published them (`tests/fixtures/mirage_launch.json.gz`, rebuilt by `tests/fixtures/make_fixtures.py`). After each new hour it runs the real live update and then every page and analysis tool. It also checks that an update interrupted mid-hour resumes cleanly. That's how the one-league slider bug (decision log) was found.
 
 ### Next steps
 
@@ -107,8 +118,13 @@ tail -f data/logs/latest.log
 | 2026-10-21 | **Phase 2 analyses favour recent leagues.** The economy changes a lot league by league, and the currency exchange (Settlers, 2024-07) was a structural break. So every tool reports per league, newest first, and summaries are recency-weighted: the newest league counts 1, and each *half-life* leagues back halves it (default 2, adjustable in the Analysis tab). Leagues before Settlers are context only. |
 | 2026-10-21 | Launch curves are compared on a **relative** scale: price ÷ the item's day-1 price in the same league, where the day-1 price is the *median* of its first-24-hour hourly prices (thin early markets, like a few junk Mirror trades, would skew an average). Curves whose baseline rests on fewer than six traded hours are flagged. Turn-in figures are the **typical (median) hour**: set cost, reward value, margin and margin %. Thin card markets have junk hours (The Hoarder averaged 570c a set in Mirage, against a typical hour of about 1c), and averaging hourly percentages blows up for near-worthless sets. |
 | 2026-10-22 | **Card flip score** (`services/divination.score_turn_ins`): margin %, investment (set cost), profitable hours and volume (full sets traded) are each ranked among the priced cards (best = 1), and the score is their weighted mean. Ranks rather than raw values, so chaos amounts, shares and counts combine fairly and one outlier can't dominate. Weights default to 4 / 2 / 3 / 3 and are tunable on the Card turn-ins page, as is whether a cheaper or a bigger set scores better. |
-| 2026-10-22 | **Cross-market loops** (`services/cross_market.py`, Analysis → Cross-market). The exchange loader also writes `cross_market_hour`: every item-hour that traded against both Chaos and Divines, with the same hour's Divine rate (not carried forward, since a loop needs both trades in that hour). Both loops are priced at the worst prices of the hour on every leg. An hour pays only if the loop beats a fee buffer (default 2%), and a league where an item didn't trade in both markets counts as 0 for its worst-league share. Items under 1c are filtered by default: dust-priced bulk items (Rogue's Markers at ~0.001c) show huge gaps that say more about how they trade than about profit. |
+| 2026-10-22 | **Cross-market loops** (`services/cross_market.py`, the **Arbitrage trading** page). The exchange loader also writes `cross_market_hour`: every item-hour that traded against both Chaos and Divines, with the same hour's Divine rate (not carried forward, since a loop needs both trades in that hour). Both loops are priced at the worst prices of the hour on every leg. An hour pays only if the loop beats a fee buffer (default 2%), and a league where an item didn't trade in both markets counts as 0 for its worst-league share. Items under 1c are filtered by default: dust-priced bulk items (Rogue's Markers at ~0.001c) show huge gaps that say more about how they trade than about profit. |
 | 2026-10-22 | **One scoring method** (`services/scoring.rank_score`) for card flips and cross-market loops: percentile rank per factor, weighted mean, weights tunable on the page. Cross-market factors: edge when paying, share of paying hours, worst league's share, and volume traded in both markets. |
+| 2026-10-22 | **Trading pages put the money first.** On Card turn-ins and Arbitrage trading, the ranked table is full width at the top, its columns lead with score and chaos figures (score, set cost, reward, margin, margin %, sets traded, profitable hours; what the card gives comes last), and charts sit at the bottom. |
+| 2026-10-22 | **Group timing defaults to Chaos.** Priced in Divines, almost every group sinks below its day-1 price, because the Divine itself inflates fastest at launch (86 → 266c in Mirage). That read as "currency loses value", which is wrong from a player's view. The Divine view is still available, with an explanation. |
+| 2026-10-22 | **Live market is the landing page**, because it's what will be used most. The live feed is a separate process (`eb live watch`) and the page only reads, the same split as the rest of the app, so hosting means one web service plus one worker. |
+| 2026-10-22 | **Launch views stay on the launch fortnight.** The Launch market only uses each league's first 14 days. A live league whose loaded hours are all later (e.g. Allflame, months in) shows a "past the launch window" note pointing to the Live page, instead of a misleading chart. |
+| 2026-10-22 | Widgets whose range depends on the data (e.g. "seen in at least N leagues") are hidden when there's only one option. With one league loaded, as at a new league's launch, Streamlit rejects a slider with min = max. |
 | 2026-10-22 | **Charts use linear axes by default**, because they're read by players. Log scale is an opt-in toggle only where values span orders of magnitude (the market chart comparing items, and the card opportunity map). Relative charts say what the numbers mean (1 = the day-1 price). |
 | 2026-10-21 | Demo tables sort by each item's **average price over the window** (volume-weighted, in the selected unit), shown as the "Avg price" column. With nothing selected, the chart shows the five most-traded items. |
 | 2026-10-21 | Exchange item names come from RePoE's base item table. RePoE gives some different items the same name, so an ambiguous name never merges items: each metadata id becomes its own item, labelled `Name (MetadataName)`. None of the tracked items are ambiguous. |
@@ -250,7 +266,8 @@ ExiledBroker/
 │   │   ├── http.py             # ✔ polite client (UA, spacing, retries) + resumable download
 │   │   ├── files.py            # ✔ atomic writes
 │   │   ├── poe_ninja_dumps.py  # ✔ dump listing, download, zip → Parquet
-│   │   ├── currency_exchange.py # ✔ GGG hourly exchange: find launch, fetch window, → Parquet
+│   │   ├── currency_exchange.py # ✔ GGG hourly exchange: find launch (binary search), fetch launch or recent window, → Parquet
+│   │   ├── live.py             # ✔ one live update for a running league (used by `eb live sync|watch`)
 │   │   ├── item_names.py       # ✔ RePoE metadata id → name
 │   │   ├── core_pool.py        # ✔ core drop pool: current-league lists + config/core_pool.toml
 │   │   ├── loot_filter.py      # ✔ NeverSink filter divination tiers
@@ -281,19 +298,20 @@ ExiledBroker/
 │   ├── signals/                # ranking, buy/sell windows, risk
 │   ├── analysis/
 │   │   └── launch_patterns.py  # ✔ phase 2: unique moves by tier, launch curves, group timing, card turn-ins across leagues, recency weights
-│   ├── services/               # ✔ read-side queries shared by the demo and the API (overview, prices, market, divination, cross_market, scoring)
+│   ├── services/               # ✔ read-side queries shared by the demo and the API (overview, prices, market, divination, cross_market, scoring, live)
 │   ├── api/app.py              # ✔ FastAPI, read-only (/api/leagues, /api/market/<league>/groups/<group>, /api/market/<league>/hourly, ...)
-│   └── cli.py                  # ✔ `eb dumps list|sync|load`, `eb exchange sync|status`, `eb serve`, `eb init-db`
+│   └── cli.py                  # ✔ `eb dumps list|sync|load`, `eb exchange sync|status`, `eb live sync|watch`, `eb serve`, `eb init-db`
 ├── app/
 │   ├── dashboard.py            # ✔ Streamlit entry point (navigation, credit)
 │   ├── common.py               # ✔ cached loaders + formatting
-│   └── app_pages/              # ✔ market.py (launch market), cards.py (card turn-ins), analysis.py (phase 2 tools), data.py
+│   ├── static/                 # ✔ sidebar wordmark + icon
+│   └── app_pages/              # ✔ live.py (default), market.py, cards.py, arbitrage.py, analysis.py, data.py
 ├── .streamlit/config.toml      # ✔ demo theme
 ├── scripts/ingest.sh           # ✔ unattended, resumable ingest runner
 ├── config/core_pool.toml       # ✔ manual core-pool overrides (exclude / include by name)
 ├── web/                        # hosted public frontend (later; framework TBD)
 ├── data/                       # ✔ gitignored: raw/{poe_ninja/{dumps,categories}, ggg/currency_exchange, repoe}, processed/{poe_ninja/dumps, ggg/currency_exchange}, logs/, exiledbroker.duckdb
-└── tests/                      # ✔
+└── tests/                      # ✔ incl. fixtures/ (real exchange pages for the live replay)
 ```
 
 **Stack:** `httpx`, `polars`, DuckDB with Parquet, `pydantic`, `typer`, Streamlit (demo), FastAPI + uvicorn (hosted API), and `scikit-learn`/LightGBM later. DuckDB suits this well: a single file, fast queries over time series, and no server to run.
@@ -377,7 +395,7 @@ Each finding is reproducible from the Analysis tab, with the leagues it rests on
 
 ### 9.2 Items sold for Divines fetch more than the same items sold for Chaos (preliminary)
 
-*Tool: Analysis → Cross-market (table `cross_market_hour`). All four exchange-era leagues.*
+*Tool: the Arbitrage trading page (table `cross_market_hour`). All four exchange-era leagues.*
 
 - **How common:** in each league, 63k–86k item-hours traded in both the Chaos and the Divine market.
 - **The gap:** the median price via Divines (X/Divine price × the hour's Divine rate) was **13–19% above** the direct Chaos price.
@@ -388,6 +406,22 @@ Each finding is reproducible from the Analysis tab, with the leagues it rests on
   - These are hourly summaries, not an order book, so a gap within an hour doesn't prove one player could have caught both sides.
   - We haven't confirmed whether GGG's lowest/highest ratios are executed trades or listings.
   - Exchange gold fees and integer trade ratios aren't modelled, and the overlap volume on many items is small.
+
+### 9.3 In chaos, currency and cards inflate over launch fortnight; farmed consumables deflate
+
+*Tool: Analysis → Group timing, in Chaos. Median of each item's price ÷ its day-1 price, day 13, per league (Settlers / Mercenaries / Keepers / Mirage).*
+
+| Group | Day 13 ÷ day 1 |
+|---|---|
+| Currency | 0.85 / 1.13 / 1.28 / 1.84 |
+| Divination cards | 0.83 / 1.73 / 1.09 / 2.29 |
+| High-tier essences | 0.79 / 0.55 / 0.49 / 1.38 |
+| Scarabs | 1.37 / 0.41 / 0.65 / 0.56 |
+
+- **Currency** inflates in chaos in three of four leagues, most in the newest (Mirage). Settlers, the exchange's first league, is the exception.
+- **Divination cards** inflate in three of four leagues.
+- **Essences and scarabs** mostly lose value, as expected for consumables whose supply keeps growing from farming. Mirage essences and Settlers scarabs are the exceptions.
+- **In Divines,** almost everything sinks, because the Divine inflates fastest (this is why the chart briefly looked wrong, see the decision log).
 
 ---
 

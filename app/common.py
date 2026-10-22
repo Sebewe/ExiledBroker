@@ -5,7 +5,7 @@ import streamlit as st
 
 from exiledbroker.analysis import launch_patterns as lp
 from exiledbroker.config import get_settings
-from exiledbroker.services import cross_market, divination, market, overview
+from exiledbroker.services import cross_market, divination, live, market, overview
 from exiledbroker.storage import db
 
 UNIT_SUFFIX = {"chaos": "c", "divine": "div"}
@@ -123,6 +123,29 @@ def cross_market_per_league(
 def cross_market_item(leagues: tuple[str, ...], item_id: str, direction: str) -> pl.DataFrame:
     with db.session(read_only=True) as con:
         return cross_market.hourly(con, list(leagues), [item_id], direction)
+
+
+# --- Live (short cache: the watcher adds an hour of data every hour) --------------
+
+
+@st.cache_data(ttl="1m", show_spinner=False)
+def live_leagues() -> pl.DataFrame:
+    with db.session(read_only=True) as con:
+        return live.live_leagues(con)
+
+
+@st.cache_data(ttl="1m", show_spinner=False, max_entries=32)
+def live_loops(
+    league: str, direction: str, buffer: float, lookback: int, min_price: float
+) -> pl.DataFrame:
+    with db.session(read_only=True) as con:
+        return live.live_loops(con, league, direction, buffer, lookback, min_price)
+
+
+@st.cache_data(ttl="1m", show_spinner=False, max_entries=32)
+def live_cards(league: str, lookback: int, unit: str) -> pl.DataFrame:
+    with db.session(read_only=True) as con:
+        return live.live_card_flips(con, league, lookback, unit)
 
 
 @st.cache_data(ttl="10m", show_spinner=False)
