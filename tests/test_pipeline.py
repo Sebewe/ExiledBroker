@@ -1,13 +1,18 @@
-"""The hosted pipeline (`eb pipeline run`): one hourly pass over the replay fixture
-(Mirage's first 30 hours, as GGG published them). The volume is "seeded" by loading
-the first hours, as a real deploy copies the research database over; each pass then
-loads only new hours into DuckDB and publishes only them to Postgres.
+"""The hosted pipeline (`eb pipeline run`): one hourly pass on the site's database over
+the replay fixture (Mirage's first 30 hours, as GGG published them).
 
-The publishing tests need a disposable Postgres (EB_TEST_POSTGRES_URL, as
-tests/test_postgres.py; CI starts one). The rest run everywhere."""
+The site's database is "seeded" with the first 6 hours, their pages and a Launch
+history, as `eb site seed --hosted` does from the local copy; each pass then fetches
+only what's newer, keeps only the window's pages in the database, and never reads
+the disk. These run on a DuckDB file as the site's database; the seed-then-catch-up
+comparison also runs on a disposable Postgres (EB_TEST_POSTGRES_URL, as
+tests/test_postgres.py; CI starts one)."""
 
+import gzip
+import json
 import os
-from datetime import timedelta
+import shutil
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -15,6 +20,7 @@ from exiledbroker.config import Settings
 from exiledbroker.ingest import currency_exchange as cx
 from exiledbroker.ingest import pipeline
 from exiledbroker.ingest.live import sync_live
+from exiledbroker.services import launch_picks
 from exiledbroker.storage import db, site
 from test_currency_exchange import FakeExchange, client_for
 from test_live_pipeline import LAUNCH, PAGES, store_reference_data
@@ -23,6 +29,7 @@ PG_URL = os.environ.get("EB_TEST_POSTGRES_URL")
 needs_pg = pytest.mark.skipif(not PG_URL, reason="EB_TEST_POSTGRES_URL is not set")
 LEAGUE = "Mirage"
 EARLIEST = cx.from_ts(LAUNCH - 72 * 3600)
+SEEDED_HOURS = 6
 
 
 def at(hours_in: int):
@@ -30,40 +37,65 @@ def at(hours_in: int):
     return cx.from_ts(LAUNCH + hours_in * 3600) + timedelta(minutes=10)
 
 
+def _old_league_history(con) -> None:
+    """A past league's Launch history, as `eb launch picks` captures it locally."""
+    con.execute(
+        "INSERT INTO launch_history VALUES ('Old', ?, 'currency:chaos-orb', 'day1', 0.01, 5)",
+        [datetime(2026, 1, 1)],
+    )
+
+
 @pytest.fixture
-def seeded(tmp_path, monkeypatch):
-    """A pipeline volume holding the league's first 6 hours, and the fake exchange."""
+def local(tmp_path, monkeypatch):
+    """The local copy: the league's first hours loaded from pages on disk, as `eb live`
+    leaves them, plus the fake exchange."""
     monkeypatch.setenv("EB_DATA_DIR", str(tmp_path))
     s = Settings(data_dir=tmp_path, request_min_interval=0)
     store_reference_data(s)
-    server = FakeExchange(PAGES, now=LAUNCH + 6 * 3600)
+    server = FakeExchange(PAGES, now=LAUNCH + SEEDED_HOURS * 3600)
     with client_for(s, server) as c:
-        sync_live(c, s, LEAGUE, now=at(6), earliest=EARLIEST)
+        sync_live(c, s, LEAGUE, now=at(SEEDED_HOURS), earliest=EARLIEST)
+    with db.session(s.db_path) as con:
+        _old_league_history(con)
     # The pipeline's own window search starts from its history, not 2024.
     monkeypatch.setattr(cx, "HISTORY_START", EARLIEST)
     return s, server
 
 
+@pytest.fixture
+def seeded(local):
+    """The local copy used as the site's database: its pages moved into the database
+    and the disk emptied, so the pipeline can only use what was seeded."""
+    s, server = local
+    hosted = pipeline.hosted(s)
+    with db.session(s.db_path, read_only=True) as con:
+        loaded = db.rows(con, "SELECT hour FROM exchange_hour_loaded")
+    hours = [cx.to_ts(h.replace(tzinfo=UTC)) for (h,) in loaded]
+    for ts in hours:
+        cx.write_page(hosted, ts, cx.read_page(s, ts))
+    shutil.rmtree(s.exchange_raw_dir)
+    return s, server
+
+
 def run(s, server, hours_in: int, **kw):
     server.now = LAUNCH + hours_in * 3600
+    before = len(server.requests)
     with client_for(s, server) as c:
         result = pipeline.run(c, s, now=at(hours_in), **kw)
-        return result, c.requests
+    return result, server.requests[before:]
 
 
-def test_an_empty_volume_is_not_backfilled_from_ggg(tmp_path):
+def _pages(s) -> list[int]:
+    with db.session(s.db_path, read_only=True) as con:
+        return [r[0] for r in db.rows(con, "SELECT hour FROM exchange_page ORDER BY hour")]
+
+
+def test_an_unseeded_database_is_not_backfilled_from_ggg(tmp_path):
     s = Settings(data_dir=tmp_path, request_min_interval=0)
     server = FakeExchange(PAGES, now=LAUNCH + 6 * 3600)
-    with client_for(s, server) as c, pytest.raises(pipeline.EmptyVolume):
+    with client_for(s, server) as c, pytest.raises(pipeline.NotSeeded):
         pipeline.run(c, s, LEAGUE, now=at(6))
     assert server.requests == []
-
-
-def test_it_never_writes_the_site_database_directly(seeded):
-    s, server = seeded
-    s = s.model_copy(update={"database_url": "postgresql://site"})
-    with pytest.raises(ValueError, match="EB_PUBLISH_URL"):
-        run(s, server, 8)
 
 
 def test_the_league_comes_from_the_announcement_or_the_cached_list(seeded):
@@ -77,39 +109,83 @@ def test_the_league_comes_from_the_announcement_or_the_cached_list(seeded):
         assert pipeline.pick_league(c, announced, at(6)) == LEAGUE  # not started yet
 
 
-def test_each_pass_loads_only_new_hours(seeded):
+def test_a_pass_fetches_only_the_hours_since_the_seed(seeded):
     s, server = seeded
-    result, _ = run(s, server, 9)
+    result, requests = run(s, server, 9)
     assert result.live.state == "updated" and result.live.hours_added == 3
-    assert result.published is None  # no EB_PUBLISH_URL
-    again, _ = run(s, server, 9)
-    assert again.live.state == "unchanged" and again.live.fetched == 0
+    assert len(requests) == 3 and result.live.fetched == 3  # one per new hour
+    assert _pages(s) == [LAUNCH + h * 3600 for h in range(9)]  # stored in the database
+    assert not s.exchange_raw_dir.exists()  # and never on disk
+    again, requests = run(s, server, 9)
+    assert again.live.state == "unchanged" and requests == []
     with db.session(s.db_path, read_only=True) as con:
-        runs = db.scalar(con, "SELECT count(*) FROM ingest_run")
-    assert runs >= 2  # every pass is recorded
+        assert db.scalar(con, "SELECT count(*) FROM ingest_run") >= 2  # every pass recorded
 
 
-def test_launch_picks_are_rebuilt_once_when_a_fortnight_completes(seeded, monkeypatch):
+def test_after_downtime_it_catches_up_exactly_the_missed_hours(seeded):
     s, server = seeded
-    built = []
-    monkeypatch.setattr(pipeline.launch_picks, "complete_leagues", lambda con: [LEAGUE])
-    real = pipeline.launch_picks.build
-    monkeypatch.setattr(
-        pipeline.launch_picks,
-        "build",
-        lambda con, leagues: built.append(leagues) or real(con, leagues),
-    )
-    assert run(s, server, 8)[0].picks_rebuilt
-    assert not run(s, server, 9)[0].picks_rebuilt  # built from the same leagues already
-    assert built == [[LEAGUE]]
+    run(s, server, 8)
+    result, requests = run(s, server, 20)  # down for 12 hours
+    assert result.live.hours_added == 12 and len(requests) == 12
+    assert len(set(requests)) == len(requests)  # nothing fetched twice
 
 
-# --- Publishing to the site's Postgres ----------------------------------------------
+def test_pages_that_leave_the_window_are_deleted(seeded):
+    s, server = seeded
+    # A 6-hour look-back (and no launch days kept beyond it): old pages are pruned.
+    run(s, server, 12, lookback_hours=6)
+    window = list(range(LAUNCH + 6 * 3600, LAUNCH + 12 * 3600, 3600))
+    assert set(_pages(s)) - set(window) <= set(
+        range(LAUNCH, LAUNCH + 14 * 24 * 3600, 3600)
+    )  # only the launch fortnight's pages are kept beyond the look-back
+    assert set(window) <= set(_pages(s))
+
+
+def test_a_loader_rebuild_rereads_the_stored_pages(seeded):
+    s, server = seeded
+    run(s, server, 9)
+    with db.session(s.db_path) as con:
+        con.execute("UPDATE ingest_load SET fingerprint = 'loader_version=0'")
+    result, requests = run(s, server, 9)
+    assert result.live.state == "updated" and requests == []  # rebuilt from the database
+    assert result.live.hours_added == 9
+
+
+def test_the_picks_are_ranked_from_the_history_once(seeded):
+    s, server = seeded
+    first, _ = run(s, server, 8)
+    assert first.picks_from == ["Old"]  # nothing was built yet
+    second, _ = run(s, server, 9)
+    assert second.picks_from is None  # the same leagues: not rebuilt
+    with db.session(s.db_path, read_only=True) as con:
+        assert launch_picks.windows(con)["leagues"].to_list() == ["Old"] * 3
+
+
+def test_a_replaced_league_is_dropped_once_the_new_one_has_data(seeded):
+    s, server = seeded
+    with db.session(s.db_path) as con:
+        con.execute(
+            "INSERT INTO league (id, game, name, start_at, kind, exchange_tracked) VALUES "
+            "('poe1-old', 'poe1', 'Old', '2026-01-01', 'challenge', TRUE)"
+        )
+        con.execute(
+            "INSERT INTO ingest_load (league_id, source, fingerprint) VALUES ('poe1-old', ?, 'x')",
+            [site.HOURLY],
+        )
+    result, _ = run(s, server, 8)
+    assert result.dropped == ["Old"]
+    with db.session(s.db_path, read_only=True) as con:
+        assert db.scalar(con, "SELECT count(*) FROM ingest_load") == 1
+        assert not db.scalar(con, "SELECT exchange_tracked FROM league WHERE id = 'poe1-old'")
+        assert launch_picks.captured_leagues(con) == ["Old"]  # its history stays
+
+
+# --- On Postgres, seeded with `eb site seed --hosted` ---------------------------------
 
 
 @pytest.fixture
-def pg(seeded):
-    """Two empty databases: the site's (published to) and one seeded whole, to compare."""
+def pg():
+    """Two empty databases: the server's, and one seeded whole at the end to compare."""
     import psycopg
 
     admin = psycopg.connect(PG_URL, autocommit=True)
@@ -117,105 +193,88 @@ def pg(seeded):
         admin.execute(f"DROP DATABASE IF EXISTS {name} WITH (FORCE)")
         admin.execute(f"CREATE DATABASE {name}")
     base = PG_URL.rsplit("/", 1)[0]
-    yield {name: f"{base}/{name}" for name in ("eb_site", "eb_seeded")}
+    urls = {name: f"{base}/{name}" for name in ("eb_site", "eb_seeded")}
+    yield urls
+    for url in urls.values():  # the API's pooled connections, before the next drop
+        if pool := db._pools.pop(url, None):
+            pool.close()
+        db._schema_ready.discard(url)
     admin.close()
 
 
 def _dump(url: str) -> dict:
     import psycopg
 
-    tables = [*site.LEAGUE_TABLES, *site.SHARED_TABLES, *site.REPLACED_TABLES]
+    tables = [*site.LEAGUE_TABLES, *site.SHARED_TABLES, *site.REPLACED_TABLES, "exchange_page"]
     with psycopg.connect(url) as con:
-        return {t: sorted(map(repr, db.rows(con, f"SELECT * FROM {t}"))) for t in tables}
+        out = {t: sorted(map(repr, db.rows(con, f"SELECT * FROM {t}"))) for t in tables}
+        # Pages compare by content (gzip stamps a time, and the copies differ in it).
+        out["exchange_page"] = [
+            (hour, json.loads(gzip.decompress(body)))
+            for hour, body in db.rows(con, "SELECT hour, body FROM exchange_page ORDER BY hour")
+        ]
+    return out
 
 
-@needs_pg
-def test_publishing_hour_by_hour_matches_a_full_copy(seeded, pg):
+def _seed(s, url: str) -> None:
     import psycopg
 
-    s, server = seeded
-    s = s.model_copy(update={"publish_url": pg["eb_site"]})
-    first, _ = run(s, server, 6)
-    assert first.published.hours_added == 6
-    for hours_in in (9, 12, 20, 30):
-        result, _ = run(s, server, hours_in)
-        assert result.published.changed and result.published.hours_removed == 0
     with (
         db.session(s.db_path, read_only=True) as duck,
-        psycopg.connect(pg["eb_seeded"], autocommit=True) as con,
+        psycopg.connect(url, autocommit=True) as pg,
     ):
-        site.seed(duck, con, [LEAGUE])
-    published, seeded_copy = _dump(pg["eb_site"]), _dump(pg["eb_seeded"])
-    for table in published:
-        if table == "reference_data":  # seed copies it whole too; both are the same rows
-            assert len(published[table]) == len(seeded_copy[table])
+        site.seed(duck, pg, [LEAGUE], s)
+
+
+@needs_pg
+def test_seeded_then_caught_up_matches_the_local_copy(local, pg):
+    """The server, seeded from the local copy and then left to catch up hour by hour,
+    ends with the same rows as the local copy kept up to date and seeded at the end."""
+    s, server = local
+    _seed(s, pg["eb_site"])
+    server_settings = s.model_copy(
+        update={"database_url": pg["eb_site"], "data_dir": s.data_dir / "server"}
+    )
+    for hours_in in (9, 12, 20, 30):
+        result, requests = run(server_settings, server, hours_in)
+        assert result.live.state == "updated" and len(requests) == result.live.hours_added
+    # The local copy, updated the usual way (pages on disk), then seeded whole.
+    with client_for(s, server) as c:
+        sync_live(c, s, LEAGUE, now=at(30), earliest=EARLIEST)
+    with db.session(s.db_path) as con:
+        launch_picks.refresh(con)  # `eb launch picks`
+    _seed(s, pg["eb_seeded"])
+    server_rows, local_rows = _dump(pg["eb_site"]), _dump(pg["eb_seeded"])
+    for table in server_rows:
+        if table in ("ingest_load", "reference_data", "launch_window"):
+            # Load and build times differ; the counts and everything else must match.
+            assert len(server_rows[table]) == len(local_rows[table]), table
             continue
-        assert published[table] == seeded_copy[table], table
+        assert server_rows[table] == local_rows[table], table
+    assert not (s.data_dir / "server" / "raw").exists()  # the server never used a disk
 
 
 @needs_pg
-def test_a_pass_with_nothing_new_writes_nothing(seeded, pg):
+def test_a_failed_pass_leaves_the_site_as_it_was(local, pg, monkeypatch):
     import psycopg
 
-    s, server = seeded
-    s = s.model_copy(update={"publish_url": pg["eb_site"]})
-    run(s, server, 9)
-    with psycopg.connect(pg["eb_site"]) as con:
-        version = db.scalar(con, "SELECT max(loaded_at) FROM ingest_load")
-    again, _ = run(s, server, 9)
-    assert not again.published.changed
-    with psycopg.connect(pg["eb_site"]) as con:
-        assert db.scalar(con, "SELECT max(loaded_at) FROM ingest_load") == version
-
-
-@needs_pg
-def test_a_failed_publish_leaves_the_site_as_it_was(seeded, pg, monkeypatch):
-    import psycopg
-
-    s, server = seeded
-    s = s.model_copy(update={"publish_url": pg["eb_site"]})
-    run(s, server, 9)
+    s, server = local
+    _seed(s, pg["eb_site"])
+    hosted = s.model_copy(update={"database_url": pg["eb_site"]})
     with psycopg.connect(pg["eb_site"]) as con:
         before = db.scalar(con, "SELECT count(*) FROM exchange_hour_loaded")
-    real = site._copy
+    from exiledbroker.normalize import exchange_loader
 
-    def broken(con, table, cols, rows):
-        if table == "exchange_hour_loaded":
-            raise OSError("connection lost")
-        real(con, table, cols, rows)
+    real = exchange_loader.refresh_mappings
 
-    monkeypatch.setattr(site, "_copy", broken)
+    def broken(con, settings):
+        raise OSError("connection lost")
+
+    monkeypatch.setattr(exchange_loader, "refresh_mappings", broken)
     with pytest.raises(OSError):
-        run(s, server, 12)
+        run(hosted, server, 9)
     with psycopg.connect(pg["eb_site"]) as con:
         assert db.scalar(con, "SELECT count(*) FROM exchange_hour_loaded") == before
-    monkeypatch.setattr(site, "_copy", real)
-    result, _ = run(s, server, 12)  # the next pass catches up
-    assert result.published.hours_added == 3
-
-
-@needs_pg
-def test_a_loader_rebuild_replaces_the_league_and_old_leagues_are_dropped(seeded, pg):
-    import psycopg
-
-    s, server = seeded
-    s = s.model_copy(update={"publish_url": pg["eb_site"]})
-    run(s, server, 9)
-    with psycopg.connect(pg["eb_site"], autocommit=True) as con:
-        # A previous league still in the site's database.
-        con.execute(
-            "INSERT INTO league (id, game, name, start_at, kind) VALUES ('poe1-old', 'poe1', 'Old', '2026-01-01', 'challenge')"
-        )
-        con.execute(
-            "INSERT INTO ingest_load (league_id, source, fingerprint) VALUES ('poe1-old', %s, 'x')",
-            [site.HOURLY],
-        )
-        # Published by an older loader version: the new version's rows replace them whole.
-        con.execute(
-            "UPDATE ingest_load SET fingerprint = 'loader_version=0' WHERE league_id <> 'poe1-old'"
-        )
-    result, _ = run(s, server, 9)
-    assert result.published.rebuilt and result.published.leagues_dropped == ["Old"]
-    with psycopg.connect(pg["eb_site"]) as con:
-        assert db.scalar(con, "SELECT count(*) FROM ingest_load") == 1
-        assert db.scalar(con, "SELECT count(DISTINCT hour) FROM exchange_hour_loaded") == 9
+    monkeypatch.setattr(exchange_loader, "refresh_mappings", real)
+    result, requests = run(hosted, server, 9)  # the next pass catches up
+    assert result.live.hours_added == 3 and requests == []  # its pages were kept

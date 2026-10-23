@@ -53,11 +53,6 @@ class LiveStatus:
         )
 
 
-def _page_count(settings: Settings) -> int:
-    d = settings.exchange_raw_dir
-    return sum(1 for _ in d.glob("*.json.gz")) if d.exists() else 0
-
-
 def current_league(client: PoliteClient, settings: Settings) -> str:
     """poe.ninja's current challenge league (its first listed league)."""
     leagues = client.get_json(f"{settings.poe_ninja_base_url}/poe1/api/economy/leagues")
@@ -174,7 +169,7 @@ def _sync_live(
     force: bool = False,
 ) -> LiveStatus:
     lid = dumps_mod.league_id(cx.GAME, league)
-    pages_before = _page_count(settings)
+    pages_before = cx.page_count(settings)
     # Only running leagues: an ended league has no recent hours, and loading an empty
     # window would replace its history.
     last = cx.latest_published_hour(client, settings, now)
@@ -212,13 +207,16 @@ def _sync_live(
     with db.site_writer(settings) as con:
         con.execute("UPDATE league SET exchange_tracked = TRUE WHERE id = ?", [lid])
         loaded = exchange_loader.load_league(con, settings, result.window, names, force=force)
+    fetched = cx.page_count(settings) - pages_before
+    # Pages kept in the database: only the window's (a rebuild re-reads them).
+    cx.prune_pages(settings, hours)
     return LiveStatus(
         league,
         "unchanged" if loaded.skipped else "updated",
         latest_hour=cx.from_ts(hours[-1]),
         # Count every page this update added (the launch search and the latest-hour
         # check fetch pages too, so the sync alone would undercount).
-        fetched=_page_count(settings) - pages_before,
+        fetched=fetched,
         rows=loaded.rows,
         hours_added=loaded.hours_added,
         hours_removed=loaded.hours_removed,

@@ -303,7 +303,7 @@ def load_league(
     force: bool = False,
 ) -> LoadResult:
     """Bring a league's hourly rows in line with `window`, touching only what changed:
-    hours with pages on disk that aren't loaded yet are added, loaded hours outside
+    hours with stored pages that aren't loaded yet are added, loaded hours outside
     the window are removed."""
     lid = cx.league_id(cx.GAME, window.league_name)
     version = f"loader_version={LOADER_VERSION}"
@@ -311,7 +311,7 @@ def load_league(
 
     wanted = set(window.hours)
     loaded = set() if rebuild else loaded_hours(con, lid)
-    add = sorted(h for h in wanted - loaded if cx.page_path(settings, h).exists())
+    add = sorted(h for h in wanted - loaded if cx.has_page(settings, h))
     remove = sorted(loaded - wanted)
     if not (add or remove or rebuild):
         return LoadResult(lid, skipped=True)

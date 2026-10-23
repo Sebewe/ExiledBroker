@@ -1,5 +1,5 @@
 -- Core schema. Statements are idempotent so `eb init-db` can be re-run safely.
--- Keep to SQL that runs on both DuckDB (local) and Postgres (Supabase, hosted).
+-- Keep to SQL that runs on both DuckDB (local) and Postgres (Railway, hosted).
 
 CREATE TABLE IF NOT EXISTS league (
     id          VARCHAR PRIMARY KEY,           -- e.g. 'poe1-settlers'
@@ -256,4 +256,27 @@ CREATE TABLE IF NOT EXISTS launch_pick_league (
     league    VARCHAR NOT NULL,
     growth    DOUBLE PRECISION NOT NULL,
     PRIMARY KEY (window_id, item_id, league)
+);
+
+-- Raw exchange pages kept in the database (EB_EXCHANGE_PAGES=database, the hosted
+-- pipeline): gzipped JSON, one row per hour, only the live window's (older ones are
+-- pruned after each load). A loader rebuild re-reads these instead of fetching again.
+-- Locally pages are files under data/raw and this table stays empty.
+CREATE TABLE IF NOT EXISTS exchange_page (
+    hour BIGINT PRIMARY KEY,  -- unix time of the hour
+    body BYTEA NOT NULL
+);
+
+-- What the Launch picks are ranked from: per finished league, item and window (the
+-- buy windows and the sale days, services/launch_picks.WINDOWS / SELL), the median
+-- hourly Divine price and the Divines traded. Captured once a league's launch
+-- fortnight is over, so the picks never need the hourly history itself.
+CREATE TABLE IF NOT EXISTS launch_history (
+    league        VARCHAR NOT NULL,
+    league_start  TIMESTAMP NOT NULL,
+    item_id       VARCHAR NOT NULL,
+    window_id     VARCHAR NOT NULL,  -- 'day1' | 'days2_4' | 'days5_10' | 'sell'
+    divine        DOUBLE PRECISION NOT NULL,
+    divine_volume DOUBLE PRECISION,
+    PRIMARY KEY (league, item_id, window_id)
 );

@@ -59,14 +59,12 @@ services:
     image: ebsim-app
     command: ["eb", "pipeline", "run"]
     environment:
-      EB_DATA_DIR: /data
-      EB_PUBLISH_URL: postgresql://eb:eb@postgres:5432/railway
+      EB_DATABASE_URL: postgresql://eb:eb@postgres:5432/railway
       EB_EXCHANGE_BASE_URL: http://upstream:9000/api/currency-exchange
       EB_POE_NINJA_BASE_URL: http://upstream:9000/ninja
       EB_REPOE_BASE_ITEMS_URL: http://upstream:9000/repoe/base_items.min.json
       EB_LOOT_FILTER_URL: http://upstream:9000/filter/{strictness}.filter
-    volumes: [pipeline:/data]
-    networks: [private]
+    networks: [private]  # no volume: the server keeps everything in Postgres
     depends_on:
       postgres: { condition: service_healthy }
     profiles: [cron]
@@ -74,7 +72,6 @@ services:
 
 volumes:
   pgdata:
-  pipeline:
 
 networks:
   private:

@@ -466,8 +466,9 @@ def pipeline_run(
         None, help="Replay this moment (ISO, UTC), for the Railway simulation; default: now."
     ),
 ) -> None:
-    """One hourly pass: load new exchange hours into the pipeline's DuckDB, rebuild the
-    launch picks when a league's fortnight completes, publish to EB_PUBLISH_URL, exit."""
+    """One hourly pass on the site's database (EB_DATABASE_URL): load new exchange hours,
+    keep only the live window's pages, add a finished fortnight to the Launch history and
+    rebuild the picks, drop a replaced league, exit. Seed it first (`eb site seed --hosted`)."""
     from exiledbroker.ingest import pipeline
 
     settings = get_settings()
@@ -477,7 +478,7 @@ def pipeline_run(
     try:
         with resumable(), PoliteClient(settings) as client:
             result = pipeline.run(client, settings, league, now=moment)
-    except pipeline.EmptyVolume as e:
+    except pipeline.NotSeeded as e:
         typer.echo(str(e), err=True)
         raise typer.Exit(2) from None
     typer.echo(str(result))
@@ -492,13 +493,16 @@ app.add_typer(launch_app, name="launch")
 @launch_app.command("picks")
 def launch_picks_build() -> None:
     """Rank what to buy on day 1, days 2-4 and days 5-10 from the newest five leagues
-    with a complete launch fortnight, in the local database (copy them to the site
+    with a complete launch fortnight, in the local database: each league is reduced to
+    its Launch history once, then the picks are ranked from that (copy both to the site
     with `eb site seed`). Reads only what's loaded; makes no requests."""
     from exiledbroker.services import launch_picks
 
     with db.session() as con:
         db.init_schema(con)
-        leagues = launch_picks.complete_leagues(con)[: launch_picks.REFERENCE_LEAGUES]
+        for league in launch_picks.complete_leagues(con):
+            launch_picks.capture(con, league)
+        leagues = launch_picks.captured_leagues(con)[: launch_picks.REFERENCE_LEAGUES]
         rows = launch_picks.build(con, leagues)
     if not leagues:
         typer.echo("No league with a complete launch fortnight loaded yet.")
@@ -542,9 +546,18 @@ def site_seed(
         list[str] | None,
         typer.Option("--league", "-l", help="Repeatable. Default: the newest exchange league."),
     ] = None,
+    hosted: Annotated[
+        bool,
+        typer.Option(
+            "--hosted",
+            help="Also copy the leagues' raw pages (the hosted pipeline keeps them in the "
+            "database), so the server starts from what we have and fetches only what's newer.",
+        ),
+    ] = False,
 ) -> None:
-    """Copy leagues' site rows from the local DuckDB into Postgres (development only).
-    Replaces those leagues' rows there; other leagues are left alone."""
+    """Copy leagues' site rows, the Launch history and picks from the local DuckDB into
+    Postgres. Replaces those leagues' rows there; other leagues are left alone. Sends
+    nothing to GGG."""
     import psycopg
 
     from exiledbroker.services.live import live_leagues
@@ -560,6 +573,6 @@ def site_seed(
             typer.echo("No exchange league in the local database.")
             raise typer.Exit(1)
         with psycopg.connect(settings.database_url, autocommit=True) as pg:
-            result = site.seed(duck, pg, names)
+            result = site.seed(duck, pg, names, settings if hosted else None)
     rows = ", ".join(f"{t} {n:,}" for t, n in result.rows.items())
     typer.echo(f"Seeded {', '.join(result.leagues)}: {rows}")

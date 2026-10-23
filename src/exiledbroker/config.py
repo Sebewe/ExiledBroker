@@ -1,5 +1,6 @@
 from datetime import datetime
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -37,14 +38,14 @@ class Settings(BaseSettings):
     # Manual include/exclude lists for the core drop pool (committed, edit by hand).
     core_pool_file: Path = Field(default_factory=_default_core_pool)
     db_filename: str = "exiledbroker.duckdb"
-    # The site's database (Supabase Postgres when hosted, the compose `db` service
+    # The site's database (Railway's Postgres when hosted, the compose `db` service
     # locally). Unset: the site reads the local DuckDB file instead.
     database_url: str | None = None
     # The built frontend the API serves (`npm run build` in web/). Not there: API only.
     web_dist: Path = Field(default_factory=_default_web_dist)
-    # The hosted pipeline (`eb pipeline run`) loads into its own DuckDB and publishes
-    # what the site reads to this Postgres database. Unset: it doesn't publish.
-    publish_url: str | None = None
+    # Where raw exchange pages are kept: files under data/raw (local, the whole history)
+    # or the site's database (hosted: the live window only, see ingest/pipeline.py).
+    exchange_pages: Literal["disk", "database"] = "disk"
     # Precompute the pages' default tables in the background whenever new data loads.
     api_warm: bool = True
     # Only PoE1 for now; every league row still carries its game.

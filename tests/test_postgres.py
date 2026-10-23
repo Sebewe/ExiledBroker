@@ -107,6 +107,7 @@ def _cases(duck) -> dict:
             c, groups[0], leagues, bucket_hours=1, min_baseline_hours=1
         ),
         "lp.turn_ins_across_leagues": lambda c: lp.turn_ins_across_leagues(c, leagues, weights),
+        "launch_picks.league_windows": lambda c: launch_picks.league_windows(c, LEAGUE),
         "launch_picks.window_prices": lambda c: launch_picks.window_prices(c, leagues),
         "launch_picks.complete_leagues": lambda c: launch_picks.complete_leagues(c),
         "launch_picks.launch_board": lambda c: launch_picks.launch_board(c),

@@ -19,7 +19,14 @@ They're ranked with `scoring.rank_score` on typical growth (recency-weighted geo
 mean, newest league weighted most), the worst league's growth, consistency (the
 recency-weighted share of all reference leagues where it beat Divines, so a league it
 didn't trade in counts against it) and liquidity. `build` writes the result into small tables; the site reads them with
-`picks`. It needs the history, so it runs on the research database, never the worker.
+`picks`.
+
+The ranking never reads the hourly history directly. `capture` reduces a finished
+league to its window medians in `launch_history` (a few thousand rows a league), and
+`build` ranks from those. So the hosted pipeline, which holds only the live league's
+hours, can still rebuild the picks: `refresh` captures the live league once its
+fortnight is over and rebuilds. Locally `eb launch picks` does the same for every
+loaded league, and `eb site seed` copies the history to the site.
 """
 
 import math
@@ -54,6 +61,7 @@ WEIGHTS = {"growth": 0.35, "worst": 0.25, "consistency": 0.25, "liquidity": 0.15
 CHAOS = "currency:chaos-orb"
 BENCHMARKS = [CHAOS, "currency:divine-orb"]
 TABLES = ["launch_window", "launch_pick", "launch_pick_league"]
+HISTORY = "launch_history"
 
 
 def _window_case() -> tuple[str, list]:
@@ -65,32 +73,71 @@ def _window_case() -> tuple[str, list]:
     return f"CASE {' '.join(whens)} END", params
 
 
-def window_prices(con: duckdb.DuckDBPyConnection, leagues: list[str]) -> pl.DataFrame:
-    """Per league, tracked item and window (or 'sell'): the median hourly Divine price
-    and the Divines traded a day."""
-    ids = league_ids.ids(con, leagues)
+def league_windows(con, league: str) -> pl.DataFrame:
+    """One league's median hourly Divine price and Divines traded per item and window
+    (or 'sell'), for every item with hourly prices."""
     case, case_params = _window_case()
+    return db.frame(
+        con,
+        f"""
+        WITH h AS (
+            SELECT p.item_id, {case} AS window_id, p.divine_value,
+                   p.chaos_volume * p.divine_value / nullif(p.chaos_value, 0) AS divine_volume
+            FROM price_observation p
+            WHERE p.source = ? AND p.league_id = (SELECT id FROM league WHERE name = ?)
+              AND p.day_offset >= 0 AND p.day_offset < ? AND p.divine_value > 0
+        )
+        SELECT h.item_id, h.window_id,
+               percentile_cont(0.5) WITHIN GROUP (ORDER BY h.divine_value) AS divine,
+               sum(h.divine_volume) AS divine_volume
+        FROM h
+        WHERE h.window_id IS NOT NULL
+        GROUP BY h.item_id, h.window_id
+        """,
+        [*case_params, HOURLY, league, SELL[1]],
+    )
+
+
+def capture(con, league: str) -> int:
+    """Reduce a finished league's launch fortnight into launch_history, replacing what
+    was captured for it before. Returns the rows written."""
+    df = league_windows(con, league)
+    start = db.scalar(con, "SELECT start_at FROM league WHERE name = ?", [league])
+    rows = [
+        (league, start, r["item_id"], r["window_id"], r["divine"], r["divine_volume"])
+        for r in df.sort("item_id", "window_id").iter_rows(named=True)
+    ]
+    db.execute(con, f"DELETE FROM {HISTORY} WHERE league = ?", [league])
+    if db.is_postgres(con):
+        with con.cursor() as cur:
+            cur.executemany(f"INSERT INTO {HISTORY} VALUES (%s, %s, %s, %s, %s, %s)", rows)
+    elif rows:
+        con.executemany(f"INSERT INTO {HISTORY} VALUES (?, ?, ?, ?, ?, ?)", rows)
+    return len(rows)
+
+
+def captured_leagues(con) -> list[str]:
+    """Leagues in launch_history, newest first: the picks' possible references."""
+    q = f"SELECT league, max(league_start) AS s FROM {HISTORY} GROUP BY league ORDER BY s DESC"
+    return [r[0] for r in db.rows(con, q)]
+
+
+def window_prices(con, leagues: list[str]) -> pl.DataFrame:
+    """Per league, tracked item and window (or 'sell'): the median hourly Divine price
+    and the Divines traded a day, from launch_history."""
     days = {wid: last - first + 1 for wid, (first, last) in [*WINDOWS.items(), ("sell", SELL)]}
     out = db.frame(
         con,
         f"""
-        WITH h AS (
-            SELECT p.league_id, p.item_id, {case} AS window_id, p.divine_value,
-                   p.chaos_volume * p.divine_value / nullif(p.chaos_value, 0) AS divine_volume
-            FROM price_observation p
-            WHERE p.source = ? AND p.league_id IN ({league_ids.marks(ids)})
-              AND p.day_offset >= 0 AND p.day_offset < ? AND p.divine_value > 0
-              AND p.item_id IN (SELECT item_id FROM tracked_item)
-        )
-        SELECT l.name AS league, h.item_id, h.window_id,
-               percentile_cont(0.5) WITHIN GROUP (ORDER BY h.divine_value) AS divine,
-               sum(h.divine_volume) AS divine_volume
-        FROM h JOIN league l ON l.id = h.league_id
-        WHERE h.window_id IS NOT NULL
-        GROUP BY l.name, h.item_id, h.window_id
+        SELECT league, item_id, window_id, divine, divine_volume FROM {HISTORY}
+        WHERE league IN ({league_ids.marks(leagues)})
+          AND item_id IN (SELECT item_id FROM tracked_item)
         """,
-        [*case_params, HOURLY, *ids, SELL[1]],
-    )
+        leagues,
+    ).cast(
+        {"league": pl.String, "item_id": pl.String, "window_id": pl.String}
+        | {"divine": pl.Float64, "divine_volume": pl.Float64}
+    )  # typed even when empty (Postgres gives an empty result no types)
     return out.with_columns(
         per_day=pl.col("divine_volume") / pl.col("window_id").replace_strict(days)
     )
@@ -181,11 +228,12 @@ def _geo(df: pl.DataFrame) -> float | None:
     return math.exp((df["growth"].log() * df["w"]).sum() / df["w"].sum())
 
 
-def build(con: duckdb.DuckDBPyConnection, leagues: list[str] | None = None) -> dict[str, int]:
-    """Rank the picks from the newest REFERENCE_LEAGUES leagues whose launch fortnight
-    is complete, and replace the launch tables with them. Returns rows per table."""
+def build(con, leagues: list[str] | None = None) -> dict[str, int]:
+    """Rank the picks from the newest REFERENCE_LEAGUES captured leagues (or `leagues`,
+    which must be captured), and replace the launch tables with them. Returns rows per
+    table."""
     if leagues is None:
-        leagues = complete_leagues(con)[:REFERENCE_LEAGUES]
+        leagues = captured_leagues(con)[:REFERENCE_LEAGUES]
     out = rank(window_prices(con, leagues), leagues) if leagues else None
     built = datetime.now(UTC).replace(tzinfo=None)
     rows = {t: 0 for t in TABLES}
@@ -251,6 +299,36 @@ def complete_leagues(con: duckdb.DuckDBPyConnection) -> list[str]:
         ORDER BY l.start_at DESC
     """
     return [r[0] for r in db.rows(con, q, [HOURLY, CHAOS, SELL[1] - 1])]
+
+
+def _fortnight_over(con, league: str) -> bool:
+    """True once a league has hourly data past its sale days. A past league's history
+    stops at day 14, so it's judged by `complete_leagues`; this is for the live one."""
+    q = """
+        SELECT max(p.day_offset) FROM price_observation p
+        WHERE p.league_id = (SELECT id FROM league WHERE name = ?) AND p.source = ?
+          AND p.item_id = ?
+    """
+    latest = db.scalar(con, q, [league, HOURLY, CHAOS])
+    return latest is not None and latest >= SELL[1]
+
+
+def refresh(con, live: str | None = None) -> list[str] | None:
+    """Capture every league with a complete fortnight that isn't in launch_history yet
+    (the live league only once its fortnight is over, so its sale days are whole), then
+    rebuild the picks if their reference leagues changed. Returns the new reference
+    leagues if the picks were rebuilt, else None."""
+    captured = set(captured_leagues(con))
+    for league in complete_leagues(con):
+        if league in captured or (league == live and not _fortnight_over(con, league)):
+            continue
+        capture(con, league)
+    refs = captured_leagues(con)[:REFERENCE_LEAGUES]
+    built = db.rows(con, "SELECT leagues FROM launch_window LIMIT 1")
+    if not refs or (built and built[0][0] == ",".join(refs)):
+        return None
+    build(con, refs)
+    return refs
 
 
 def windows(con) -> pl.DataFrame:

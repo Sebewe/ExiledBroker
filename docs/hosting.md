@@ -10,11 +10,11 @@ Everything on Railway (Hobby), three services in one project ([deploy/railway/](
 web (always on, no data of its own: uvicorn serving /api and the built frontend)
    │ reads (private network, free)
    ▼
-Postgres (always on: only what the site reads, the live league)
-   ▲ publishes the new rows once an hour, in one transaction
+Postgres (always on: only what the site reads: the live league, its window's
+   ▲       raw pages, the Launch history and picks)
+   │ loads the new hours once an hour, in one transaction
    │
-pipeline (cron "6 * * * *": eb pipeline run, then exits)
-   volume /data: the research DuckDB (all history) + raw GGG pages, ~1.7 GB of 5 GB
+pipeline (cron "6 * * * *": eb pipeline run, then exits; no volume, no disk)
 ```
 
 | Piece | Local | Railway |
@@ -26,8 +26,9 @@ pipeline (cron "6 * * * *": eb pipeline run, then exits)
 | All of it, metered | `deploy/railway-sim/` (below) | |
 
 - **One image, two start commands** (`Dockerfile`): the frontend and API share one origin (no CORS, one service to pay for). The image bakes in DuckDB's postgres extension and runs as a non-root user.
-- **DuckDB is the research database** (all history), now also on the pipeline's volume. **Postgres is the site**: only the running league, about 0.1 GB. `eb site seed` copies leagues from DuckDB into Postgres for development.
-- **One data service: `eb pipeline run`** (`ingest/pipeline.py`), one pass an hour, then exit (Railway bills a cron service only while it runs). It picks the league (the announced one once started, else poe.ninja's list through `reference.fetch_if_changed`, at most hourly), loads new hours into the volume's DuckDB (`sync_live`), rebuilds the Launch picks when a league's fortnight has ended (the last 5 complete leagues differ from the stored ones), then `site.publish`es to Postgres: only the hours Postgres lacks, the hours that left the window deleted, the small shared tables upserted, the launch tables replaced when rebuilt, other leagues dropped, all in one transaction. A pass with nothing new writes nothing. It refuses to run on an empty volume rather than backfill (seed the volume from `data/` first). Tested hour by hour against a full `site.seed` on Postgres (`tests/test_pipeline.py`).
+- **DuckDB is the research database** (all history), local only. **Postgres is the site**: only what it reads. A new server is seeded from the local copy (`eb site seed --hosted`: the live league's rows and loaded pages, the Launch history and picks), so it never fetches from GGG what we already have.
+- **One data service: `eb pipeline run`** (`ingest/pipeline.py`), one pass an hour, then exit (Railway bills a cron service only while it runs). It writes Postgres directly (`db.site_writer`: an in-memory DuckDB with Postgres attached, so the loader runs unchanged). It picks the league (the announced one once started, else poe.ninja's list through `reference.fetch_if_changed`, at most hourly), loads new hours (`sync_live`), keeps only the live window's raw pages in `exchange_page` (about 80 MB for a full window; a loader rebuild re-reads them), adds the live league to the Launch history once its fortnight is over and rebuilds the picks (`launch_picks.refresh`), and drops a replaced league's rows (`site.drop_leagues`). It refuses an unseeded database rather than backfill. Tested on the replay (`tests/test_pipeline.py`): one request per new hour, exactly the missed hours after downtime, a rebuild with no requests, and seeded-then-caught-up equal to the local copy on Postgres.
+- **The Launch picks never read the hourly history.** Each finished league is reduced once to its window medians (`launch_history`, ~2.5k rows a league; 12,332 rows for the five reference leagues instead of 977k hourly rows), and the picks are ranked from that: on the real data, identical to ranking from the hourly rows.
 - **`eb live watch` writes Postgres through DuckDB** (`EB_DATABASE_URL`, local use). `db.site_writer` attaches Postgres to an in-memory DuckDB, so the incremental loader runs unchanged and the transaction is Postgres's. On Mirage: 24 new hours in 1.0 s, identical rows, and a failed load rolls back. A worker container starting from an empty disk fetched only the 2 new hours (2 requests, 110 KB) and wrote them in 2 s.
 - **Serving.** Each table is a `View` (`api/deps.py`), computed once per data version, gzipped once, and sent with an ETag (`304` for a client that has it). The data version is trusted for 15 s, so a cached request makes no database query. Default views are precomputed when an hour loads (`api/warm.py`). The cache is a bounded LRU. Cached calls take 2–8 ms on real Allflame data; the heaviest cold call (arbitrage, 566 loops) about 0.3 s.
 

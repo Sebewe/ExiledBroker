@@ -19,10 +19,11 @@ Deadline: the next league launches in about a month. The server must be live, ca
 
 ### 1. Server stores only what the site reads (code)
 
-- [ ] `eb pipeline run` writes Postgres directly (`db.site_writer`: in-memory DuckDB with Postgres attached, as `eb live watch` already does), with no data volume. Remove `EB_PUBLISH_URL` / `site.publish` from the hosted path (they stay for local seeding).
-- [ ] Raw pages in Postgres: a table of gzipped exchange pages for the live window. New pages are written as they're loaded, pages that leave the window are deleted, and the loader reads from it before fetching (`fetch_page`).
-- [ ] Reduced history tables for the history pages, built locally from the research DuckDB and published once: Launch market needs the past leagues' tracked-item prices by day, about 52k rows instead of 977k hourly. List what Conversions reads and reduce that the same way.
-- [ ] When a league ends, the pipeline adds that league's reduced fortnight to the history tables and rebuilds the Launch picks from those tables, so it never needs the full history.
+- [x] `eb pipeline run` writes Postgres directly (`db.site_writer`: in-memory DuckDB with Postgres attached, as `eb live watch` already does), with no data volume. `EB_PUBLISH_URL` / `site.publish` are gone.
+- [x] Raw pages in Postgres (`exchange_page`, `EB_EXCHANGE_PAGES=database`): gzipped, written as they're fetched, pruned to the live window after each load (`cx.prune_pages`); the loader reads them before fetching.
+- [x] Reduced history for the history pages: only Launch market reads history (Conversions is a static research note, no data). `launch_history` holds each finished league's window medians: 12,332 rows for the five reference leagues instead of 977k hourly; the picks ranked from it are identical on the real data.
+- [x] When the live league's fortnight is over, the pipeline captures it into the history and rebuilds the picks (`launch_picks.refresh`); a replaced league's rows are dropped once the new league has data (`site.drop_leagues`).
+- [x] `eb site seed --hosted` seeds a new server from the local copy (rows, history, picks, the loaded hours' pages); the pipeline refuses an unseeded database.
 - [ ] Re-run the simulation's tiers on the new shape (no volume) and update the bill.
 
 ### 2. League switch, rehearsed (works in the local simulation before going live)

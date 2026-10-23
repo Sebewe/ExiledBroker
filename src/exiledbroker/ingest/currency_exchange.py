@@ -5,9 +5,11 @@ The current (unfinished) hour returns no markets and points back at itself. A
 timestamp before the history starts silently returns the first page instead, so
 every page is checked against the hour we asked for.
 
-Pages never change, so each is fetched once and kept gzipped under
-data/raw/ggg/currency_exchange/<hour>.json.gz. Files are written to a temporary
-path and renamed, so a page on disk is always complete.
+Pages never change, so each is fetched once and kept gzipped, either on disk under
+data/raw/ggg/currency_exchange/<hour>.json.gz (local: the whole history; files are
+written to a temporary path and renamed, so a page on disk is always complete) or in
+the site database's `exchange_page` table (`EB_EXCHANGE_PAGES=database`, the hosted
+pipeline: only the live window's pages, see `prune_pages`).
 """
 
 import gzip
@@ -24,6 +26,7 @@ from exiledbroker.config import Settings
 from exiledbroker.ingest.files import tmp_path_for
 from exiledbroker.ingest.http import PoliteClient
 from exiledbroker.normalize.leagues import league_id
+from exiledbroker.storage import db
 
 HOUR = 3600
 GAME = "poe1"
@@ -49,7 +52,22 @@ def page_path(settings: Settings, ts: int) -> Path:
     return settings.exchange_raw_dir / f"{ts}.json.gz"
 
 
+def _in_db(settings: Settings) -> bool:
+    return settings.exchange_pages == "database"
+
+
+def has_page(settings: Settings, ts: int) -> bool:
+    if _in_db(settings):
+        with db.site_session(settings, read_only=False) as con:
+            return bool(db.rows(con, "SELECT 1 FROM exchange_page WHERE hour = ?", [ts]))
+    return page_path(settings, ts).exists()
+
+
 def read_page(settings: Settings, ts: int) -> dict | None:
+    if _in_db(settings):
+        with db.site_session(settings, read_only=False) as con:
+            found = db.rows(con, "SELECT body FROM exchange_page WHERE hour = ?", [ts])
+        return json.loads(gzip.decompress(found[0][0])) if found else None
     path = page_path(settings, ts)
     if not path.exists():
         return None
@@ -58,12 +76,51 @@ def read_page(settings: Settings, ts: int) -> dict | None:
 
 
 def write_page(settings: Settings, ts: int, page: dict) -> None:
+    if _in_db(settings):
+        body = gzip.compress(json.dumps(page).encode())
+        with db.site_session(settings, read_only=False) as con:
+            db.execute(
+                con,
+                "INSERT INTO exchange_page (hour, body) VALUES (?, ?) ON CONFLICT (hour) DO NOTHING",
+                [ts, body],
+            )
+        return
     path = page_path(settings, ts)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = tmp_path_for(path)
     with gzip.open(tmp, "wt") as f:
         json.dump(page, f)
     os.replace(tmp, path)
+
+
+def page_count(settings: Settings) -> int:
+    if _in_db(settings):
+        with db.site_session(settings, read_only=False) as con:
+            return db.scalar(con, "SELECT count(*) FROM exchange_page")
+    d = settings.exchange_raw_dir
+    return sum(1 for _ in d.glob("*.json.gz")) if d.exists() else 0
+
+
+def prune_pages(settings: Settings, keep: list[int]) -> int:
+    """Delete stored pages outside `keep` (the live window's hours), so the database
+    holds only what a rebuild would re-read. Pages on disk are never pruned: locally
+    they're the history. Returns the number deleted."""
+    if not _in_db(settings) or not keep:
+        return 0
+    # The window is one or two runs of hours (the launch days, then the latest ones).
+    runs: list[list[int]] = []
+    for ts in sorted(keep):
+        if runs and ts == runs[-1][1] + HOUR:
+            runs[-1][1] = ts
+        else:
+            runs.append([ts, ts])
+    inside = " OR ".join("hour BETWEEN ? AND ?" for _ in runs)
+    with db.site_session(settings, read_only=False) as con:
+        before = db.scalar(con, "SELECT count(*) FROM exchange_page")
+        db.execute(
+            con, f"DELETE FROM exchange_page WHERE NOT ({inside})", [t for r in runs for t in r]
+        )
+        return before - db.scalar(con, "SELECT count(*) FROM exchange_page")
 
 
 def fetch_page(client: PoliteClient, settings: Settings, ts: int) -> dict:
@@ -127,7 +184,7 @@ def sync_league(
 
     def get(ts: int) -> dict:
         nonlocal fetched, cached
-        if page_path(settings, ts).exists():
+        if has_page(settings, ts):
             cached += 1
         else:
             fetched += 1
@@ -310,7 +367,7 @@ def sync_recent(
     hours = only(window.hours) if only else window.hours
     try:
         for i, ts in enumerate(hours, 1):
-            if page_path(settings, ts).exists():
+            if has_page(settings, ts):
                 cached += 1
             else:
                 fetched += 1

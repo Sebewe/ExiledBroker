@@ -215,6 +215,14 @@ def rows(con: duckdb.DuckDBPyConnection, sql: str, params: list | None = None) -
     return out
 
 
+def execute(con: duckdb.DuckDBPyConnection, sql: str, params: list | None = None) -> None:
+    """A write on either engine, with `?` placeholders (not metered: reads only)."""
+    if is_postgres(con):
+        _pg_query(con, sql, params).close()
+    else:
+        con.execute(sql, params or [])
+
+
 def scalar(con: duckdb.DuckDBPyConnection, sql: str, params: list | None = None):
     return rows(con, sql, params)[0][0]
 

@@ -52,6 +52,14 @@ def _series(con, league, item_id, buy: float, sell: float, liquid: float = 100.0
         _price(con, league, item_id, offset, sell if w == "sell" else buy, liquid)
 
 
+def _rebuild(con) -> dict[str, int]:
+    """Reduce every complete league to its Launch history, then rank from it."""
+    leagues = lpk.complete_leagues(con)
+    for lg in leagues:
+        lpk.capture(con, lg)
+    return lpk.build(con, leagues)
+
+
 @pytest.fixture
 def con(tmp_path):
     with db.session(tmp_path / "t.duckdb") as c:
@@ -87,9 +95,8 @@ def con(tmp_path):
 
 
 def test_ranks_affordable_carried_over_risers(con):
-    leagues = lpk.complete_leagues(con)
-    assert leagues == LEAGUES
-    rows = lpk.build(con, leagues)
+    assert lpk.complete_leagues(con) == LEAGUES
+    rows = _rebuild(con)
     assert rows == {"launch_window": 3, "launch_pick": 6, "launch_pick_league": 30}
 
     board = lpk.launch_board(con)
@@ -115,7 +122,7 @@ def test_recency_weights_the_newest_league_most(con):
         "UPDATE price_observation SET divine_value = 0.025 WHERE item_id ="
         " 'currency:steady' AND league_id = 'L1' AND day_offset = 12.5"
     )
-    lpk.build(con, lpk.complete_leagues(con))
+    _rebuild(con)
     steady = next(p for p in lpk.launch_board(con)[0]["picks"] if p["name"] == "Steady")
     assert steady["growth"] > 1.5  # ×4 newest outweighs ×0.25 oldest
     assert steady["rose"] == 4 and steady["worst"] == pytest.approx(0.25)
@@ -127,7 +134,7 @@ def test_a_running_league_is_not_a_reference_until_its_fortnight_ends(con):
 
 
 def test_live_prices_only_from_recent_hours(con):
-    lpk.build(con, lpk.complete_leagues(con))
+    _rebuild(con)
     # The newest league's latest hour is its day-14 Chaos row; Riser last traded on
     # day 12.5, more than LIVE_HOURS before it.
     picks = lpk.launch_board(con)[0]["picks"]
@@ -142,3 +149,41 @@ def test_an_empty_database_has_no_board(con):
     assert lpk.complete_leagues(con) == []
     assert lpk.build(con, []) == dict.fromkeys(lpk.TABLES, 0)
     assert lpk.launch_board(con) == []
+
+
+def test_the_history_is_small_and_ranks_the_same(con):
+    """Each league is reduced to one row per item and window; ranking from it gives
+    what ranking straight from the hourly rows did (the expectations above)."""
+    assert lpk.capture(con, "L5") == 7 * 4  # 7 items (League Coin included) × 4 windows
+    assert lpk.capture(con, "L5") == 7 * 4  # replaced, not added to
+    assert db.scalar(con, "SELECT count(*) FROM launch_history") == 28
+    for lg in LEAGUES[1:]:
+        lpk.capture(con, lg)
+    con.execute("DELETE FROM price_observation")  # the hourly history isn't needed now
+    lpk.build(con)
+    assert [p["name"] for p in lpk.launch_board(con)[0]["picks"]] == ["Riser", "Steady"]
+
+
+def test_refresh_captures_once_and_rebuilds_when_the_references_change(con):
+    assert lpk.refresh(con) == LEAGUES
+    assert lpk.refresh(con) is None  # nothing new
+    # A new league (L6) runs: not a reference while in its fortnight, even once it has
+    # reached the sale days, until they're over.
+    con.execute(
+        "INSERT INTO league (id, game, name, start_at, kind) VALUES ('L6', 'poe1', 'L6', ?,"
+        " 'challenge')",
+        [datetime(2026, 1, 1) + timedelta(days=180)],
+    )
+    for item in ("currency:chaos-orb", "currency:riser", "currency:steady"):
+        _series(con, "L6", item, 0.1, 0.2)
+    _price(con, "L6", "currency:chaos-orb", 13.5, 0.005, 100.0)
+    assert lpk.refresh(con, live="L6") is None
+    assert "L6" not in lpk.captured_leagues(con)
+    con.execute(
+        "INSERT INTO price_observation (item_id, league_id, observed_at, day_offset, chaos_value,"
+        " divine_value, source, volume, chaos_volume) VALUES ('currency:chaos-orb', 'L6', ?,"
+        " 14.5, 1, 0.005, ?, 1, 1)",
+        [datetime(2026, 7, 15), HOURLY],
+    )
+    assert lpk.refresh(con, live="L6") == ["L6", *LEAGUES[:4]]  # the oldest drops out
+    assert lpk.windows(con)["leagues"][0] == "L6,L5,L4,L3,L2"

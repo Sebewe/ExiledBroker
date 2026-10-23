@@ -5,8 +5,9 @@
     .venv/bin/python deploy/railway-sim/run.py spike --users 1000          # all at once
     .venv/bin/python deploy/railway-sim/run.py down                        # remove it all
 
-A run starts from a fresh copy (`seed`): Allflame replayed from 48 hours after its
-launch, the pipeline's volume holding the research database and the pages so far.
+A run starts from a fresh server (`seed`): Allflame replayed from 48 hours after its
+launch, Postgres seeded from the local copy as `eb site seed --hosted` does (the
+rows, the Launch history and picks, and the pages so far).
 Then: an idle window with no visitors (what the always-on services cost doing
 nothing), then `--sim-hours` simulated hours with the visitors browsing while, a few
 minutes past each simulated hour, the pipeline runs once (a Railway cron job) and
@@ -19,7 +20,8 @@ real day and month:
 - CPU: the idle rate over 24 h, plus the visitors' extra work (measured, not scaled:
   a compressed day does a day's work, just faster);
 - the pipeline: its measured runs × 24 a day;
-- volumes: their size; egress: the bytes the visitors received.
+- volumes: Postgres's size (the pipeline has none); egress: the bytes the visitors
+  received.
 """
 
 import argparse
@@ -105,10 +107,11 @@ def wait_healthy(url: str, seconds: int = 120) -> None:
 
 
 def reset_and_seed() -> None:
-    """A fresh simulation: rebuilt image, empty volumes, the pipeline volume seeded."""
+    """A fresh simulation: rebuilt image, an empty Postgres seeded from the local copy."""
     sh([*COMPOSE, "--profile", "cron", "down", "-v", "--remove-orphans"], capture_output=True)
     sh([*COMPOSE, "build", "web"])
     (HERE / ".cache").mkdir(exist_ok=True)
+    sh([*COMPOSE, "up", "-d", "--wait", "postgres"])
     sh(
         [
             *COMPOSE,
@@ -116,7 +119,6 @@ def reset_and_seed() -> None:
             "cron",
             "run",
             "--rm",
-            "--no-deps",
             "--user",
             "root",
             "-v",
@@ -128,16 +130,16 @@ def reset_and_seed() -> None:
             "--entrypoint",
             "python",
             "pipeline",
-            "/sim/seed_volume.py",
+            "/sim/seed_server.py",
             "--start",
             str(START),
             "--league",
             LEAGUE,
         ]
     )
-    sh([*COMPOSE, "up", "-d", "postgres", "upstream"])
+    sh([*COMPOSE, "up", "-d", "upstream"])
     wait_healthy(f"{UPSTREAM}/_sim/stats")
-    first = pipeline_pass(START + CRON_MINUTE * 60)  # publishes the league's first 48 hours
+    first = pipeline_pass(START + CRON_MINUTE * 60)  # nothing new yet: checks it's caught up
     if not first["ok"]:
         raise RuntimeError(f"the first pipeline pass failed: {first['out']}")
     print(f"first pass: {first['out']}")
@@ -291,7 +293,7 @@ def run(args) -> dict:
     s2 = m.snapshot()
     m.stop()
     upstream = httpx.get(f"{UPSTREAM}/_sim/stats", timeout=10).json()
-    volumes = {name: round(meter.volume_gb(f"ebsim_{name}"), 3) for name in ("pipeline", "pgdata")}
+    volumes = {"pgdata": round(meter.volume_gb("ebsim_pgdata"), 3)}
     r = report(
         args.label or f"{args.users}u",
         args.users,

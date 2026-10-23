@@ -1,21 +1,27 @@
 """The hosted data pipeline: one hourly pass, then exit (`eb pipeline run`, a Railway
 cron job a few minutes past every hour).
 
-The pipeline owns the research database: a DuckDB file on its volume with the whole
-history and the raw GGG pages, so nothing it already has is ever fetched again, even
-on a rebuild. Each pass:
+The server keeps only what the site reads, in its Postgres database (EB_DATABASE_URL):
+the live league's rows, the live window's raw pages (`exchange_page`, so a loader
+rebuild re-reads them instead of fetching again), and the Launch history the picks
+are ranked from. No DuckDB file and no disk: the loader runs on an in-memory DuckDB
+with Postgres attached (`db.site_writer`). Each pass:
 
 1. picks the league: the announced next league once it has started (settings),
    else poe.ninja's current one, checked at most hourly with a conditional request;
-2. loads the newly published hours (`live.sync_live`, which records the run);
-3. rebuilds the launch picks when a league's launch fortnight has just completed;
-4. publishes what changed to the site's Postgres (`site.publish`), in one transaction.
+2. loads the newly published hours (`live.sync_live`, which records the run and
+   prunes pages that left the window);
+3. once the live league's launch fortnight is over, adds it to the Launch history and
+   rebuilds the picks (`launch_picks.refresh`);
+4. once the live league has data, drops any other league's rows (a league switch).
 
-A pass with nothing new writes nothing, so visitors' caches stay valid.
+The database must be seeded first (`eb site seed --hosted`, from the local copy), so
+the server never fetches from GGG what we already have: a pass then fetches only the
+hours since the seed, or since the last pass after downtime.
 """
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 from exiledbroker.config import Settings
@@ -29,33 +35,32 @@ from exiledbroker.storage import db, site
 LEAGUES_MAX_AGE = timedelta(hours=1)  # a new league must be picked up within the hour
 
 
-class EmptyVolume(RuntimeError):
-    """The pipeline's database has no history: seed the volume instead of fetching it."""
+class NotSeeded(RuntimeError):
+    """The site's database has no history: seed it from the local copy instead of
+    fetching everything from GGG."""
 
 
 @dataclass
 class PipelineResult:
     league: str
     live: LiveStatus
-    picks_rebuilt: bool
-    published: site.PublishResult | None
+    picks_from: list[str] | None = None  # the picks were rebuilt from these leagues
+    dropped: list[str] = field(default_factory=list)
 
     def __str__(self) -> str:
         parts = [str(self.live)]
-        if self.picks_rebuilt:
-            parts.append("Launch picks rebuilt.")
-        if self.published is None:
-            parts.append("Not published (no EB_PUBLISH_URL).")
-        elif self.published.changed:
-            p = self.published
-            parts.append(
-                f"Published: +{p.hours_added} / -{p.hours_removed} hour(s)"
-                + (", picks" if p.picks else "")
-                + "."
-            )
-        else:
-            parts.append("Nothing new to publish.")
+        if self.picks_from:
+            parts.append(f"Launch picks rebuilt from {', '.join(self.picks_from)}.")
+        if self.dropped:
+            parts.append(f"Dropped {', '.join(self.dropped)} from the site.")
         return " ".join(parts)
+
+
+def hosted(settings: Settings) -> Settings:
+    """The pipeline's settings: pages are kept in the site's database. (Without
+    EB_DATABASE_URL that's the local DuckDB file, as in the tests; an unseeded
+    database is refused either way.)"""
+    return settings.model_copy(update={"exchange_pages": "database"})
 
 
 def pick_league(client: PoliteClient, settings: Settings, now: datetime) -> str:
@@ -67,34 +72,16 @@ def pick_league(client: PoliteClient, settings: Settings, now: datetime) -> str:
         if now >= start:
             return settings.next_league
     url = f"{settings.poe_ninja_base_url}/poe1/api/economy/leagues"
-    with db.session(settings.db_path) as con:
-        db.init_schema(con)
+    with db.site_writer(settings) as con:
         leagues = reference.fetch_if_changed(
             con, client, core_pool.LEAGUES_KEY, url, json.loads, LEAGUES_MAX_AGE
         ).value
     return leagues[0]["id"]
 
 
-def _has_history(settings: Settings) -> bool:
-    if not settings.db_path.exists():
-        return False
-    with db.session(settings.db_path, read_only=True) as con:
-        has = db.scalar(
-            con,
-            "SELECT count(*) FROM information_schema.tables WHERE table_name = 'exchange_hour_loaded'",
-        )
-        return bool(has) and db.scalar(con, "SELECT count(*) FROM exchange_hour_loaded") > 0
-
-
-def _picks_stale(settings: Settings) -> list[str] | None:
-    """The reference leagues if the stored picks were built from others (a league's
-    fortnight completed since), else None."""
-    with db.session(settings.db_path) as con:
-        leagues = launch_picks.complete_leagues(con)[: launch_picks.REFERENCE_LEAGUES]
-        built = db.rows(con, "SELECT leagues FROM launch_window LIMIT 1")
-    if not leagues:
-        return None
-    return leagues if not built or built[0][0] != ",".join(leagues) else None
+def _seeded(settings: Settings) -> bool:
+    with db.site_writer(settings) as con:
+        return db.scalar(con, f"SELECT count(*) FROM {launch_picks.HISTORY}") > 0
 
 
 def run(
@@ -105,31 +92,19 @@ def run(
     lookback_hours: int = 14 * 24,
 ) -> PipelineResult:
     """One hourly pass. `now` replays a moment (tests, the Railway simulation)."""
-    if settings.database_url:
-        raise ValueError(
-            "The pipeline writes its own DuckDB; set EB_PUBLISH_URL (not EB_DATABASE_URL) "
-            "to the site's Postgres."
-        )
-    if not _has_history(settings):
-        raise EmptyVolume(
-            f"No history in {settings.db_path}. Seed the volume with the research database "
-            "and raw pages (see deploy/railway-sim/seed_volume.py) rather than fetching it all from GGG."
+    settings = hosted(settings)
+    if not _seeded(settings):
+        raise NotSeeded(
+            "The site's database has no Launch history, so it hasn't been seeded. Seed it "
+            "from the local copy (`eb site seed --hosted`) rather than fetching it all from GGG."
         )
     moment = now or datetime.now(UTC)
     name = league or pick_league(client, settings, moment)
     status = sync_live(client, settings, name, lookback_hours, now=now, earliest=cx.HISTORY_START)
-    rebuilt = False
-    if (refs := _picks_stale(settings)) is not None:
-        with db.session(settings.db_path) as con:
-            launch_picks.build(con, refs)
-        rebuilt = True
-    published = None
-    if settings.publish_url and status.state in ("updated", "unchanged"):
-        import psycopg
-
-        with (
-            db.session(settings.db_path, read_only=True) as duck,
-            psycopg.connect(settings.publish_url, autocommit=True) as pg,
-        ):
-            published = site.publish(duck, pg, name)
-    return PipelineResult(name, status, rebuilt, published)
+    result = PipelineResult(name, status)
+    if status.state not in ("updated", "unchanged"):
+        return result  # e.g. the announced league has no trades yet: keep the old one
+    with db.site_writer(settings) as con:
+        result.picks_from = launch_picks.refresh(con, live=name)
+        result.dropped = site.drop_leagues(con, name)
+    return result
