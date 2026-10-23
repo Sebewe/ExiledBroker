@@ -29,11 +29,11 @@ describe('nextCheckIn', () => {
   })
 
   it('backs off the longer a new hour is late', () => {
-    // Due 10:08; checked at 10:10 and nothing new: ask again in 5 minutes.
+    // Due 10:08; checked at 10:10 and nothing new: ask again in 3 minutes.
     const at = (h: string) => Date.parse(`2026-10-22T${h}:00Z`)
-    expect(nextCheckIn(status('2026-10-22T08:00:00Z', '2026-10-22T10:10:00Z'), at('10:10'), at('10:10'))).toBe(5 * MIN)
-    expect(nextCheckIn(status('2026-10-22T08:00:00Z', '2026-10-22T10:40:00Z'), at('10:40'), at('10:40'))).toBe(10 * MIN)
-    expect(nextCheckIn(status('2026-10-22T08:00:00Z', '2026-10-22T12:00:00Z'), at('12:00'), at('12:00'))).toBe(20 * MIN)
+    expect(nextCheckIn(status('2026-10-22T08:00:00Z', '2026-10-22T10:10:00Z'), at('10:10'), at('10:10'))).toBe(3 * MIN)
+    expect(nextCheckIn(status('2026-10-22T08:00:00Z', '2026-10-22T10:40:00Z'), at('10:40'), at('10:40'))).toBe(5 * MIN)
+    expect(nextCheckIn(status('2026-10-22T08:00:00Z', '2026-10-22T12:00:00Z'), at('12:00'), at('12:00'))).toBe(10 * MIN)
     expect(
       nextCheckIn(status('2026-10-22T08:00:00Z', '2026-10-23T08:00:00Z'), at('10:00') + 86_400_000 - 2 * 3_600_000, at('10:00') + 86_400_000 - 2 * 3_600_000),
     ).toBe(30 * MIN)

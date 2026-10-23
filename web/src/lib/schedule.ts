@@ -9,14 +9,13 @@ const MIN = 60_000
 const HOUR = 60 * MIN
 export const PUBLISH_DELAY = 8 * MIN // after an hour ends, until it's usually loaded
 export const MIN_CHECK = 2 * MIN // never ask more often than this
-const IDLE_CHECK = 30 * MIN // nothing expected (no league yet, or the feed stopped)
+const IDLE_CHECK = 30 * MIN // nothing expected (no league, nothing announced)
 
 /** Back-off once a new hour is overdue: the longer it's late, the less often we ask. */
 function overdueEvery(lateBy: number) {
-  if (lateBy < 15 * MIN) return 5 * MIN
-  if (lateBy < HOUR) return 10 * MIN
-  if (lateBy < 3 * HOUR) return 20 * MIN
-  return IDLE_CHECK
+  if (lateBy < 15 * MIN) return 3 * MIN
+  if (lateBy < HOUR) return 5 * MIN
+  return 10 * MIN
 }
 
 /** When the next new data is expected: the hour after the newest loaded one, or an
