@@ -36,6 +36,8 @@ Not deployed yet.
 
 ## Supabase for the database (tried 2026-10-23, fits after the pipeline fix)
 
+The step-by-step for connecting Railway to it is [supabase.md](supabase.md).
+
 The idea: Postgres on Supabase's free tier (500 MB database, 5 GB egress a month, 500 MB RAM, paused after a week without activity), web and the pipeline on Railway. The bill stays $5 either way at our traffic (Hobby includes $5 of usage); it would free about half of that usage as headroom. Project in AWS us-east-1 (Railway should run in US East), Postgres 17.11, 60 connections, Data API turned off (it would expose `public` to anyone with the publishable key). Reached through the session pooler (port 5432, IPv4); the direct connection is IPv6 only.
 
 Measured on the seeded project, from home (105 ms round trip), through a byte-counting relay:
