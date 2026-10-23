@@ -96,3 +96,11 @@ def test_loops_need_enough_traded_and_the_steadiest_come_first(con):
     # Over 3 hours, the one that paid every hour leads, with its volume per paying hour.
     assert [lp["name"] for lp in three["loops"]] == ["Steady", "Once"]
     assert three["loops"][0]["hours_paid"] == 3 and three["loops"][0]["volume"] == 1000
+    # This hour's orders: bid halfway up the Chaos range (flat at 10c here), ask three
+    # quarters up the Divine one, and it still pays from the bid at the worst sale.
+    steady = three["loops"][0]
+    assert (steady["bid"], steady["bid_in"], steady["order_ok"]) == (10, "chaos", True)
+    assert steady["ask"] == pytest.approx(10 * 1.05 / 100)
+    # Its last 24 hours, from one grouped query: 3 hours traded at 10c.
+    assert (steady["range_low"], steady["range_avg"], steady["range_high"]) == (10, 10, 10)
+    assert steady["range_hours"] == 3
