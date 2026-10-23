@@ -147,8 +147,11 @@ def _weighted(col: str) -> pl.Expr:
     return (pl.col(col) * pl.col("w")).sum() / pl.col("w").sum()
 
 
-def rank(prices: pl.DataFrame, leagues: list[str]) -> dict[str, pl.DataFrame]:
-    """Score every window from `window_prices`: 'windows', 'picks' and 'per_league'."""
+def rank(
+    prices: pl.DataFrame, leagues: list[str], min_leagues: int = MIN_LEAGUES
+) -> dict[str, pl.DataFrame]:
+    """Score every window from `window_prices`: 'windows', 'picks' and 'per_league'.
+    (`min_leagues` is lowered only by the backtest, which ranks from fewer leagues.)"""
     weights = lp.recency_weights(leagues, HALF_LIFE)
     sell = prices.filter(window_id="sell").select(
         "league", "item_id", sell="divine", sell_per_day="per_day"
@@ -183,7 +186,7 @@ def rank(prices: pl.DataFrame, leagues: list[str]) -> dict[str, pl.DataFrame]:
     windows, picks = [], []
     for wid, (first, last) in WINDOWS.items():
         cands = per_item.filter(
-            pl.col("window_id") == wid, affordable, pl.col("traded") >= MIN_LEAGUES
+            pl.col("window_id") == wid, affordable, pl.col("traded") >= min_leagues
         ).filter(pl.col("growth") > 1)
         ranked = rank_score(cands, FACTORS, WEIGHTS).head(TOP)
         picks.append(ranked.with_columns(rank=pl.int_range(1, ranked.height + 1, dtype=pl.Int32)))

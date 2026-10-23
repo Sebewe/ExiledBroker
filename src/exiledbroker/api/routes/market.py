@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response
 from exiledbroker.api import deps
 from exiledbroker.api.deps import View
 from exiledbroker.api.models import (
+    BacktestReport,
     CalendarLeague,
     Group,
     HourlyLeague,
@@ -16,7 +17,7 @@ from exiledbroker.api.models import (
     MarketItem,
 )
 from exiledbroker.normalize.tracked import GROUPS
-from exiledbroker.services import launch_picks, market, overview
+from exiledbroker.services import backtest, launch_picks, market, overview
 
 router = APIRouter(tags=["market"])
 Unit = Literal["chaos", "divine"]
@@ -32,6 +33,10 @@ def groups_view() -> View:
 
 def launch_picks_view() -> View:
     return View("launch_picks", (), launch_picks.launch_board, LaunchWindow)
+
+
+def backtest_view() -> View:
+    return View("backtest", (), backtest.report, BacktestReport)
 
 
 def summary_view(league: str, group: list[str], unit: Unit = "chaos") -> View:
@@ -61,6 +66,13 @@ def picks(request: Request) -> Response:
     """What to buy in each early-league window, ranked from past leagues (empty until
     `eb launch picks` has been run on the research database and seeded)."""
     return deps.respond(request, launch_picks_view())
+
+
+@router.get("/backtest", response_model=list[BacktestReport])
+def backtest_report(request: Request) -> Response:
+    """Would following the site's tools have paid? The backtest's report (one item; empty
+    until `eb backtest run` has been run on the research database and seeded)."""
+    return deps.respond(request, backtest_view())
 
 
 @router.get("/market/{league}/summary", response_model=list[MarketItem])

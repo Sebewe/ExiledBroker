@@ -280,3 +280,11 @@ CREATE TABLE IF NOT EXISTS launch_history (
     divine_volume DOUBLE PRECISION,
     PRIMARY KEY (league, item_id, window_id)
 );
+
+-- The Backtest page's report (analysis/backtest.py, `eb backtest run`): one JSON document,
+-- built locally from past leagues' hours and copied to the site whole.
+CREATE TABLE IF NOT EXISTS backtest_report (
+    id        VARCHAR PRIMARY KEY,
+    built_at  TIMESTAMP NOT NULL,
+    body      VARCHAR NOT NULL
+);

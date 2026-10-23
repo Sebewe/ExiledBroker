@@ -48,6 +48,7 @@ def endpoints(league: str) -> list[str]:
         f"/api/market/{league}/summary?group=currency&group=divination",
         f"/api/market/{league}/hourly?item_id=currency:divine-orb&unit=divine",
         "/api/launch/picks",
+        "/api/backtest",
         "/api/leagues",
     ]
 
@@ -151,6 +152,7 @@ def test_default_pages_are_precomputed(client, settings, monkeypatch):  # noqa: 
         f"/api/arbitrage?league={LEAGUE}&direction=chaos_first&buffer=0.02&min_hours=24&min_price=1",
         f"/api/cards/{LEAGUE}?unit=chaos&prefer_cheaper_sets=true",
         "/api/launch/picks",
+        "/api/backtest",
     ]
     for path in page_loads:
         with db.metered() as meter:

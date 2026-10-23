@@ -510,6 +510,30 @@ def launch_picks_build() -> None:
     typer.echo(f"Ranked from {', '.join(leagues)}: {rows['launch_pick']} picks")
 
 
+backtest_app = typer.Typer(help="Would following the site's tools have paid?")
+app.add_typer(backtest_app, name="backtest")
+
+
+@backtest_app.command("run")
+def backtest_run() -> None:
+    """Replay every loaded hour as a trader following the site, at fair and harsh
+    prices, and keep the report for the Backtest page (copy it to the site with
+    `eb site seed`). Reads only what's loaded; makes no requests."""
+    from exiledbroker.analysis import backtest
+
+    with db.session() as con:
+        db.init_schema(con)
+        report = backtest.build(con)
+        backtest.store(con, report)
+    launch = [r for r in report["launch"] if r["window_id"] == "day1"]
+    typer.echo(f"Replayed {', '.join(report['leagues'])}.")
+    for r in launch:
+        typer.echo(
+            f"  {r['league']} day-1 picks: {r['fair']:.2f}x fair, {r['harsh']:.2f}x harsh"
+            f" (typical item {r['typical_harsh']:.2f}x harsh)"
+        )
+
+
 perf_app = typer.Typer(help="Local performance measurements (not part of the site).")
 app.add_typer(perf_app, name="perf")
 

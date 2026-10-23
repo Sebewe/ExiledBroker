@@ -46,6 +46,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/backtest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Backtest Report
+         * @description Would following the site's tools have paid? The backtest's report (one item; empty
+         *     until `eb backtest run` has been run on the research database and seeded).
+         */
+        get: operations["backtest_report_api_backtest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/cards/{league}": {
         parameters: {
             query?: never;
@@ -346,6 +367,129 @@ export interface components {
             worst_league_rank: number | null;
             /** Worst League Share */
             worst_league_share: number | null;
+        };
+        /** BacktestAssumptions */
+        BacktestAssumptions: {
+            /** Bank Divines */
+            bank_divines: number;
+            /** Capture */
+            capture: number;
+            /** Hold Hours */
+            hold_hours: number;
+            /** Launch Stake */
+            launch_stake: number;
+            /** Slippage */
+            slippage: number;
+            /** Steady Hours */
+            steady_hours: number;
+            /** Top */
+            top: number;
+            /** Trade Divines */
+            trade_divines: number;
+        };
+        /**
+         * BacktestHourly
+         * @description One hourly strategy in one stretch of a league, at fair or harsh prices.
+         *     Profits are in Divines.
+         */
+        BacktestHourly: {
+            /** Best Hour */
+            best_hour: number;
+            /** Daily */
+            daily: number[];
+            /** Filled */
+            filled: number;
+            /** Hours */
+            hours: number;
+            /** League */
+            league: string;
+            /** Per Hour */
+            per_hour: number;
+            /** Rule */
+            rule: string;
+            /** Scenario */
+            scenario: string;
+            /** Segment */
+            segment: string;
+            /** Signals */
+            signals: number;
+            /** Strategy */
+            strategy: string;
+            /** Total */
+            total: number;
+            /** Won */
+            won: number;
+            /** Worst Hour */
+            worst_hour: number;
+        };
+        /**
+         * BacktestLaunch
+         * @description A league traded with the Launch picks ranked from the leagues before it.
+         */
+        BacktestLaunch: {
+            /** Fair */
+            fair: number | null;
+            /** Fair Profit */
+            fair_profit: number;
+            /** Harsh */
+            harsh: number | null;
+            /** Harsh Profit */
+            harsh_profit: number;
+            /** League */
+            league: string;
+            /** Picks */
+            picks: components["schemas"]["BacktestLaunchPick"][];
+            /** References */
+            references: string[];
+            /** Staked */
+            staked: number;
+            /** Typical Fair */
+            typical_fair: number | null;
+            /** Typical Harsh */
+            typical_harsh: number | null;
+            /** Window Id */
+            window_id: string;
+        };
+        /** BacktestLaunchPick */
+        BacktestLaunchPick: {
+            /** Fair */
+            fair: number;
+            /** Harsh */
+            harsh: number;
+            /** Name */
+            name: string;
+            /** Rank */
+            rank: number;
+            /** Stake */
+            stake: number;
+        };
+        /** BacktestPersistence */
+        BacktestPersistence: {
+            /** Flagged */
+            flagged: number | null;
+            /** League */
+            league: string;
+            /** Others */
+            others: number | null;
+            /** Segment */
+            segment: string;
+        };
+        /** BacktestReport */
+        BacktestReport: {
+            assumptions: components["schemas"]["BacktestAssumptions"];
+            /**
+             * Built At
+             * Format: date-time
+             */
+            built_at: string;
+            /** Hourly */
+            hourly: components["schemas"]["BacktestHourly"][];
+            /** Launch */
+            launch: components["schemas"]["BacktestLaunch"][];
+            /** Leagues */
+            leagues: string[];
+            /** Persistence */
+            persistence: components["schemas"]["BacktestPersistence"][];
         };
         /** CalendarLeague */
         CalendarLeague: {
@@ -924,6 +1068,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    backtest_report_api_backtest_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BacktestReport"][];
                 };
             };
         };

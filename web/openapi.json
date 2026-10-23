@@ -173,6 +173,359 @@
         "title": "ArbitrageItem",
         "type": "object"
       },
+      "BacktestAssumptions": {
+        "properties": {
+          "bank_divines": {
+            "title": "Bank Divines",
+            "type": "number"
+          },
+          "capture": {
+            "title": "Capture",
+            "type": "number"
+          },
+          "hold_hours": {
+            "title": "Hold Hours",
+            "type": "integer"
+          },
+          "launch_stake": {
+            "title": "Launch Stake",
+            "type": "number"
+          },
+          "slippage": {
+            "title": "Slippage",
+            "type": "number"
+          },
+          "steady_hours": {
+            "title": "Steady Hours",
+            "type": "integer"
+          },
+          "top": {
+            "title": "Top",
+            "type": "integer"
+          },
+          "trade_divines": {
+            "title": "Trade Divines",
+            "type": "number"
+          }
+        },
+        "required": [
+          "bank_divines",
+          "trade_divines",
+          "top",
+          "capture",
+          "slippage",
+          "steady_hours",
+          "hold_hours",
+          "launch_stake"
+        ],
+        "title": "BacktestAssumptions",
+        "type": "object"
+      },
+      "BacktestHourly": {
+        "description": "One hourly strategy in one stretch of a league, at fair or harsh prices.\nProfits are in Divines.",
+        "properties": {
+          "best_hour": {
+            "title": "Best Hour",
+            "type": "number"
+          },
+          "daily": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Daily",
+            "type": "array"
+          },
+          "filled": {
+            "title": "Filled",
+            "type": "integer"
+          },
+          "hours": {
+            "title": "Hours",
+            "type": "integer"
+          },
+          "league": {
+            "title": "League",
+            "type": "string"
+          },
+          "per_hour": {
+            "title": "Per Hour",
+            "type": "number"
+          },
+          "rule": {
+            "title": "Rule",
+            "type": "string"
+          },
+          "scenario": {
+            "title": "Scenario",
+            "type": "string"
+          },
+          "segment": {
+            "title": "Segment",
+            "type": "string"
+          },
+          "signals": {
+            "title": "Signals",
+            "type": "integer"
+          },
+          "strategy": {
+            "title": "Strategy",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "number"
+          },
+          "won": {
+            "title": "Won",
+            "type": "integer"
+          },
+          "worst_hour": {
+            "title": "Worst Hour",
+            "type": "number"
+          }
+        },
+        "required": [
+          "league",
+          "segment",
+          "strategy",
+          "rule",
+          "scenario",
+          "hours",
+          "signals",
+          "filled",
+          "won",
+          "total",
+          "per_hour",
+          "best_hour",
+          "worst_hour",
+          "daily"
+        ],
+        "title": "BacktestHourly",
+        "type": "object"
+      },
+      "BacktestLaunch": {
+        "description": "A league traded with the Launch picks ranked from the leagues before it.",
+        "properties": {
+          "fair": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fair"
+          },
+          "fair_profit": {
+            "title": "Fair Profit",
+            "type": "number"
+          },
+          "harsh": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Harsh"
+          },
+          "harsh_profit": {
+            "title": "Harsh Profit",
+            "type": "number"
+          },
+          "league": {
+            "title": "League",
+            "type": "string"
+          },
+          "picks": {
+            "items": {
+              "$ref": "#/components/schemas/BacktestLaunchPick"
+            },
+            "title": "Picks",
+            "type": "array"
+          },
+          "references": {
+            "items": {
+              "type": "string"
+            },
+            "title": "References",
+            "type": "array"
+          },
+          "staked": {
+            "title": "Staked",
+            "type": "number"
+          },
+          "typical_fair": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Typical Fair"
+          },
+          "typical_harsh": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Typical Harsh"
+          },
+          "window_id": {
+            "title": "Window Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "league",
+          "window_id",
+          "references",
+          "staked",
+          "fair",
+          "harsh",
+          "fair_profit",
+          "harsh_profit",
+          "typical_fair",
+          "typical_harsh",
+          "picks"
+        ],
+        "title": "BacktestLaunch",
+        "type": "object"
+      },
+      "BacktestLaunchPick": {
+        "properties": {
+          "fair": {
+            "title": "Fair",
+            "type": "number"
+          },
+          "harsh": {
+            "title": "Harsh",
+            "type": "number"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          },
+          "stake": {
+            "title": "Stake",
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "rank",
+          "stake",
+          "fair",
+          "harsh"
+        ],
+        "title": "BacktestLaunchPick",
+        "type": "object"
+      },
+      "BacktestPersistence": {
+        "properties": {
+          "flagged": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flagged"
+          },
+          "league": {
+            "title": "League",
+            "type": "string"
+          },
+          "others": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Others"
+          },
+          "segment": {
+            "title": "Segment",
+            "type": "string"
+          }
+        },
+        "required": [
+          "league",
+          "segment",
+          "flagged",
+          "others"
+        ],
+        "title": "BacktestPersistence",
+        "type": "object"
+      },
+      "BacktestReport": {
+        "properties": {
+          "assumptions": {
+            "$ref": "#/components/schemas/BacktestAssumptions"
+          },
+          "built_at": {
+            "format": "date-time",
+            "title": "Built At",
+            "type": "string"
+          },
+          "hourly": {
+            "items": {
+              "$ref": "#/components/schemas/BacktestHourly"
+            },
+            "title": "Hourly",
+            "type": "array"
+          },
+          "launch": {
+            "items": {
+              "$ref": "#/components/schemas/BacktestLaunch"
+            },
+            "title": "Launch",
+            "type": "array"
+          },
+          "leagues": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Leagues",
+            "type": "array"
+          },
+          "persistence": {
+            "items": {
+              "$ref": "#/components/schemas/BacktestPersistence"
+            },
+            "title": "Persistence",
+            "type": "array"
+          }
+        },
+        "required": [
+          "built_at",
+          "leagues",
+          "assumptions",
+          "hourly",
+          "persistence",
+          "launch"
+        ],
+        "title": "BacktestReport",
+        "type": "object"
+      },
       "CalendarLeague": {
         "properties": {
           "end_date": {
@@ -2305,6 +2658,32 @@
         "summary": "Arbitrage Hourly",
         "tags": [
           "trading"
+        ]
+      }
+    },
+    "/api/backtest": {
+      "get": {
+        "description": "Would following the site's tools have paid? The backtest's report (one item; empty\nuntil `eb backtest run` has been run on the research database and seeded).",
+        "operationId": "backtest_report_api_backtest_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BacktestReport"
+                  },
+                  "title": "Response Backtest Report Api Backtest Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Backtest Report",
+        "tags": [
+          "market"
         ]
       }
     },

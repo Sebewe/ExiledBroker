@@ -284,3 +284,74 @@ class MissedWindow(BaseModel):
     cards: list[MissedCard]
     loops_missed: float  # every paying loop, not just the top ones
     cards_missed: float
+
+
+class BacktestAssumptions(BaseModel):
+    bank_divines: float
+    trade_divines: float  # at most this much in one trade
+    top: int  # picks acted on each hour
+    capture: float  # share of an hour's traded volume one trader can take
+    slippage: float  # lost on every trade at fair prices
+    steady_hours: int  # "steady": paid in each of the last this many hours
+    hold_hours: int  # rising: sold this many hours after the buy
+    launch_stake: float  # Divines per launch pick
+
+
+class BacktestHourly(BaseModel):
+    """One hourly strategy in one stretch of a league, at fair or harsh prices.
+    Profits are in Divines."""
+
+    league: str
+    segment: str  # 'launch' (the first 14 days) | 'late' (the live league's latest 14)
+    strategy: str  # 'loops' | 'cards' | 'rising'
+    rule: str  # 'top' (the 1-hour recap's top picks) | 'steady' (paid every hour)
+    scenario: str  # 'fair' | 'harsh'
+    hours: int
+    signals: int
+    filled: int
+    won: int
+    total: float
+    per_hour: float
+    best_hour: float
+    worst_hour: float
+    daily: list[float]  # running total at the end of each day
+
+
+class BacktestPersistence(BaseModel):
+    league: str
+    segment: str
+    flagged: float | None  # share of flagged loops that paid again the next hour
+    others: float | None  # the same for every other loop that traded
+
+
+class BacktestLaunchPick(BaseModel):
+    name: str
+    rank: int
+    stake: float  # Divines put in (capped by what traded)
+    fair: float  # what came back per Divine
+    harsh: float
+
+
+class BacktestLaunch(BaseModel):
+    """A league traded with the Launch picks ranked from the leagues before it."""
+
+    league: str
+    window_id: str
+    references: list[str]
+    staked: float
+    fair: float | None  # stake-weighted multiple, in Divines
+    harsh: float | None
+    fair_profit: float
+    harsh_profit: float
+    typical_fair: float | None  # the median affordable, liquid item's multiple
+    typical_harsh: float | None
+    picks: list[BacktestLaunchPick]
+
+
+class BacktestReport(BaseModel):
+    built_at: datetime
+    leagues: list[str]  # oldest first
+    assumptions: BacktestAssumptions
+    hourly: list[BacktestHourly]
+    persistence: list[BacktestPersistence]
+    launch: list[BacktestLaunch]

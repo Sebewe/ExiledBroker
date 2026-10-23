@@ -73,6 +73,11 @@ export function useLaunchPicks() {
   return useVersioned(['launch-picks'], () => unwrap(api.GET('/api/launch/picks')))
 }
 
+/** The Backtest page's report: built locally from past leagues, one small document. */
+export function useBacktest() {
+  return useVersioned(['backtest'], () => unwrap(api.GET('/api/backtest')))
+}
+
 /** The server's clock, from ours: the status is fetched about once an hour now, so its
  *  `now` is corrected by the time since, re-read every 30 seconds. */
 export function useServerNow() {

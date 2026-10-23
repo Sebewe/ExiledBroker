@@ -32,8 +32,15 @@ SHARED_TABLES = {
     "divination_card": ["item_id"],
     "reference_data": ["key"],
 }
-# Derived from the research database's history and replaced whole (services/launch_picks).
-REPLACED_TABLES = ["launch_history", "launch_window", "launch_pick", "launch_pick_league"]
+# Derived from the research database's history and replaced whole (services/launch_picks,
+# analysis/backtest).
+REPLACED_TABLES = [
+    "launch_history",
+    "launch_window",
+    "launch_pick",
+    "launch_pick_league",
+    "backtest_report",
+]
 
 
 @dataclass

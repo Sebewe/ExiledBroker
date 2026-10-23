@@ -14,6 +14,7 @@ fetches from GGG what we already have (it refuses to run unseeded):
 
     .venv/bin/eb live sync                 # bring the local copy up to date first
     .venv/bin/eb launch picks              # the Launch history and picks
+    .venv/bin/eb backtest run              # the Backtest page's report
     EB_DATABASE_URL=<Postgres's public URL> .venv/bin/eb site seed --hosted
 
 The first pass then fetches only the hours since the seed: one request per hour.

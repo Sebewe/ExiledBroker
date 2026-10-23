@@ -19,6 +19,9 @@ export type MissedLoop = Schemas['MissedLoop']
 export type MissedCard = Schemas['MissedCard']
 export type LaunchWindow = Schemas['LaunchWindow']
 export type LaunchPick = Schemas['LaunchPick']
+export type BacktestReport = Schemas['BacktestReport']
+export type BacktestHourly = Schemas['BacktestHourly']
+export type BacktestLaunch = Schemas['BacktestLaunch']
 
 // Same origin: the API serves this app in production, and Vite proxies /api in development.
 export const api = createClient<paths>({

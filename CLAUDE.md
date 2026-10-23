@@ -49,6 +49,7 @@ docker compose --profile worker up -d        # also the live worker (makes reque
 .venv/bin/eb exchange sync [-l Mirage]               # hourly GGG exchange, first 14 days per league
 .venv/bin/eb live sync|watch [-l Allflame]           # running league: launch fortnight + latest 14 days
 .venv/bin/eb launch picks                             # reduce past leagues to the Launch history, rank the picks (then `eb site seed`)
+.venv/bin/eb backtest run                             # replay the site's tools at fair and harsh prices for the Backtest page (then `eb site seed`)
 scripts/ingest.sh [exchange|dumps|all|live]          # unattended runner, logs to data/logs/latest.log
 ```
 

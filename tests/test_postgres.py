@@ -15,10 +15,12 @@ import polars as pl
 import pytest
 from polars.testing import assert_frame_equal
 
+from exiledbroker.analysis import backtest
 from exiledbroker.analysis import launch_patterns as lp
 from exiledbroker.config import Settings
 from exiledbroker.ingest import currency_exchange as cx
 from exiledbroker.ingest.live import sync_live
+from exiledbroker.services import backtest as services_backtest
 from exiledbroker.services import (
     cross_market,
     divination,
@@ -51,6 +53,8 @@ def engines(tmp_path_factory):
     with client_for(s, server) as client:
         now = cx.from_ts(server.now) + timedelta(minutes=10)
         sync_live(client, s, LEAGUE, now=now, earliest=cx.from_ts(LAUNCH - 72 * 3600))
+    with db.session(s.db_path) as con:  # `eb backtest run`, so its report is seeded too
+        backtest.store(con, backtest.build(con))
 
     pg = psycopg.connect(PG_URL, autocommit=True)
     pg.execute("DROP SCHEMA public CASCADE")
@@ -112,6 +116,7 @@ def _cases(duck) -> dict:
         "launch_picks.complete_leagues": lambda c: launch_picks.complete_leagues(c),
         "launch_picks.launch_board": lambda c: launch_picks.launch_board(c),
         "missed.missed": lambda c: missed.missed(c, LEAGUE),
+        "backtest.report": lambda c: services_backtest.report(c),
     }
 
 

@@ -2,6 +2,7 @@ import { Route, Routes } from 'react-router'
 import { Layout } from './components/Layout'
 import About from './pages/About'
 import Arbitrage from './pages/Arbitrage'
+import Backtest from './pages/Backtest'
 import Cards from './pages/Cards'
 import Conversions from './pages/Conversions'
 import Launch from './pages/Launch'
@@ -13,6 +14,7 @@ export default function App() {
     <Layout>
       <Routes>
         <Route index element={<Missed />} />
+        <Route path="backtest" element={<Backtest />} />
         <Route path="arbitrage" element={<Arbitrage />} />
         <Route path="cards" element={<Cards />} />
         <Route path="launch" element={<Launch />} />
