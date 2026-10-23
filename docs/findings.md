@@ -103,6 +103,42 @@ A dummy trader with 100 Divines does only what the site said at the time. Hourly
 - **Thin markets flattered the first run.** Before the volume floor, many recap loops were markets with an edge over 1,000% from a couple of items traded; their few fills made acting on every loop look break-even. With the floor (now on the page too), it loses a little. The landing page was renamed from Missed opportunities to Market recap, without the "sat on the table" totals, and words its picks as options to check.
 - **Caveats:** no order book, so real fills sit between fair and harsh; one trader at small sizes; today's core pool and loot-filter card list (a small head start); five leagues, the first ones with few earlier leagues to rank picks from.
 
+## 5. Patient flips on volatile items: real only if GGG's hourly lows and highs are real trades
+
+*`analysis/flips.py` (`python -m exiledbroker.analysis.flips`). Settlers, Mercenaries, Keepers, Mirage and Allflame, first 14 days each, built 2026-10-23. Research only; not on the site.*
+
+**The idea.** Pick a random hour in a league's first 14 days and put capital into the Market recap's 3 most volatile liquid items that hour. Volatile means the widest traded range (high − low over the average), among items with at least 10k Chaos traded in the hour, a price of at least 5c and a range of at most 50%. Bid 10% of the way up that hour's range, filled the next hour or cancelled. List at 75% up from the hour after. Cut the ask by a fixed percentage every hour it doesn't sell, for up to 72 hours, then dump what's left at that hour's low. 300 random entry hours per league (seeded), at most 10 Divines and 10% of the hour's traded units per position.
+
+**Volatility lasts.** The picks' range barely shrinks over the next day, and almost all of them keep trading:
+
+| Range of the picks | When picked | +1 h | +3 h | +6 h | +24 h | Typical liquid item | Still volatile after 24 h |
+|---|---|---|---|---|---|---|---|
+| Settlers | 48% | 49% | 49% | 49% | 49% | 55% | 41% |
+| Mercenaries | 48% | 46% | 43% | 45% | 42% | 39% | 57% |
+| Keepers | 48% | 43% | 41% | 40% | 39% | 34% | 60% |
+| Mirage | 49% | 46% | 44% | 43% | 44% | 39% | 60% |
+| Allflame | 49% | 46% | 45% | 44% | 44% | 39% | 61% |
+
+("Still volatile": a range at least half the pick's and above the typical item's; over 90% still trade every hour a day later.) So the hour's delay before the data is published costs little. But with the 50% cap these aren't rare events: the typical liquid item already trades across a 34–55% range within an hour. The strategy is really a standing two-sided offer on items that always trade across a wide range, and the spikes the cap removes (often over 1,000%) are single odd trades nobody can repeat.
+
+**Results.** How much of the range one trader can actually trade at is the whole question, so each fill goes through four models: one trade past the price fills you (touch); volume spread evenly over the hour's range (even); spread in a triangle peaked at the hour's average (peaked); or the hour's average must go past the price (strict). Return is profit over capital put in, across all positions.
+
+| Bid 10%, ask 75% | Bought (of 4,500 tries) | Won | Return | Median hours to sell out |
+|---|---|---|---|---|
+| Touch, cut 2%/h | 2,456 | 100% | +34% | 2 |
+| Even, cut 2%/h | 2,284 | 99% | +31% | 2 |
+| Peaked, cut 2%/h | 1,929 | 99% | +27% | 3 |
+| **Strict, cut 1%/h** | **138** | **76%** | **+6.6%** (Settlers −3%, Mirage +12%) | **18** (5% dumped) |
+| Strict, cut 2%/h | 138 | 70% | +4.9% | 13 |
+| Strict, cut 5%/h | 138 | 43% | −1.5% | 8 |
+| Strict, cut 10%/h | 138 | 20% | −6.6% | 5 |
+
+- Under the first three models the range is tradeable and the flip almost always sells within a few hours at the first ask: +20–35% a trade, consistent across all five leagues. Asking higher (90% up) earns more and still sells (+33–41%); bidding higher (25% up) fills more often and earns less.
+- Under strict fills it's a thin, slow strategy: only 3% of bids fill, a sale takes most of a day, and it pays only with small price cuts (1–2% an hour). Cutting faster gives the gain away. Bidding higher to fill more often erases it (25% up: +1.4%; 50% up: −6%).
+- **Restrictions that matter:** cap the range (about 50%: wider is junk); a volume floor (about 10k Chaos an hour); a bid low in the range (10–25% up) and an ask high (75–90%); patience, with cuts of no more than 1–2% an hour and holds up to a day; never sell at the next hour's market (finding 4: that loses).
+- **The open question** is the same as for the loops (finding 2): it isn't confirmed whether GGG's hourly lowest and highest ratios are executed trades or listings. If they are trades that happen in any size, this is the best hourly strategy tested. If they are mostly single small trades or stale listings, it's the strict row: small, slow and not consistent across leagues. Hourly data can't settle it; a few hours of real orders in-game would.
+- **Not yet modelled:** capital sitting in unsold positions against the 100-Divine bank (holds of up to a day can tie up far more than one hour's trades), and several traders quoting the same items.
+
 ## Still to do
 
 Run the tools across all four exchange-era leagues and write up the patterns that repeat.
