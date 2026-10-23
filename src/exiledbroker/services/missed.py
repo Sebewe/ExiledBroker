@@ -50,6 +50,12 @@ MIN_CARD_SETS = 1.0  # full sets traded in the hour
 LOOP_ORDER = (0.5, 0.75)
 CARD_ORDER = (0.0, None)
 RANGE_HOURS = 24  # the price range shown with each loop and card
+# How often the orders went through recently: the same orders priced from each of the
+# last CHANCE_HOURS hours, bought if the next hour traded past the bid and sold if the
+# hour after traded past the ask (the backtest's "touch" fill). Fewer than MIN_TRIES
+# tries is too few to say.
+CHANCE_HOURS = 72
+MIN_TRIES = 3
 
 
 def paying_loops(loops: pl.DataFrame) -> pl.DataFrame:
@@ -220,6 +226,121 @@ def _ranges(con, league: str, latest, table: str, item_ids: list[str]) -> pl.Dat
     return out.cast({"range_hours": pl.Int64})
 
 
+_NO_CHANCE = {"tries": pl.Int64, "through": pl.Int64}
+
+
+def _chance_frame(rows: list, keys: dict) -> pl.DataFrame:
+    return pl.DataFrame(rows, schema={**keys, **_NO_CHANCE}, orient="row")
+
+
+def _loop_chances(con, league: str, latest, item_ids: list[str]) -> pl.DataFrame:
+    """Per listed item and direction: tries (hours its orders could be placed from, with
+    the outcome known) and how many went through, buy and sale. Counted in SQL: one row
+    back per item and direction."""
+    keys = {"item_id": pl.String, "direction": pl.String}
+    if not item_ids:
+        return _chance_frame([], keys)
+    bid_at, ask_at = LOOP_ORDER
+    marks = ", ".join("?" for _ in item_ids)
+    rows = db.rows(
+        con,
+        f"""
+        WITH h AS (
+            SELECT item_id, observed_at, chaos_low AS clo, chaos_high AS chi,
+                   divine_low AS dlo, divine_high AS dhi
+            FROM cross_market_hour
+            WHERE league_id = (SELECT id FROM league WHERE name = ?)
+              AND divine_price IS NOT NULL AND divine_rate IS NOT NULL
+              AND observed_at > ? AND item_id IN ({marks})
+        )
+        SELECT h.item_id, count(*) AS tries,
+               sum(CASE WHEN n.clo < h.clo + ? * (h.chi - h.clo)
+                         AND s.dhi > h.dlo + ? * (h.dhi - h.dlo) THEN 1 ELSE 0 END),
+               sum(CASE WHEN n.dlo < h.dlo + ? * (h.dhi - h.dlo)
+                         AND s.chi > h.clo + ? * (h.chi - h.clo) THEN 1 ELSE 0 END)
+        FROM h
+        LEFT JOIN h n ON n.item_id = h.item_id AND n.observed_at = h.observed_at + INTERVAL '1 hour'
+        LEFT JOIN h s ON s.item_id = h.item_id AND s.observed_at = h.observed_at + INTERVAL '2 hours'
+        WHERE h.observed_at <= ?
+        GROUP BY h.item_id
+        """,
+        [
+            league,
+            latest - timedelta(hours=CHANCE_HOURS),
+            *item_ids,
+            bid_at,
+            ask_at,
+            bid_at,
+            ask_at,
+            latest - timedelta(hours=2),
+        ],
+    )
+    out = []
+    for item_id, tries, chaos_first, divine_first in rows:
+        out.append((item_id, "chaos_first", tries, chaos_first or 0))
+        out.append((item_id, "divine_first", tries, divine_first or 0))
+    return _chance_frame(out, keys)
+
+
+def _card_chances(con, league: str, latest, card_ids: list[str]) -> pl.DataFrame:
+    """Per listed card: tries (hours a set still paid from the bid at the reward's low,
+    with the outcome known) and how many went through: cards bought the next hour, the
+    reward sold at its ask the hour after. One row back per card."""
+    keys = {"item_id": pl.String}
+    if not card_ids:
+        return _chance_frame([], keys)
+    marks = ", ".join("?" for _ in card_ids)
+    rows = db.rows(
+        con,
+        f"""
+        WITH d AS (
+            SELECT item_id, reward_item_id, stack_size, reward_quantity FROM divination_card
+            WHERE item_id IN ({marks})
+        ),
+        p AS (
+            SELECT item_id, observed_at, chaos_value AS avg, chaos_low AS lo,
+                   chaos_high AS hi
+            FROM price_observation
+            WHERE league_id = (SELECT id FROM league WHERE name = ?) AND source = ?
+              AND observed_at > ? AND chaos_value > 0
+              AND (item_id IN ({marks})
+                   OR item_id IN (SELECT reward_item_id FROM d))
+        )
+        SELECT c.item_id, count(*) AS tries,
+               sum(CASE WHEN n.lo < c.lo AND s.hi > r.avg THEN 1 ELSE 0 END)
+        FROM p c
+        JOIN d ON d.item_id = c.item_id
+        JOIN p r ON r.item_id = d.reward_item_id AND r.observed_at = c.observed_at
+        LEFT JOIN p n ON n.item_id = c.item_id AND n.observed_at = c.observed_at + INTERVAL '1 hour'
+        LEFT JOIN p s ON s.item_id = d.reward_item_id
+             AND s.observed_at = c.observed_at + INTERVAL '2 hours'
+        WHERE c.observed_at <= ? AND d.reward_quantity * r.lo > d.stack_size * c.lo
+        GROUP BY c.item_id
+        """,
+        [
+            *card_ids,
+            league,
+            HOURLY,
+            latest - timedelta(hours=CHANCE_HOURS),
+            *card_ids,
+            latest - timedelta(hours=2),
+        ],
+    )
+    return _chance_frame([(i, n, k or 0) for i, n, k in rows], keys)
+
+
+def _likeliest_first(rows: pl.DataFrame) -> pl.DataFrame:
+    """The backtest's lesson as an order: orders that still pay from the bid first, then
+    those most likely to go through, then the steadiest and what paid most."""
+    return rows.with_columns(
+        chance=pl.when(pl.col("tries") >= MIN_TRIES).then(pl.col("through") / pl.col("tries"))
+    ).sort(
+        ["order_ok", "chance", "hours_paid", "missed", "item_id"],
+        descending=[True, True, True, True, False],
+        nulls_last=True,
+    )
+
+
 def _loops(loops: pl.DataFrame, latest, hours: int) -> tuple[pl.DataFrame | list, int]:
     paid = paying_loops(loops.filter(pl.col("observed_at") > latest - timedelta(hours=hours)))
     if paid.is_empty():
@@ -326,6 +447,8 @@ def missed(con: duckdb.DuckDBPyConnection, league: str) -> list[dict]:
     card_orders = _card_orders(turn_ins, latest)
     loop_ranges = _ranges(con, league, latest, "cross_market_hour", listed["loops"])
     card_ranges = _ranges(con, league, latest, "price_observation", listed["cards"])
+    loop_chances = _loop_chances(con, league, latest, listed["loops"])
+    card_chances = _card_chances(con, league, latest, listed["cards"])
     out = []
     for hours in LOOKBACKS:
         up, down, volatile, ticker = _movement(prices, latest, hours)
@@ -333,6 +456,8 @@ def missed(con: duckdb.DuckDBPyConnection, league: str) -> list[dict]:
         all_loops = (
             loop_rows.join(loop_orders, on=["item_id", "direction"], how="left")
             .join(loop_ranges, on="item_id", how="left")
+            .join(loop_chances, on=["item_id", "direction"], how="left")
+            .pipe(_likeliest_first)
             .to_dicts()
             if len(loop_rows)
             else []
@@ -340,6 +465,8 @@ def missed(con: duckdb.DuckDBPyConnection, league: str) -> list[dict]:
         all_cards = (
             card_rows.join(card_orders, on="item_id", how="left")
             .join(card_ranges, on="item_id", how="left")
+            .join(card_chances, on="item_id", how="left")
+            .pipe(_likeliest_first)
             .to_dicts()
             if len(card_rows)
             else []

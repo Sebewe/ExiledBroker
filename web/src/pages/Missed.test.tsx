@@ -116,7 +116,7 @@ describe('Market recap', () => {
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
   })
 
-  it('lists every paying loop on request, each with this hour’s orders and its 24h range', async () => {
+  it('lists every paying loop on request; each one’s rates show on hover and pin on click', async () => {
     const loop = (i: number, extra: Partial<MissedLoop> = {}): MissedLoop => ({
       item_id: `currency:l${i}`,
       name: `Loop item ${i}`,
@@ -134,6 +134,9 @@ describe('Market recap', () => {
       range_avg: 10,
       range_high: 12,
       range_hours: 24,
+      tries: 20,
+      through: 15,
+      chance: 0.75,
       ...extra,
     })
     const loops = [loop(1), loop(2, { order_ok: false }), loop(3, { bid: null, ask: null, bid_in: null }), loop(4)]
@@ -142,11 +145,25 @@ describe('Market recap', () => {
     renderPage()
     const section = (await screen.findByRole('heading', { name: 'Loops that paid' })).closest('section')!
     expect(within(section).getAllByRole('heading', { level: 3 })).toHaveLength(3) // the top 3
-    expect(within(section).getAllByText('10.5c').length).toBeGreaterThan(0) // the bid, in Chaos
-    expect(within(section).getAllByText('0.0600 div')).toHaveLength(2) // the asks, in Divines (not the one with no order)
-    expect(within(section).getByText(/skip it this hour/)).toBeInTheDocument() // order_ok false
-    expect(within(section).getByText(/no price to order from/)).toBeInTheDocument() // didn't trade
-    expect(within(section).getAllByText('24h low 9.00c')).toHaveLength(3)
+    expect(within(section).getAllByText('15 of 20 tries in the last 3 days, by the optimistic fill rule')).toHaveLength(3)
+    // The rates stay hidden until asked for.
+    expect(within(section).queryByText('10.5c')).not.toBeInTheDocument()
+    const [first, second] = within(section).getAllByRole('button', { name: 'Show rates' })
+    fireEvent.mouseEnter(first!.parentElement!)
+    const rates = screen.getByRole('dialog', { name: 'Rates for Loop item 1' })
+    expect(within(rates).getByText('10.5c')).toBeInTheDocument() // the bid, in Chaos
+    expect(within(rates).getByText('0.0600 div')).toBeInTheDocument() // the ask, in Divines
+    expect(within(rates).getByText('24h low 9.00c')).toBeInTheDocument()
+    fireEvent.mouseLeave(first!.parentElement!)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    // A click pins them open until a click somewhere else.
+    fireEvent.click(second!)
+    fireEvent.mouseLeave(second!.parentElement!)
+    expect(within(screen.getByRole('dialog', { name: 'Rates for Loop item 2' })).getByText(/skip it this hour/)).toBeInTheDocument()
+    fireEvent.pointerDown(document.body)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    fireEvent.click(within(section).getAllByRole('button', { name: 'Show rates' })[2]!)
+    expect(screen.getByText(/no price to order from/)).toBeInTheDocument() // didn't trade last hour
     fireEvent.click(within(section).getByRole('button', { name: 'Show all 4' }))
     expect(within(section).getByRole('heading', { name: 'Loop item 4' })).toBeInTheDocument()
   })
@@ -157,8 +174,7 @@ describe('Market recap', () => {
     await screen.findByRole('region', { name: 'Recap' })
     const calls = vi.mocked(fetch).mock.calls.length
     fireEvent.change(screen.getByRole('slider'), { target: { value: '3' } })
-    expect(await screen.findByText(/1 of the loops below paid every hour of the last 3/)).toBeInTheDocument()
-    expect(screen.getByText('paid every hour')).toBeInTheDocument()
+    expect(await screen.findByText('paid every hour')).toBeInTheDocument()
     expect(vi.mocked(fetch).mock.calls.length).toBe(calls)
   })
 

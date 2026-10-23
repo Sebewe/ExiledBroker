@@ -206,6 +206,12 @@ class MissedLoop(BaseModel):
     range_avg: float | None = None
     range_high: float | None = None
     range_hours: int | None = None
+    # The same orders priced from each of the last 72 hours: how many could be placed
+    # with the outcome known, how many went through (bought, then sold at the ask), and
+    # the share, when there were at least 3 tries. Fills counted the optimistic way.
+    tries: int | None = None
+    through: int | None = None
+    chance: float | None = None
 
 
 class MissedCard(BaseModel):
@@ -229,6 +235,12 @@ class MissedCard(BaseModel):
     range_avg: float | None = None
     range_high: float | None = None
     range_hours: int | None = None
+    # The same orders priced from each of the last 72 hours: how many could be placed
+    # with the outcome known, how many went through (bought, then sold at the ask), and
+    # the share, when there were at least 3 tries. Fills counted the optimistic way.
+    tries: int | None = None
+    through: int | None = None
+    chance: float | None = None
 
 
 class MissedWindow(BaseModel):

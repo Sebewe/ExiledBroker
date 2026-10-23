@@ -104,3 +104,6 @@ def test_loops_need_enough_traded_and_the_steadiest_come_first(con):
     # Its last 24 hours, from one grouped query: 3 hours traded at 10c.
     assert (steady["range_low"], steady["range_avg"], steady["range_high"]) == (10, 10, 10)
     assert steady["range_hours"] == 3
+    # How often the orders went through: only the hour 2 back has its outcome known, and
+    # flat prices never trade past the bid. One try is too few to give a share.
+    assert (steady["tries"], steady["through"], steady["chance"]) == (1, 0, None)

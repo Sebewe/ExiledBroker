@@ -683,6 +683,8 @@ export interface components {
             bid?: number | null;
             /** Bid In */
             bid_in?: string | null;
+            /** Chance */
+            chance?: number | null;
             /** Hours Paid */
             hours_paid: number;
             /** Item Id */
@@ -709,6 +711,10 @@ export interface components {
             set_cost: number;
             /** Sets */
             sets: number;
+            /** Through */
+            through?: number | null;
+            /** Tries */
+            tries?: number | null;
         };
         /** MissedLoop */
         MissedLoop: {
@@ -720,6 +726,8 @@ export interface components {
             bid?: number | null;
             /** Bid In */
             bid_in?: string | null;
+            /** Chance */
+            chance?: number | null;
             /** Direction */
             direction: string;
             /** Hours Paid */
@@ -742,6 +750,10 @@ export interface components {
             range_hours?: number | null;
             /** Range Low */
             range_low?: number | null;
+            /** Through */
+            through?: number | null;
+            /** Tries */
+            tries?: number | null;
             /** Volume */
             volume: number;
         };

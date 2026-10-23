@@ -1550,6 +1550,17 @@
             ],
             "title": "Bid In"
           },
+          "chance": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chance"
+          },
           "hours_paid": {
             "title": "Hours Paid",
             "type": "integer"
@@ -1636,6 +1647,28 @@
           "sets": {
             "title": "Sets",
             "type": "number"
+          },
+          "through": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Through"
+          },
+          "tries": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tries"
           }
         },
         "required": [
@@ -1689,6 +1722,17 @@
               }
             ],
             "title": "Bid In"
+          },
+          "chance": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chance"
           },
           "direction": {
             "title": "Direction",
@@ -1775,6 +1819,28 @@
               }
             ],
             "title": "Range Low"
+          },
+          "through": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Through"
+          },
+          "tries": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tries"
           },
           "volume": {
             "title": "Volume",

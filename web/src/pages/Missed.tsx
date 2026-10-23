@@ -1,5 +1,5 @@
-import { ArrowDownRight, ArrowUpRight, CandlestickChart, FlaskConical, Layers, Repeat, Timer, Waves } from 'lucide-react'
-import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
+import { ArrowDownRight, ArrowUpRight, CandlestickChart, FlaskConical, Layers, Repeat, Tag, Timer, Waves } from 'lucide-react'
+import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import type { LiveLeague, MissedCard, MissedWindow, Mover, Upcoming, Volatile } from '../api/client'
 import { useMissed, useServerNow, useStatus } from '../api/queries'
@@ -7,7 +7,7 @@ import { Select } from '../components/Controls'
 import { FreshnessBanner } from '../components/Freshness'
 import { Notice } from '../components/Notice'
 import { PageHeader } from '../components/Section'
-import { Empty, Opportunity, Pill, Route, loopRoute } from '../components/Opportunity'
+import { Empty, Meter, Opportunity, Pill, Route, loopRoute } from '../components/Opportunity'
 import { signedPct, utcHour } from '../lib/format'
 import { makeMoney, type Money } from '../lib/money'
 import { queryFallback } from '../lib/queryFallback'
@@ -23,6 +23,8 @@ import { useNumberParam } from '../lib/useParam'
 const LOOKBACKS = [1, 2, 3]
 // Loops and cards shown before "Show all" (the server sends every one that paid).
 const TOP = 3
+// Went through at least this often recently: counted as likely in the options.
+const LIKELY = 0.5
 // An edge this big is usually one trade at an odd ratio, not a price anyone can repeat.
 const ODD_EDGE = 0.5
 // Hours of trades before the recap has much to say: the exchange is nearly empty at launch.
@@ -277,25 +279,22 @@ function Fact({ label, value, note, tone = 'text-text' }: { label: string; value
 
 /** Things a player could do with the recap, each with what the backtest saw. No promises. */
 function Options({ w }: { w: MissedWindow }) {
-  const steady = w.loops.filter((l) => l.hours_paid === w.hours).length
-  const loops =
-    w.hours === 1
-      ? 'Slide the look-back to 3h to see which loops keep paying. '
-      : steady
-        ? `${steady} of the loops below paid every hour of the last ${w.hours}. `
-        : `None of the loops below paid every hour of the last ${w.hours}. `
+  const likely = (xs: { chance?: number | null }[]) => xs.filter((x) => (x.chance ?? 0) >= LIKELY).length
+  const loops = likely(w.loops)
+  const cards = likely(w.cards)
   return (
     <section aria-label="Options" className="flex flex-col gap-3">
       <h2 className="text-lg font-semibold">Things you could look into</h2>
       <ol className="grid gap-3 md:grid-cols-3">
-        <Option icon={Repeat} title="A loop that keeps paying" href="#loops" link="See the loops ↓">
-          {loops}
-          When we replayed past leagues, buying at the market about broke even at best. Orders priced from the last hour's range did better when they
-          filled, and many don't. Check both prices in-game before you start.
+        <Option icon={Repeat} title="A loop with limit orders" href="#loops" link="See the loops ↓">
+          {loops ? `${loops} of the loops below went through at least half the time recently. ` : ''}
+          In our replays, loops caught at the worst prices lost; limit orders priced from the last hour's range came out ahead when they filled. They're
+          sorted by how often their orders went through in the last 3 days. Check both prices in-game first.
         </Option>
-        <Option icon={Layers} title="A card turn-in" href="#cards" link="See the cards ↓">
-          The margins below were there at the hour's average prices. In our replays, buying sets at whatever the market asked lost money; bidding at the hour's
-          low and asking its average for the reward did better, when those orders filled. Many won't.
+        <Option icon={Layers} title="A card turn-in with limit orders" href="#cards" link="See the cards ↓">
+          {cards ? `${cards} of the cards below went through at least half the time recently. ` : ''}
+          Bidding at the hour's low and asking the reward's average paid in our replays when the orders filled, but card orders fill less often than loops,
+          so expect many to sit unfilled.
         </Option>
         <Option icon={CandlestickChart} title="Holding for a few days" to="/launch" link="Launch market →">
           Early-league picks held for about ten days were the one tool that came out ahead at the worst prices in every past league we replayed. Past leagues
@@ -558,6 +557,72 @@ function ShowAll({ all, total, onToggle }: { all: boolean; total: number; onTogg
   )
 }
 
+/** "Show rates": the orders sit behind a button. Hovering (or focusing) it shows them;
+ *  clicking pins them open until a click anywhere else, or Escape. */
+function Rates({ label, children }: { label: string; children: ReactNode }) {
+  const [hover, setHover] = useState(false)
+  const [pinned, setPinned] = useState(false)
+  const box = useRef<HTMLDivElement>(null)
+  const id = useId()
+  useEffect(() => {
+    if (!pinned) return
+    const away = (e: PointerEvent) => {
+      if (!box.current?.contains(e.target as Node)) setPinned(false)
+    }
+    const escape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPinned(false)
+    }
+    document.addEventListener('pointerdown', away)
+    document.addEventListener('keydown', escape)
+    return () => {
+      document.removeEventListener('pointerdown', away)
+      document.removeEventListener('keydown', escape)
+    }
+  }, [pinned])
+  const open = hover || pinned
+  return (
+    <div ref={box} className="relative" onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={id}
+        onClick={() => setPinned(!pinned)}
+        onFocus={() => setHover(true)}
+        onBlur={() => setHover(false)}
+        className={`flex min-h-8 cursor-pointer items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-colors ${
+          pinned ? 'border-accent/60 bg-accent/15 text-accent-strong' : 'border-border text-muted hover:border-accent/50 hover:text-accent'
+        }`}
+      >
+        <Tag aria-hidden className="size-3.5" />
+        {pinned ? 'Rates pinned' : 'Show rates'}
+      </button>
+      {open && (
+        // The padding bridges the gap to the button, so moving onto the popup keeps it open.
+        <div id={id} role="dialog" aria-label={label} className="absolute top-full left-0 z-30 w-[min(20rem,80vw)] pt-2">
+          <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface-2 p-3 shadow-xl shadow-black/40">{children}</div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** How often the same orders went through in the last 3 days (optimistic fills). */
+function Chance({ tries, through, chance }: { tries?: number | null; through?: number | null; chance?: number | null }) {
+  if (chance == null) return <p className="text-xs text-faint">Too few tries in the last 3 days to say how often its orders go through.</p>
+  return (
+    <div className="flex flex-col gap-0.5">
+      <Meter
+        label="Went through"
+        value={chance}
+        hint="The same orders priced from each of the last 72 hours: bought if the next hour traded past the bid, sold if the hour after traded past the ask. That counts a fill whenever one trade crossed the price, so real fills are likely lower."
+      />
+      <span className="text-[11px] text-faint">
+        {through} of {tries} tries in the last 3 days, by the optimistic fill rule
+      </span>
+    </div>
+  )
+}
+
 function Loops({ w, money }: { w: MissedWindow; money: Money }) {
   const [all, setAll] = useState(false)
   const shown = all ? w.loops : w.loops.slice(0, TOP)
@@ -566,7 +631,7 @@ function Loops({ w, money }: { w: MissedWindow; money: Money }) {
       id="loops"
       title="Loops that paid"
       icon={Repeat}
-      note="Chaos → item → Divine → Chaos (or the other way round), priced at the hour's worst prices, in markets where enough traded to act on. Steadiest first. Each lists the orders that did best in the backtest: a bid halfway up the latest hour's range, an ask three quarters up the other currency's."
+      note="Chaos → item → Divine → Chaos (or the other way round), priced at the hour's worst prices, in markets where enough traded to act on. Likeliest to go through first. The orders that did best in the backtest (a bid halfway up the latest hour's range, an ask three quarters up the other currency's) are behind Show rates."
       more={<ShowAll all={all} total={w.loops.length} onToggle={() => setAll(!all)} />}
     >
       {w.loops.length === 0 ? (
@@ -593,28 +658,31 @@ function Loops({ w, money }: { w: MissedWindow; money: Money }) {
                 }
               >
                 <Route steps={loopRoute(l.name, l.direction)} item={l.name} />
-                <Orders
-                  missing={l.bid == null}
-                  ok={l.order_ok}
-                  skip="From this bid it wouldn't pay at the hour's worst sale: skip it this hour."
-                  steps={[
-                    <>
-                      Bid <span className="num text-text">{quoted(l.bid, l.bid_in, money)}</span> each, in {l.bid_in === 'divine' ? 'Divines' : 'Chaos'}
-                    </>,
-                    <>
-                      Ask <span className="num text-text">{quoted(l.ask, other, money)}</span> each, in {other === 'divine' ? 'Divines' : 'Chaos'}
-                    </>,
-                  ]}
-                />
-                <RangeBar
-                  low={l.range_low}
-                  avg={l.range_avg}
-                  high={l.range_high}
-                  hours={l.range_hours}
-                  mark={chaosFirst ? l.bid : l.ask}
-                  markLabel={chaosFirst ? 'your bid' : 'your ask'}
-                  money={money}
-                />
+                <Chance tries={l.tries} through={l.through} chance={l.chance} />
+                <Rates label={`Rates for ${l.name}`}>
+                  <Orders
+                    missing={l.bid == null}
+                    ok={l.order_ok}
+                    skip="From this bid it wouldn't pay at the hour's worst sale: skip it this hour."
+                    steps={[
+                      <>
+                        Bid <span className="num text-text">{quoted(l.bid, l.bid_in, money)}</span> each, in {l.bid_in === 'divine' ? 'Divines' : 'Chaos'}
+                      </>,
+                      <>
+                        Ask <span className="num text-text">{quoted(l.ask, other, money)}</span> each, in {other === 'divine' ? 'Divines' : 'Chaos'}
+                      </>,
+                    ]}
+                  />
+                  <RangeBar
+                    low={l.range_low}
+                    avg={l.range_avg}
+                    high={l.range_high}
+                    hours={l.range_hours}
+                    mark={chaosFirst ? l.bid : l.ask}
+                    markLabel={chaosFirst ? 'your bid' : 'your ask'}
+                    money={money}
+                  />
+                </Rates>
               </Opportunity>
             )
           })}
@@ -632,7 +700,7 @@ function Cards({ w, money }: { w: MissedWindow; money: Money }) {
       id="cards"
       title="Card turn-ins that paid"
       icon={Layers}
-      note="A full set cost less than its reward at the hour's average prices, with at least a full set traded. Steadiest first. Each lists the orders that did best in the backtest: bid the card's lowest price from the latest hour, ask the reward's average."
+      note="A full set cost less than its reward at the hour's average prices, with at least a full set traded. Likeliest to go through first. The orders that did best in the backtest (a bid at the card's lowest price from the latest hour, an ask at the reward's average) are behind Show rates."
       more={<ShowAll all={all} total={w.cards.length} onToggle={() => setAll(!all)} />}
     >
       {w.cards.length === 0 ? (
@@ -658,21 +726,24 @@ function Cards({ w, money }: { w: MissedWindow; money: Money }) {
               <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted">
                 a full set turns into <Pill accent>{c.reward}</Pill>
               </div>
-              <Orders
-                missing={c.bid == null}
-                ok={c.order_ok}
-                skip="A set wouldn't pay from this bid at the reward's lowest price: skip it this hour."
-                steps={[
-                  <>
-                    Bid <span className="num text-text">{money(c.bid, c.range_high ?? c.bid)}</span> a card
-                  </>,
-                  <>
-                    {/* In Chaos: a reward is often a Divine Orb itself. */}
-                    Ask <span className="num text-text">{money(c.ask, 0)}</span> for each reward
-                  </>,
-                ]}
-              />
-              <RangeBar low={c.range_low} avg={c.range_avg} high={c.range_high} hours={c.range_hours} mark={c.bid} markLabel="your bid" money={money} />
+              <Chance tries={c.tries} through={c.through} chance={c.chance} />
+              <Rates label={`Rates for ${c.name}`}>
+                <Orders
+                  missing={c.bid == null}
+                  ok={c.order_ok}
+                  skip="A set wouldn't pay from this bid at the reward's lowest price: skip it this hour."
+                  steps={[
+                    <>
+                      Bid <span className="num text-text">{money(c.bid, c.range_high ?? c.bid)}</span> a card
+                    </>,
+                    <>
+                      {/* In Chaos: a reward is often a Divine Orb itself. */}
+                      Ask <span className="num text-text">{money(c.ask, 0)}</span> for each reward
+                    </>,
+                  ]}
+                />
+                <RangeBar low={c.range_low} avg={c.range_avg} high={c.range_high} hours={c.range_hours} mark={c.bid} markLabel="your bid" money={money} />
+              </Rates>
             </Opportunity>
           ))}
         </ol>
