@@ -2,6 +2,7 @@
 test_live_pipeline.py): every endpoint after every update, from no data at all to a
 day and a half, plus validation, the result cache and serving the frontend."""
 
+import gzip
 from datetime import timedelta
 
 import pytest
@@ -198,6 +199,27 @@ def test_serves_the_frontend(tmp_path, settings):  # noqa: F811
     assert c.get("/../pyproject.toml").text == "<div id=root></div>"  # no escaping dist
     assert c.get("/api/health").json()["status"] == "ok"
     assert c.get("/api/nope").status_code == 404  # API paths never fall through
+
+
+def test_frontend_caching(tmp_path, settings):  # noqa: F811
+    """Hashed assets are kept for a year, index.html revalidated every visit, and the
+    build's pre-gzipped copy is sent as is to browsers that take gzip."""
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text("<div id=root></div>")
+    js = "console.log(1);" * 200
+    (dist / "assets" / "app-abc123.js").write_text(js)
+    (dist / "assets" / "app-abc123.js.gz").write_bytes(gzip.compress(js.encode()))
+    c = TestClient(app_module.create_app(web_dist=dist))
+    r = c.get("/assets/app-abc123.js")
+    assert r.headers["cache-control"] == "public, max-age=31536000, immutable"
+    assert r.headers["content-encoding"] == "gzip" and "Accept-Encoding" in r.headers["vary"]
+    assert r.headers["content-type"].startswith("text/javascript")
+    assert r.text == js  # decoded by the client: gzipped once, not twice
+    raw = c.get("/assets/app-abc123.js", headers={"Accept-Encoding": "identity"})
+    assert "content-encoding" not in raw.headers and raw.text == js
+    for path in ("/", "/arbitrage"):
+        assert c.get(path).headers["cache-control"] == "no-cache"
 
 
 def test_frontend_types_are_up_to_date():

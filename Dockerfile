@@ -1,6 +1,6 @@
-# One image for both Railway services:
-#   web:    uvicorn on $PORT, serving the API (/api) and the built frontend
-#   worker: eb live watch (writes the site's Postgres at EB_DATABASE_URL)
+# One image for both Railway services (deploy/railway/*.json):
+#   web:      uvicorn on $PORT, serving the API (/api) and the built frontend
+#   pipeline: eb pipeline run, hourly cron (DuckDB on its volume, publishes to Postgres)
 
 # --- Frontend -----------------------------------------------------------------------
 FROM node:24-slim AS web
@@ -9,6 +9,10 @@ COPY web/package.json web/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY web/ ./
 RUN npm run build
+# Compress the build once here, not on every request: the web service sends the .gz
+# to browsers that take gzip (api/app.py). Fonts (woff2) are compressed already.
+RUN find dist -type f \( -name '*.js' -o -name '*.css' -o -name '*.html' -o -name '*.svg' \
+      -o -name '*.json' \) -size +1k -exec gzip -9 -k {} +
 
 # --- App ----------------------------------------------------------------------------
 FROM python:3.11-slim
@@ -22,7 +26,7 @@ RUN pip install '.[pg]'
 COPY config ./config
 COPY --from=web /web/dist ./web/dist
 USER app
-# The worker attaches Postgres through DuckDB's postgres extension: install it at build
+# The pipeline attaches Postgres through DuckDB's postgres extension: install it at build
 # time so a container never downloads it at runtime.
 RUN python -c "import duckdb; duckdb.connect().execute('INSTALL postgres')"
 EXPOSE 8000
