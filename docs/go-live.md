@@ -7,7 +7,8 @@ Deadline: the next league launches in about a month. The server must be live, ca
 ## Decided
 
 - **The server keeps only what the site reads, in Postgres. No DuckDB and no raw pages on the server.** New hours are fetched as GGG publishes them, loaded, and the raw page is dropped. History pages (Launch market, Conversions) read reduced tables, not the full history. This also removes the pipeline volume and the need to seed one (the old blocker).
-- **The server catches itself up.** It isn't seeded from the local copy: the first pass fetches what's missing, which also tests that the server can recover after downtime or maintenance.
+- **Seed the server with what we already have, then let it catch up the rest.** Postgres is loaded from the local data: the live league's site rows, the reduced history and the live window's raw pages. The first pass then fetches only the hours since the local copy ended, which also tests that the server recovers after downtime. Never re-fetch from GGG what we already have locally.
+- **Raw pages: keep only the live window's, compressed in Postgres** (open question A, option 2). Each new hour's page is stored as it's loaded, and pages that leave the window are deleted. A loader rebuild re-reads them instead of downloading again.
 - **No backups.** The data is small and can be fetched again, and the local copy stays.
 - **Usage limits are set**, and when the site is down because of them it shows a static "Something went wrong, we're investigating" page. Real traffic can raise the limit; a bug shouldn't be able to eat the credit.
 - **The league switch is rehearsed** on historical data before it happens for real, including changed API responses (new items, different order and size).
@@ -18,10 +19,10 @@ Deadline: the next league launches in about a month. The server must be live, ca
 
 ### 1. Server stores only what the site reads (code)
 
-- [ ] `eb pipeline run` writes Postgres directly (`db.site_writer`: in-memory DuckDB with Postgres attached, as `eb live watch` already does), with no data volume. Each page is loaded and then dropped. Remove `EB_PUBLISH_URL` / `site.publish` from the hosted path (they stay for local seeding).
+- [ ] `eb pipeline run` writes Postgres directly (`db.site_writer`: in-memory DuckDB with Postgres attached, as `eb live watch` already does), with no data volume. Remove `EB_PUBLISH_URL` / `site.publish` from the hosted path (they stay for local seeding).
+- [ ] Raw pages in Postgres: a table of gzipped exchange pages for the live window. New pages are written as they're loaded, pages that leave the window are deleted, and the loader reads from it before fetching (`fetch_page`).
 - [ ] Reduced history tables for the history pages, built locally from the research DuckDB and published once: Launch market needs the past leagues' tracked-item prices by day, about 52k rows instead of 977k hourly. List what Conversions reads and reduce that the same way.
 - [ ] When a league ends, the pipeline adds that league's reduced fortnight to the history tables and rebuilds the Launch picks from those tables, so it never needs the full history.
-- [ ] Rebuilds: what happens when `LOADER_VERSION` changes without raw pages on the server (see open question A).
 - [ ] Re-run the simulation's tiers on the new shape (no volume) and update the bill.
 
 ### 2. Railway project (setup)
@@ -34,9 +35,10 @@ Deadline: the next league launches in about a month. The server must be live, ca
 - [ ] Custom domain on the web service (CNAME), HTTPS from Railway.
 - [ ] Decide whether Railway deploys on every push to `main` or waits for CI (Railway's "wait for CI" setting).
 
-### 3. Catch-up (first run)
+### 3. Seed, then catch up (first run)
 
-- [ ] The first pass on an empty Postgres fetches the live window: the launch fortnight plus the latest 14 days, at most 672 pages at one a second (about 11 minutes, once). Approved as the catch-up test; watch it run and check its `ingest_run` row.
+- [ ] A seed command loads the server's Postgres from the local data: the live league's site rows, the reduced history, the Launch picks, and the live window's raw pages. It sends nothing to GGG.
+- [ ] The first pass then fetches only the hours after the local copy's last hour. Watch it run and check that its `ingest_run` row has one request per missing hour.
 - [ ] Afterwards: take the pipeline down for a few hours, bring it back, and check it fetches exactly the missed hours.
 
 ### 4. Limits and the fallback page
@@ -57,10 +59,7 @@ Deadline: the next league launches in about a month. The server must be live, ca
 - [ ] Finish the cost report (after-fix tiers, the real 24 h run) in [hosting.md](hosting.md#the-railway-bill).
 - [ ] Rebuild and check every page on the Railway URL: no data, catching up, live, and stale.
 
-## Open questions
+## Settled questions
 
-- **A. Rebuilds without raw pages.** Dropping raw pages saves almost nothing: the live window is about 80 MB, roughly $0.01 a month. But a loader change (`LOADER_VERSION`) would then have to download the window again (up to 672 requests) instead of re-reading disk, against the "never re-download" rule. Options:
-  - drop them and accept a re-download on a loader change;
-  - keep only the live window's pages, compressed in a Postgres table, and delete pages as they leave the window;
-  - rebuild locally from the local raw pages and publish.
-- **B. Uniques.** Not before go-live (see the reply in the conversation of 2026-10-23): it adds a new data source and new requests, the month is better spent on the league switch, and it can be added once the server is proven.
+- **A. Rebuilds without raw pages:** keep the live window's pages compressed in Postgres (about 80 MB), replacing them as new hours arrive (2026-10-23).
+- **B. Uniques:** not before go-live, and not a priority.
