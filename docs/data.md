@@ -79,7 +79,7 @@ What hourly data shows that daily data hides: Mirage launched at 20:00 UTC. The 
 
 ## Live feed
 
-`eb live sync|watch` (`ingest/live.py`) keeps the running league loaded. It's what the Live market page reads, and on Railway it's the worker.
+`eb live sync|watch` (`ingest/live.py`) keeps the running league loaded. It's what the Missed opportunities page reads, and on Railway it's the worker.
 
 - It picks poe.ninja's current challenge league. If the launch hour isn't known it finds it by binary search over the exchange history (`find_launch`, about a dozen requests).
 - It keeps two windows: the league's **first 14 days** (for the launch views) and its **last 14 days** (`--lookback-hours`, for the live view), loaded together (`Window.keep_launch_days`). For a league under two weeks old they're the same window.

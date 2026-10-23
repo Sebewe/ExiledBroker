@@ -19,7 +19,7 @@ export function FreshnessBadge() {
   )
 }
 
-/** The Live page's banner: the latest hour, and whether the feed looks stopped. */
+/** The landing page's banner: the latest hour, and whether the feed looks stopped. */
 export function FreshnessBanner({ league, now }: { league: LiveLeague; now: string }) {
   if (!league.latest_hour) {
     return (

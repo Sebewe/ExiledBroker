@@ -37,6 +37,7 @@ def endpoints(league: str) -> list[str]:
         "/api/status",
         f"/api/live/{league}/loops",
         f"/api/live/{league}/card-flips?lookback=48",
+        f"/api/missed/{league}",
         f"/api/arbitrage?league={league}&min_hours=1",
         f"/api/arbitrage/hourly?league={league}&item_id=currency:exalted-orb",
         f"/api/cards/{league}",
@@ -134,13 +135,12 @@ def test_default_pages_are_precomputed(client, settings, monkeypatch):  # noqa: 
     from exiledbroker.api import warm
 
     update(settings, FakeExchange(PAGES, now=LAUNCH), 30)
-    assert warm.warm() >= 6
+    assert warm.warm() >= 5
     monkeypatch.setattr(deps, "VERSION_TTL", 60.0)
     # Exactly the requests the frontend makes on first load (web/src/api/queries.ts).
     page_loads = [
         "/api/status",
-        f"/api/live/{LEAGUE}/loops?direction=chaos_first&buffer=0.02&min_price=1",
-        f"/api/live/{LEAGUE}/card-flips",
+        f"/api/missed/{LEAGUE}",
         f"/api/arbitrage?league={LEAGUE}&direction=chaos_first&buffer=0.02&min_hours=24&min_price=1",
         f"/api/cards/{LEAGUE}?unit=chaos&prefer_cheaper_sets=true",
         "/api/launch/picks",

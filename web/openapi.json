@@ -1345,6 +1345,223 @@
         "title": "MarketItem",
         "type": "object"
       },
+      "MissedCard": {
+        "properties": {
+          "hours_paid": {
+            "title": "Hours Paid",
+            "type": "integer"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "string"
+          },
+          "margin": {
+            "title": "Margin",
+            "type": "number"
+          },
+          "missed": {
+            "title": "Missed",
+            "type": "number"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "reward": {
+            "title": "Reward",
+            "type": "string"
+          },
+          "set_cost": {
+            "title": "Set Cost",
+            "type": "number"
+          },
+          "sets": {
+            "title": "Sets",
+            "type": "number"
+          }
+        },
+        "required": [
+          "item_id",
+          "name",
+          "reward",
+          "missed",
+          "margin",
+          "set_cost",
+          "sets",
+          "hours_paid"
+        ],
+        "title": "MissedCard",
+        "type": "object"
+      },
+      "MissedLoop": {
+        "properties": {
+          "best_edge": {
+            "title": "Best Edge",
+            "type": "number"
+          },
+          "direction": {
+            "title": "Direction",
+            "type": "string"
+          },
+          "hours_paid": {
+            "title": "Hours Paid",
+            "type": "integer"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "string"
+          },
+          "missed": {
+            "title": "Missed",
+            "type": "number"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price"
+          }
+        },
+        "required": [
+          "item_id",
+          "name",
+          "direction",
+          "missed",
+          "best_edge",
+          "hours_paid",
+          "price"
+        ],
+        "title": "MissedLoop",
+        "type": "object"
+      },
+      "MissedWindow": {
+        "properties": {
+          "cards": {
+            "items": {
+              "$ref": "#/components/schemas/MissedCard"
+            },
+            "title": "Cards",
+            "type": "array"
+          },
+          "cards_missed": {
+            "title": "Cards Missed",
+            "type": "number"
+          },
+          "falling": {
+            "items": {
+              "$ref": "#/components/schemas/Mover"
+            },
+            "title": "Falling",
+            "type": "array"
+          },
+          "hours": {
+            "title": "Hours",
+            "type": "integer"
+          },
+          "latest_hour": {
+            "format": "date-time",
+            "title": "Latest Hour",
+            "type": "string"
+          },
+          "loops": {
+            "items": {
+              "$ref": "#/components/schemas/MissedLoop"
+            },
+            "title": "Loops",
+            "type": "array"
+          },
+          "loops_missed": {
+            "title": "Loops Missed",
+            "type": "number"
+          },
+          "rising": {
+            "items": {
+              "$ref": "#/components/schemas/Mover"
+            },
+            "title": "Rising",
+            "type": "array"
+          },
+          "volatile": {
+            "items": {
+              "$ref": "#/components/schemas/Volatile"
+            },
+            "title": "Volatile",
+            "type": "array"
+          }
+        },
+        "required": [
+          "hours",
+          "latest_hour",
+          "rising",
+          "falling",
+          "volatile",
+          "loops",
+          "cards",
+          "loops_missed",
+          "cards_missed"
+        ],
+        "title": "MissedWindow",
+        "type": "object"
+      },
+      "Mover": {
+        "properties": {
+          "before": {
+            "title": "Before",
+            "type": "number"
+          },
+          "change": {
+            "title": "Change",
+            "type": "number"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "price": {
+            "title": "Price",
+            "type": "number"
+          },
+          "streak": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Streak"
+          },
+          "volume": {
+            "title": "Volume",
+            "type": "number"
+          }
+        },
+        "required": [
+          "item_id",
+          "name",
+          "price",
+          "before",
+          "change",
+          "volume",
+          "streak"
+        ],
+        "title": "Mover",
+        "type": "object"
+      },
       "Status": {
         "properties": {
           "data_version": {
@@ -1783,6 +2000,49 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "Volatile": {
+        "properties": {
+          "high": {
+            "title": "High",
+            "type": "number"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "string"
+          },
+          "low": {
+            "title": "Low",
+            "type": "number"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "price": {
+            "title": "Price",
+            "type": "number"
+          },
+          "range": {
+            "title": "Range",
+            "type": "number"
+          },
+          "volume": {
+            "title": "Volume",
+            "type": "number"
+          }
+        },
+        "required": [
+          "item_id",
+          "name",
+          "low",
+          "high",
+          "price",
+          "range",
+          "volume"
+        ],
+        "title": "Volatile",
         "type": "object"
       }
     }
@@ -2655,6 +2915,53 @@
         "summary": "Summary",
         "tags": [
           "market"
+        ]
+      }
+    },
+    "/api/missed/{league}": {
+      "get": {
+        "description": "What the latest 1, 2 and 3 published hours offered: key movers, volatile items\nand the loops and card turn-ins that left the most on the table. All three\nlook-backs at once (a few KB), computed once per loaded hour.",
+        "operationId": "missed_opportunities_api_missed__league__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "league",
+            "required": true,
+            "schema": {
+              "title": "League",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MissedWindow"
+                  },
+                  "title": "Response Missed Opportunities Api Missed  League  Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Missed Opportunities",
+        "tags": [
+          "live"
         ]
       }
     },

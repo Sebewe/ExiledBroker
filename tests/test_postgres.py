@@ -25,6 +25,7 @@ from exiledbroker.services import (
     launch_picks,
     live,
     market,
+    missed,
     overview,
     prices,
 )
@@ -109,6 +110,7 @@ def _cases(duck) -> dict:
         "launch_picks.window_prices": lambda c: launch_picks.window_prices(c, leagues),
         "launch_picks.complete_leagues": lambda c: launch_picks.complete_leagues(c),
         "launch_picks.launch_board": lambda c: launch_picks.launch_board(c),
+        "missed.missed": lambda c: missed.missed(c, LEAGUE),
     }
 
 
@@ -155,6 +157,7 @@ LIVE_QUERIES = [
     "live.live_card_flips",
     "divination.hourly_turn_ins(since)",
     "cross_market.hourly(since)",
+    "missed.missed",
 ]
 
 

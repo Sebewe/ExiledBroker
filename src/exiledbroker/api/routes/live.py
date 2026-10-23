@@ -1,4 +1,5 @@
-"""The running league: what is paying right now (the Live market page)."""
+"""The running league: what the latest published hours offered (the Missed
+opportunities page), plus the loop and card tables behind it."""
 
 from typing import Annotated, Literal
 
@@ -6,8 +7,8 @@ from fastapi import APIRouter, Query, Request, Response
 
 from exiledbroker.api import deps
 from exiledbroker.api.deps import View
-from exiledbroker.api.models import CardFlip, LiveLeague, Loop, Status
-from exiledbroker.services import live
+from exiledbroker.api.models import CardFlip, LiveLeague, Loop, MissedWindow, Status
+from exiledbroker.services import live, missed
 
 router = APIRouter(tags=["live"])
 Direction = Literal["chaos_first", "divine_first"]
@@ -47,6 +48,10 @@ def card_flips_view(
     )
 
 
+def missed_view(league: str) -> View:
+    return View("missed", (league,), lambda con: missed.missed(con, league), MissedWindow)
+
+
 @router.get("/status", response_model=Status)
 def status() -> dict:
     """Leagues on the exchange, newest data first, and the data version. Cheap: poll
@@ -83,3 +88,12 @@ def card_flips(
     """Card turn-ins that paid in the latest hours, best score first."""
     deps.require_league(league)
     return deps.respond(request, card_flips_view(league, lookback, unit, weights))
+
+
+@router.get("/missed/{league}", response_model=list[MissedWindow])
+def missed_opportunities(request: Request, league: str) -> Response:
+    """What the latest 1, 2 and 3 published hours offered: key movers, volatile items
+    and the loops and card turn-ins that left the most on the table. All three
+    look-backs at once (a few KB), computed once per loaded hour."""
+    deps.require_league(league)
+    return deps.respond(request, missed_view(league))

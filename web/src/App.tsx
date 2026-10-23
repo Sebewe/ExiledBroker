@@ -5,14 +5,14 @@ import Arbitrage from './pages/Arbitrage'
 import Cards from './pages/Cards'
 import Conversions from './pages/Conversions'
 import Launch from './pages/Launch'
-import Live from './pages/Live'
+import Missed from './pages/Missed'
 import NotFound from './pages/NotFound'
 
 export default function App() {
   return (
     <Layout>
       <Routes>
-        <Route index element={<Live />} />
+        <Route index element={<Missed />} />
         <Route path="arbitrage" element={<Arbitrage />} />
         <Route path="cards" element={<Cards />} />
         <Route path="launch" element={<Launch />} />

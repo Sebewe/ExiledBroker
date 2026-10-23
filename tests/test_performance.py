@@ -119,6 +119,7 @@ API_BUDGET = {
     "/api/live/{league}/card-flips?lookback=48": (100, 8_000),  # 24 rows, 940 B
     "/api/arbitrage?league={league}&min_hours=1": (60, 8_000),  # 9 rows, 824 B
     "/api/cards/{league}": (30, 8_000),  # 4 rows, 1.2 KB
+    "/api/missed/{league}": (500, 12_000),  # 121 rows, 7.4 KB (Allflame: ~3k rows, 10 KB)
     "/api/market/{league}/summary?group=currency&group=divination": (150, 30_000),  # 32, 5.6 KB
     "/api/market/{league}/hourly?item_id=currency:divine-orb": (150, 24_000),  # 30, 4.6 KB
     "/api/launch/picks": (60, 2_000),  # no picks in the replay; up to 30 picks hosted
@@ -131,6 +132,7 @@ ONE_LEAGUE_ENDPOINTS = [
     "/api/live/{league}/card-flips?lookback=48",
     "/api/arbitrage?league={league}&min_hours=1",
     "/api/cards/{league}",
+    "/api/missed/{league}",
 ]
 PER_LEAGUE_ROWS = 2
 

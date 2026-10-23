@@ -16,7 +16,7 @@ A Path of Exile market tool for league starts. It turns historical and live exch
 | 3 | Patch corpus: scraper, extractor, review tool | ⬜ |
 | 4 | Baseline + backtest: first honest accuracy numbers | ⬜ |
 | 5 | Signals: "farm X", "buy Y on day 2, sell day 6" | ⬜ |
-| 6 | Live mode: hourly ingest of the running league, live arbitrage view, later drift alerts | 🟨 Live feed and Live market page built; poe.ninja poller and alerts not started |
+| 6 | Live mode: hourly ingest of the running league, live arbitrage view, later drift alerts | 🟨 Live feed and Missed opportunities page built; poe.ninja poller and alerts not started |
 | 7 | Hosted site: React on the JSON API, Supabase Postgres + Railway | 🟨 Site database, worker, API, frontend and Railway image done; not deployed |
 
 Legend: ⬜ not started · 🟨 in progress · ✅ done. Phases 1–2 alone are useful: knowing which categories reliably spike in the first week is already an edge.
@@ -38,7 +38,7 @@ After that:
 
 | Page | What it shows | API |
 |---|---|---|
-| **Live market** (landing) | The best Chaos↔Divine loops and card flips right now, ranked on the latest published hours | `/api/status`, `/api/live/{league}/loops`, `/api/live/{league}/card-flips` |
+| **Missed opportunities** (landing) | A recap of the last 1–3 published hours: key movers, volatile items, and the loops and card turn-ins that left the most on the table | `/api/status`, `/api/missed/{league}` |
 | **Arbitrage** | Cross-market loops scored across leagues, with hourly charts | `/api/arbitrage`, `/api/arbitrage/hourly` |
 | **Card turn-ins** | Card sets whose fixed reward is worth more than the set, scored | `/api/cards/{league}`, `/api/cards/{league}/{card}/hourly` |
 | **Launch market** | What to buy on day 1, days 2–4 and days 5–10 with a couple of Divines, ranked from the last five leagues | `/api/launch/picks` |

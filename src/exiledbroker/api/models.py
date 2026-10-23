@@ -222,3 +222,56 @@ class LaunchWindow(BaseModel):
     built_at: datetime
     live_league: str | None  # the newest league with trades (its prices are live_divine)
     picks: list[LaunchPick]
+
+
+class Mover(BaseModel):
+    item_id: str
+    name: str
+    price: float  # Chaos, latest hour
+    before: float  # Chaos, at the start of the look-back
+    change: float
+    volume: float  # Chaos traded in the latest hour
+    streak: int | None  # hours running it has risen (+) or fallen (−) up to the latest
+
+
+class Volatile(BaseModel):
+    item_id: str
+    name: str
+    low: float  # lowest and highest Chaos price traded in the look-back
+    high: float
+    price: float  # volume-weighted
+    range: float  # (high − low) / price
+    volume: float  # Chaos traded an hour
+
+
+class MissedLoop(BaseModel):
+    item_id: str
+    name: str
+    direction: str  # chaos_first | divine_first
+    missed: float  # Chaos left on the table: edge × volume in both markets, paying hours
+    best_edge: float
+    hours_paid: int
+    price: float | None
+
+
+class MissedCard(BaseModel):
+    item_id: str
+    name: str
+    reward: str
+    missed: float  # Chaos: margin × sets traded, paying hours
+    margin: float  # per set, latest paying hour
+    set_cost: float
+    sets: float
+    hours_paid: int
+
+
+class MissedWindow(BaseModel):
+    hours: int  # the look-back
+    latest_hour: datetime
+    rising: list[Mover]
+    falling: list[Mover]
+    volatile: list[Volatile]
+    loops: list[MissedLoop]
+    cards: list[MissedCard]
+    loops_missed: float  # every paying loop, not just the top ones
+    cards_missed: float

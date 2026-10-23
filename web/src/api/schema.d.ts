@@ -264,6 +264,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/missed/{league}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Missed Opportunities
+         * @description What the latest 1, 2 and 3 published hours offered: key movers, volatile items
+         *     and the loops and card turn-ins that left the most on the table. All three
+         *     look-backs at once (a few KB), computed once per loaded hour.
+         */
+        get: operations["missed_opportunities_api_missed__league__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/status": {
         parameters: {
             query?: never;
@@ -614,6 +636,83 @@ export interface components {
             /** Volume */
             volume: number | null;
         };
+        /** MissedCard */
+        MissedCard: {
+            /** Hours Paid */
+            hours_paid: number;
+            /** Item Id */
+            item_id: string;
+            /** Margin */
+            margin: number;
+            /** Missed */
+            missed: number;
+            /** Name */
+            name: string;
+            /** Reward */
+            reward: string;
+            /** Set Cost */
+            set_cost: number;
+            /** Sets */
+            sets: number;
+        };
+        /** MissedLoop */
+        MissedLoop: {
+            /** Best Edge */
+            best_edge: number;
+            /** Direction */
+            direction: string;
+            /** Hours Paid */
+            hours_paid: number;
+            /** Item Id */
+            item_id: string;
+            /** Missed */
+            missed: number;
+            /** Name */
+            name: string;
+            /** Price */
+            price: number | null;
+        };
+        /** MissedWindow */
+        MissedWindow: {
+            /** Cards */
+            cards: components["schemas"]["MissedCard"][];
+            /** Cards Missed */
+            cards_missed: number;
+            /** Falling */
+            falling: components["schemas"]["Mover"][];
+            /** Hours */
+            hours: number;
+            /**
+             * Latest Hour
+             * Format: date-time
+             */
+            latest_hour: string;
+            /** Loops */
+            loops: components["schemas"]["MissedLoop"][];
+            /** Loops Missed */
+            loops_missed: number;
+            /** Rising */
+            rising: components["schemas"]["Mover"][];
+            /** Volatile */
+            volatile: components["schemas"]["Volatile"][];
+        };
+        /** Mover */
+        Mover: {
+            /** Before */
+            before: number;
+            /** Change */
+            change: number;
+            /** Item Id */
+            item_id: string;
+            /** Name */
+            name: string;
+            /** Price */
+            price: number;
+            /** Streak */
+            streak: number | null;
+            /** Volume */
+            volume: number;
+        };
         /** Status */
         Status: {
             /** Data Version */
@@ -711,6 +810,23 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /** Volatile */
+        Volatile: {
+            /** High */
+            high: number;
+            /** Item Id */
+            item_id: string;
+            /** Low */
+            low: number;
+            /** Name */
+            name: string;
+            /** Price */
+            price: number;
+            /** Range */
+            range: number;
+            /** Volume */
+            volume: number;
         };
     };
     responses: never;
@@ -1091,6 +1207,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MarketItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    missed_opportunities_api_missed__league__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                league: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MissedWindow"][];
                 };
             };
             /** @description Validation Error */

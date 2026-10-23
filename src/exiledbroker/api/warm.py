@@ -11,7 +11,7 @@ from fastapi import HTTPException
 
 from exiledbroker.api import deps
 from exiledbroker.api.deps import View
-from exiledbroker.api.routes.live import card_flips_view, leagues_view, loops_view
+from exiledbroker.api.routes.live import leagues_view, missed_view
 from exiledbroker.api.routes.market import launch_picks_view
 from exiledbroker.api.routes.trading import arbitrage_view, cards_view
 
@@ -24,7 +24,7 @@ def default_views() -> list[View]:
     trading = [lg.name for lg in leagues if lg.latest_hour]
     views = [deps.LEAGUE_NAMES, launch_picks_view()]
     for league in trading:
-        views += [loops_view(league), card_flips_view(league), cards_view(league)]
+        views += [missed_view(league), cards_view(league)]
     if trading:
         views.append(arbitrage_view(trading))
     return views

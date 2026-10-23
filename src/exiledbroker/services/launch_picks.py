@@ -300,5 +300,6 @@ def launch_board(con) -> list[dict]:
             )
             leagues = [{"league": lg, "growth": grown.get(lg)} for lg in order]
             rows.append({**p, "leagues": leagues, "live_divine": prices.get(p["item_id"])})
-        out.append({**w, "leagues": order, "live_league": league, "picks": rows})
+        built = w["built_at"].replace(tzinfo=UTC)  # a list, not a frame: mark UTC here
+        out.append({**w, "built_at": built, "leagues": order, "live_league": league, "picks": rows})
     return out

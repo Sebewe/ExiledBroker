@@ -24,25 +24,11 @@ function useVersioned<T>(key: unknown[], fn: () => Promise<T>, enabled = true) {
   })
 }
 
-export interface LoopParams {
-  direction: 'chaos_first' | 'divine_first'
-  buffer: number
-  min_price: number
-}
-
-export function useLoops(league: string | undefined, p: LoopParams) {
+/** The landing page's recap: all three look-backs in one small response, per loaded hour. */
+export function useMissed(league: string | undefined) {
   return useVersioned(
-    ['loops', league, p],
-    () => unwrap(api.GET('/api/live/{league}/loops', { params: { path: { league: league! }, query: p } })),
-    !!league,
-  )
-}
-
-/** Always in Chaos: the page converts to Divines itself (see Live.tsx). */
-export function useCardFlips(league: string | undefined) {
-  return useVersioned(
-    ['card-flips', league],
-    () => unwrap(api.GET('/api/live/{league}/card-flips', { params: { path: { league: league! } } })),
+    ['missed', league],
+    () => unwrap(api.GET('/api/missed/{league}', { params: { path: { league: league! } } })),
     !!league,
   )
 }

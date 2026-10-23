@@ -1,10 +1,10 @@
-import { ArrowLeftRight, BookOpen, CandlestickChart, Layers, Network, Zap } from 'lucide-react'
+import { ArrowLeftRight, BookOpen, CandlestickChart, Hourglass, Layers, Network } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { NavLink } from 'react-router'
 import { FreshnessBadge } from './Freshness'
 
 const NAV = [
-  { to: '/', label: 'Live market', icon: Zap, end: true },
+  { to: '/', label: 'Missed opportunities', icon: Hourglass, end: true },
   { to: '/arbitrage', label: 'Arbitrage', icon: ArrowLeftRight },
   { to: '/cards', label: 'Card turn-ins', icon: Layers },
   { to: '/launch', label: 'Launch market', icon: CandlestickChart },
