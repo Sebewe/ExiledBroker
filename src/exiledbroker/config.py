@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     database_url: str | None = None
     # The built frontend the API serves (`npm run build` in web/). Not there: API only.
     web_dist: Path = Field(default_factory=_default_web_dist)
+    # The hosted pipeline (`eb pipeline run`) loads into its own DuckDB and publishes
+    # what the site reads to this Postgres database. Unset: it doesn't publish.
+    publish_url: str | None = None
     # Precompute the pages' default tables in the background whenever new data loads.
     api_warm: bool = True
     # Only PoE1 for now; every league row still carries its game.

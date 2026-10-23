@@ -448,6 +448,43 @@ def live_watch(
             time.sleep(max(60.0, (next_run - datetime.now(UTC)).total_seconds()))
 
 
+pipeline_app = typer.Typer(
+    help="The hosted data pipeline (a Railway cron job).", no_args_is_help=True
+)
+app.add_typer(pipeline_app, name="pipeline")
+
+
+@pipeline_app.command("run")
+def pipeline_run(
+    league: str | None = typer.Option(
+        None,
+        "--league",
+        "-l",
+        help="Default: the announced next league once started, else poe.ninja's current.",
+    ),
+    now: str | None = typer.Option(
+        None, help="Replay this moment (ISO, UTC), for the Railway simulation; default: now."
+    ),
+) -> None:
+    """One hourly pass: load new exchange hours into the pipeline's DuckDB, rebuild the
+    launch picks when a league's fortnight completes, publish to EB_PUBLISH_URL, exit."""
+    from exiledbroker.ingest import pipeline
+
+    settings = get_settings()
+    moment = datetime.fromisoformat(now) if now else None
+    if moment and moment.tzinfo is None:
+        moment = moment.replace(tzinfo=UTC)
+    try:
+        with resumable(), PoliteClient(settings) as client:
+            result = pipeline.run(client, settings, league, now=moment)
+    except pipeline.EmptyVolume as e:
+        typer.echo(str(e), err=True)
+        raise typer.Exit(2) from None
+    typer.echo(str(result))
+    if result.live.state == "not_running":
+        raise typer.Exit(0)
+
+
 launch_app = typer.Typer(help="Launch picks: what to buy early in a league.", no_args_is_help=True)
 app.add_typer(launch_app, name="launch")
 

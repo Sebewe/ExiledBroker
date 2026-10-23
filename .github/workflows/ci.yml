@@ -60,7 +60,7 @@ jobs:
       - name: Install
         run: pip install -e '.[dev,pg]'
       - name: Test on Postgres
-        run: pytest -q tests/test_postgres.py
+        run: pytest -q tests/test_postgres.py tests/test_pipeline.py
 
   # The frontend: types (generated from the API), lint, component tests, production build.
   web:

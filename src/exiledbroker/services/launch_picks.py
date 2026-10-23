@@ -193,36 +193,40 @@ def build(con: duckdb.DuckDBPyConnection, leagues: list[str] | None = None) -> d
     try:
         for table in TABLES:
             con.execute(f"DELETE FROM {table}")
-        if out is not None and out["picks"].height:
-            names = db.frame(
-                con,
-                f"""
-                SELECT i.id AS item_id, i.canonical_name AS name, min(t.group_id) AS group_id
-                FROM item i JOIN tracked_item t ON t.item_id = i.id
-                WHERE i.id IN ({league_ids.marks(out["picks"]["item_id"].to_list())})
-                GROUP BY i.id, i.canonical_name
-                """,
-                out["picks"]["item_id"].to_list(),
-            )
-            picks = out["picks"].join(names, on="item_id")
-            frames = {
-                "launch_window": out["windows"].with_columns(built_at=pl.lit(built)),
-                "launch_pick": picks.select(
-                    "window_id",
-                    "item_id",
-                    "rank",
-                    "name",
-                    "group_id",
-                    "score",
-                    "growth",
-                    "worst",
-                    "rose",
-                    "traded",
-                    "buy_divine",
-                    "liquidity",
-                ),
-                "launch_pick_league": out["per_league"],
-            }
+        if out is not None:
+            # The windows are written even with no picks: they record which leagues the
+            # picks were ranked from, so the pipeline knows they're current.
+            frames = {"launch_window": out["windows"].with_columns(built_at=pl.lit(built))}
+            if out["picks"].height:
+                names = db.frame(
+                    con,
+                    f"""
+                    SELECT i.id AS item_id, i.canonical_name AS name, min(t.group_id) AS group_id
+                    FROM item i JOIN tracked_item t ON t.item_id = i.id
+                    WHERE i.id IN ({league_ids.marks(out["picks"]["item_id"].to_list())})
+                    GROUP BY i.id, i.canonical_name
+                    """,
+                    out["picks"]["item_id"].to_list(),
+                )
+                frames["launch_pick"] = (
+                    out["picks"]
+                    .join(names, on="item_id")
+                    .select(
+                        "window_id",
+                        "item_id",
+                        "rank",
+                        "name",
+                        "group_id",
+                        "score",
+                        "growth",
+                        "worst",
+                        "rose",
+                        "traded",
+                        "buy_divine",
+                        "liquidity",
+                    )
+                )
+                frames["launch_pick_league"] = out["per_league"]
             for table, df in frames.items():
                 con.register("_rows", df.to_arrow())
                 con.execute(f"INSERT INTO {table} ({', '.join(df.columns)}) SELECT * FROM _rows")
