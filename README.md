@@ -25,7 +25,7 @@ Legend: ⬜ not started · 🟨 in progress · ✅ done. Phases 1–2 alone are 
 
 The next league launches in about a month. Before then:
 
-- **Deploy** to Railway: seed the pipeline volume, then the three services in [deploy/railway/](deploy/railway/README.md) ([hosting.md](docs/hosting.md)).
+- **Go live on Railway**: the checklist is [go-live.md](docs/go-live.md) (Postgres-only server, catch-up test, usage limits with a fallback page, rehearsed league switch).
 - **poe.ninja live poller** (phase 6). Uniques have no public sub-daily history, so it must be running at launch ([data.md](docs/data.md#sources)).
 - **Register the new league** once its name and date are announced (`eb exchange sync -l "<Name>" --start <date>`), so the site shows "waiting for the first trades" from launch.
 
@@ -91,6 +91,7 @@ RePoE, loot filter ──────┘                  │
 | Doc | Contents |
 |---|---|
 | [docs/data.md](docs/data.md) | Sources, how dumps and exchange hours become rows, the live feed, core pool, divination cards, new-league handling, data model, running the ingest |
+| [docs/go-live.md](docs/go-live.md) | The checklist for going live on Railway, with decisions and open questions |
 | [docs/hosting.md](docs/hosting.md) | Hosting shape, cost issues and their fixes, performance tooling and findings |
 | [docs/findings.md](docs/findings.md) | Phase-2 findings from past launches |
 | [docs/decisions.md](docs/decisions.md) | Decision log by topic, dated |
