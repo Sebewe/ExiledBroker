@@ -1,6 +1,7 @@
 """The running league: what the latest published hours offered (the Missed
 opportunities page), plus the loop and card tables behind it."""
 
+from datetime import UTC, timedelta
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Query, Request, Response
@@ -8,6 +9,7 @@ from fastapi import APIRouter, Query, Request, Response
 from exiledbroker.api import deps
 from exiledbroker.api.deps import View
 from exiledbroker.api.models import CardFlip, LiveLeague, Loop, MissedWindow, Status
+from exiledbroker.config import get_settings
 from exiledbroker.services import live, missed
 
 router = APIRouter(tags=["live"])
@@ -52,12 +54,37 @@ def missed_view(league: str) -> View:
     return View("missed", (league,), lambda con: missed.missed(con, league), MissedWindow)
 
 
+# GGG publishes an hour a few minutes after it ends; the worker loads it ~6 minutes past.
+FIRST_DATA_DELAY = timedelta(minutes=10)
+
+
+def upcoming(leagues: list) -> dict | None:
+    """The announced next league (settings), until it has trades loaded: when it starts
+    and roughly when its first hour shows up here (the end of its first clock hour,
+    plus the publishing delay)."""
+    settings = get_settings()
+    name, start = settings.next_league, settings.next_league_start
+    if not name or not start:
+        return None
+    if any(lg.name == name and lg.latest_hour for lg in leagues):
+        return None
+    start = start.astimezone(UTC) if start.tzinfo else start.replace(tzinfo=UTC)
+    first_hour_end = start.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+    return {"name": name, "start_at": start, "first_data_at": first_hour_end + FIRST_DATA_DELAY}
+
+
 @router.get("/status", response_model=Status)
 def status() -> dict:
-    """Leagues on the exchange, newest data first, and the data version. Cheap: poll
-    this, and refetch everything else when `data_version` changes."""
+    """Leagues on the exchange, newest data first, the data version, and the announced
+    next league until it has trades. Cheap: poll this, and refetch everything else when
+    `data_version` changes."""
     leagues = deps.payload(leagues_view()).rows
-    return {"now": deps.now_utc(), "data_version": deps.data_version(), "leagues": leagues}
+    return {
+        "now": deps.now_utc(),
+        "data_version": deps.data_version(),
+        "leagues": leagues,
+        "upcoming": upcoming(leagues),
+    }
 
 
 @router.get("/live/{league}/loops", response_model=list[Loop])

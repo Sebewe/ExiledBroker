@@ -1586,6 +1586,16 @@
             "format": "date-time",
             "title": "Now",
             "type": "string"
+          },
+          "upcoming": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Upcoming"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -1960,6 +1970,32 @@
           "card_volume"
         ],
         "title": "TurnInHour",
+        "type": "object"
+      },
+      "Upcoming": {
+        "description": "The announced next league, until its first trades are loaded.",
+        "properties": {
+          "first_data_at": {
+            "format": "date-time",
+            "title": "First Data At",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "start_at": {
+            "format": "date-time",
+            "title": "Start At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "start_at",
+          "first_data_at"
+        ],
+        "title": "Upcoming",
         "type": "object"
       },
       "ValidationError": {
@@ -2967,7 +3003,7 @@
     },
     "/api/status": {
       "get": {
-        "description": "Leagues on the exchange, newest data first, and the data version. Cheap: poll\nthis, and refetch everything else when `data_version` changes.",
+        "description": "Leagues on the exchange, newest data first, the data version, and the announced\nnext league until it has trades. Cheap: poll this, and refetch everything else when\n`data_version` changes.",
         "operationId": "status_api_status_get",
         "responses": {
           "200": {

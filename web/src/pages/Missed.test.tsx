@@ -48,6 +48,22 @@ const recap = (hours: number, scale: number): MissedWindow => ({
 })
 const RECAP = [recap(1, 1), recap(2, 2), recap(3, 3)]
 
+// A league's first hour, as the API reports it (tests/test_league_start.py replays
+// Allflame's): nothing to compare against and nothing paid yet.
+const empty = (hours: number): MissedWindow => ({
+  hours,
+  latest_hour: '2026-10-22T08:00:00Z',
+  rising: [],
+  falling: [],
+  volatile: [],
+  loops: [],
+  cards: [],
+  loops_missed: 0,
+  cards_missed: 0,
+})
+const iso = (msFromNow: number) => new Date(Date.now() + msFromNow).toISOString()
+const MIN = 60_000
+
 afterEach(() => vi.unstubAllGlobals())
 
 describe('Missed opportunities', () => {
@@ -93,5 +109,58 @@ describe('Missed opportunities', () => {
     expect(await screen.findByText('60.0div')).toBeInTheDocument() // 3 × 20 div
     expect(screen.getByText('paid every hour')).toBeInTheDocument()
     expect(vi.mocked(fetch).mock.calls.length).toBe(calls)
+  })
+
+  it('counts down to the first published hour once the new league has started', async () => {
+    const upcoming = { name: 'Allflame', start_at: iso(-10 * MIN), first_data_at: iso(60 * MIN) }
+    serve({ '/api/status': { body: { now: iso(0), data_version: null, leagues: [], upcoming } } })
+    renderPage()
+    expect(await screen.findByText(/Allflame is live\. First trades published in about/)).toBeInTheDocument()
+    expect(screen.getByRole('timer').textContent).toMatch(/^(59:\d\d|01:00:00)$/)
+    expect(screen.queryByRole('region', { name: 'Recap' })).not.toBeInTheDocument()
+  })
+
+  it('takes over from the old league as soon as the new one starts', async () => {
+    const upcoming = { name: 'Next', start_at: iso(-1 * MIN), first_data_at: iso(69 * MIN) }
+    serve({ '/api/status': { body: { now: iso(0), data_version: 'v1', leagues: [league(iso(-90 * MIN))], upcoming } } })
+    renderPage()
+    expect(await screen.findByRole('region', { name: 'Countdown' })).toBeInTheDocument()
+    expect(screen.queryByText('Data may be out of date')).not.toBeInTheDocument()
+  })
+
+  it('shows the countdown above the running league before launch', async () => {
+    const upcoming = { name: 'Next', start_at: iso(26 * 60 * MIN), first_data_at: iso(27 * 60 * MIN) }
+    serve({
+      '/api/status': { body: { now: NOW, data_version: 'v1', leagues: [league('2026-10-22T08:00:00Z')], upcoming } },
+      '/api/missed/Allflame': { body: RECAP },
+    })
+    renderPage()
+    expect(await screen.findByText(/^Next launches in 1d 0[12]:/)).toBeInTheDocument()
+    expect(await screen.findByRole('region', { name: 'Recap' })).toBeInTheDocument()
+  })
+
+  it('says it is early when the league has only a few hours of trades', async () => {
+    const first = { ...league('2026-10-22T08:00:00Z'), launched_at: '2026-10-22T08:00:00Z' }
+    serve({
+      '/api/status': { body: { now: NOW, data_version: 'v1', leagues: [first] } },
+      '/api/missed/Allflame': { body: [empty(1), empty(2), empty(3)] },
+    })
+    renderPage()
+    expect(await screen.findByText("Looks like it's early in the league")).toBeInTheDocument()
+    expect(await screen.findByText('Nothing paid yet')).toBeInTheDocument()
+    expect(screen.getByText('Nothing liquid rose.')).toBeInTheDocument()
+    expect(screen.getByText(/No loop beat a 2% edge/)).toBeInTheDocument()
+    expect(screen.getByText(/No card turn-in paid/)).toBeInTheDocument()
+  })
+
+  it('drops the early note once the league has a few hours behind it', async () => {
+    serve({ '/api/status': status('2026-10-22T08:00:00Z'), '/api/missed/Allflame': { body: RECAP } })
+    renderPage()
+    await screen.findByRole('region', { name: 'Recap' })
+    expect(screen.queryByText("Looks like it's early in the league")).not.toBeInTheDocument()
+    // The key item names the opportunity, not a rank number.
+    expect(screen.getByRole('heading', { name: 'Reverent Fragment' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'The Sephirot' })).toBeInTheDocument()
+    expect(screen.queryByText('#1')).not.toBeInTheDocument()
   })
 })

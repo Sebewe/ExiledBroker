@@ -295,8 +295,9 @@ export interface paths {
         };
         /**
          * Status
-         * @description Leagues on the exchange, newest data first, and the data version. Cheap: poll
-         *     this, and refetch everything else when `data_version` changes.
+         * @description Leagues on the exchange, newest data first, the data version, and the announced
+         *     next league until it has trades. Cheap: poll this, and refetch everything else when
+         *     `data_version` changes.
          */
         get: operations["status_api_status_get"];
         put?: never;
@@ -724,6 +725,7 @@ export interface components {
              * Format: date-time
              */
             now: string;
+            upcoming?: components["schemas"]["Upcoming"] | null;
         };
         /** TurnIn */
         TurnIn: {
@@ -797,6 +799,24 @@ export interface components {
             reward_value: number | null;
             /** Set Cost */
             set_cost: number | null;
+        };
+        /**
+         * Upcoming
+         * @description The announced next league, until its first trades are loaded.
+         */
+        Upcoming: {
+            /**
+             * First Data At
+             * Format: date-time
+             */
+            first_data_at: string;
+            /** Name */
+            name: string;
+            /**
+             * Start At
+             * Format: date-time
+             */
+            start_at: string;
         };
         /** ValidationError */
         ValidationError: {

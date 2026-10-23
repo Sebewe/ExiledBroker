@@ -16,10 +16,19 @@ class LiveLeague(BaseModel):
     divine_chaos: float | None  # latest Divine price in Chaos; convert prices with it
 
 
+class Upcoming(BaseModel):
+    """The announced next league, until its first trades are loaded."""
+
+    name: str
+    start_at: datetime  # announced launch
+    first_data_at: datetime  # estimate: its first hour published and loaded
+
+
 class Status(BaseModel):
     now: datetime
     data_version: str | None  # changes when new data is loaded; refetch then
     leagues: list[LiveLeague]  # newest data first
+    upcoming: Upcoming | None = None
 
 
 class Ranks(BaseModel):

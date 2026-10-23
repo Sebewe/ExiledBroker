@@ -28,24 +28,25 @@ LAUNCH = FIXTURE["launch"]
 PAGES = {int(ts): page["markets"] for ts, page in FIXTURE["pages"].items()}
 
 
-def store_reference_data(s: Settings) -> None:
+def store_reference_data(s: Settings, fixture: dict = FIXTURE) -> None:
     """Names (RePoE) and the core pool / loot-filter snapshots, stored in the database
     (reference_data) as `eb live` leaves them, fresh so nothing is re-fetched."""
-    names = {v["name"] for v in FIXTURE["base_items"].values()}
+    base_items, league = fixture["base_items"], fixture["league"]
+    names = {v["name"] for v in base_items.values()}
     cards = sorted(
-        v["name"] for v in FIXTURE["base_items"].values() if v.get("item_class") == "DivinationCard"
+        v["name"] for v in base_items.values() if v.get("item_class") == "DivinationCard"
     )
     ninja = f"{s.poe_ninja_base_url}/poe1/api/economy"
     with db.session(s.db_path) as con:
         db.init_schema(con)
-        reference.put(con, item_names.KEY, FIXTURE["base_items"], s.repoe_base_items_url)
-        reference.put(con, core_pool.LEAGUES_KEY, [{"id": "Mirage"}], f"{ninja}/leagues")
+        reference.put(con, item_names.KEY, base_items, s.repoe_base_items_url)
+        reference.put(con, core_pool.LEAGUES_KEY, [{"id": league}], f"{ninja}/leagues")
         for ninja_type in {t for types in core_pool.SOURCES.values() for t in types}:
             reference.put(
                 con,
                 core_pool.snapshot_key(ninja_type),
-                {"league": "Mirage", "names": sorted(names)},
-                f"{ninja}/exchange/current/overview?league=Mirage&type={ninja_type}",
+                {"league": league, "names": sorted(names)},
+                f"{ninja}/exchange/current/overview?league={league}&type={ninja_type}",
             )
         reference.put(
             con,

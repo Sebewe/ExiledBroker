@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 
 from pydantic import Field
@@ -45,6 +46,10 @@ class Settings(BaseSettings):
     api_warm: bool = True
     # Only PoE1 for now; every league row still carries its game.
     default_game: str = "poe1"
+    # The next league, as GGG announced it (name and launch time, UTC), for the landing
+    # page's countdown to its first published hour. Unset: no countdown.
+    next_league: str | None = None
+    next_league_start: datetime | None = None
     # Origins allowed to call the API from a browser (the future public frontend).
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:5173"]
 
