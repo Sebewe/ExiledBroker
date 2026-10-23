@@ -39,6 +39,10 @@ const recap = (hours: number, scale: number): MissedWindow => ({
   rising: [{ item_id: 'currency:a', name: 'Domination Scarab', price: 60, before: 40, change: 0.5, volume: 5000, streak: 3 }],
   falling: [{ item_id: 'currency:b', name: 'Essence of Horror', price: 30, before: 45, change: -1 / 3, volume: 3000, streak: -2 }],
   volatile: [{ item_id: 'currency:c', name: 'Abyss Scarab', low: 4, high: 64, price: 10, range: 6, volume: 9000 }],
+  ticker: [
+    { item_id: 'currency:a', name: 'Domination Scarab', price: 60, before: 40, change: 0.5, volume: 5000, streak: 3 },
+    { item_id: 'currency:f', name: 'Ancient Orb', price: 90, before: 100, change: -0.1, volume: 9000, streak: -1 },
+  ],
   loops: [
     { item_id: 'currency:d', name: 'Reverent Fragment', direction: 'chaos_first', missed: 2000 * scale, best_edge: 0.12, hours_paid: hours, price: 50, volume: 4000 },
   ],
@@ -58,6 +62,7 @@ const empty = (hours: number): MissedWindow => ({
   rising: [],
   falling: [],
   volatile: [],
+  ticker: [],
   loops: [],
   cards: [],
   loops_paid: 0,
@@ -103,6 +108,10 @@ describe('Market recap', () => {
     expect(screen.queryByText(/likely one odd trade/)).not.toBeInTheDocument() // 12% isn't odd
     expect(screen.getByText('20.0div')).toBeInTheDocument() // 4000c traded an hour, at 200c
     expect(screen.getByText('40.0c → 60.0c')).toBeInTheDocument() // under a Divine: Chaos
+    // The ticker scrolls the last hour's movers; its second copy is for the loop only.
+    const ticker = screen.getByRole('region', { name: 'Price changes in the last published hour' })
+    expect(within(ticker).getAllByText('Ancient Orb')).toHaveLength(2)
+    expect(within(ticker).getAllByText('▼ −10%')).toHaveLength(2)
     expect(screen.getByText('10× Divine Orb')).toBeInTheDocument()
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
   })

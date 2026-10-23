@@ -88,6 +88,11 @@ def test_the_report_is_built_stored_and_served(settings):  # noqa: F811
         # Hours with both markets of a loop (the first have no Divine rate yet).
         assert 0 < h.hours <= 12 and h.filled <= h.signals, key
         assert h.per_hour == pytest.approx(h.total / h.hours), key
+    methods = {(c.method, c.fill) for c in checked.card_limits}
+    assert methods == {
+        ("market", "touch"),
+        *((m, f) for m in ("limit_buy", "limit_both") for f in bt.FILLS),
+    }
     # The worst traded price is never better than the average less slippage.
     for strategy in bt.STRATEGIES:
         harsh, fair = rows[strategy, "top", "harsh"], rows[strategy, "top", "fair"]
@@ -126,3 +131,52 @@ def _launch_px() -> pl.DataFrame:
     return pl.DataFrame(
         {"item_id": ["x"], "day_offset": [0.5], "d": [1.0], "lo": [0.9], "hi": [1.1], "dv": [50.0]}
     )
+
+
+def _card_prices(card: list[tuple], reward: list[tuple]) -> pl.DataFrame:
+    """(hour, avg, low, high, units) for a 5-card set worth 1 reward."""
+    rows = [("c", *r) for r in card] + [("r", *r) for r in reward]
+    return pl.DataFrame(
+        {
+            "item_id": [r[0] for r in rows],
+            "observed_at": [T0 + r[1] * H for r in rows],
+            "day_offset": [r[1] / 24 for r in rows],
+            "p": [r[2] for r in rows],
+            "lo": [r[3] for r in rows],
+            "hi": [r[4] for r in rows],
+            "units": [r[5] for r in rows],
+            "cv": [r[2] * r[5] for r in rows],
+        }
+    ).sort("observed_at")
+
+
+@pytest.fixture
+def one_card(monkeypatch):
+    cards = pl.DataFrame({"item_id": ["c"], "reward_id": ["r"], "n": [5], "q": [1]})
+    monkeypatch.setattr(bt.db, "frame", lambda con, q, params=None: cards)
+
+
+def test_a_limit_buy_fills_only_if_the_next_hour_trades_below_it(one_card):
+    # Hour 0: sets at 5 × 10c (low 8c) against a 100c reward (low 90c). Buy order: 8c.
+    reward = [(h, 100, 90, 110, 100) for h in range(4)]
+    dipped = _card_prices([(0, 10, 8, 12, 500), (1, 10, 7, 12, 500)], reward)
+    [trade] = bt.card_limit_trades(None, dipped, RATE, "limit_buy", "touch").to_dicts()
+    # 10 sets (10% of 500 cards / 5) bought at 8c, the rewards sold at hour 2's low, 90c.
+    assert trade["pnl"] == pytest.approx(10 * (90 - 5 * 8) / 100)
+    # The next hour never went under 8c: no fill, nothing spent.
+    held = _card_prices([(0, 10, 8, 12, 500), (1, 10, 8, 12, 500)], reward)
+    assert bt.card_limit_trades(None, held, RATE, "limit_buy", "touch").is_empty()
+    # Strict: the hour's average must go under it too.
+    assert bt.card_limit_trades(None, dipped, RATE, "limit_buy", "strict").is_empty()
+
+
+def test_a_limit_sell_asks_the_recap_hours_average(one_card):
+    reward = [(0, 100, 90, 110, 100), (1, 100, 90, 110, 100), (2, 95, 80, 105, 100)]
+    prices = _card_prices([(0, 10, 8, 12, 500), (1, 10, 7, 12, 500)], reward)
+    [trade] = bt.card_limit_trades(None, prices, RATE, "limit_both", "touch").to_dicts()
+    assert trade["pnl"] == pytest.approx(10 * (100 - 40) / 100)  # hour 2 traded up to 105
+    # Hour 2 never traded above the 100c ask: the reward is sold at its low instead.
+    reward[2] = (2, 95, 80, 99, 100)
+    prices = _card_prices([(0, 10, 8, 12, 500), (1, 10, 7, 12, 500)], reward)
+    [trade] = bt.card_limit_trades(None, prices, RATE, "limit_both", "touch").to_dicts()
+    assert trade["pnl"] == pytest.approx(10 * (80 - 40) / 100)

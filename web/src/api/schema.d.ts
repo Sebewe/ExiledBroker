@@ -388,6 +388,39 @@ export interface components {
             trade_divines: number;
         };
         /**
+         * BacktestCardLimit
+         * @description The recap's top card turn-ins traded with orders priced from its hour, in one
+         *     stretch of a league. Profits are in Divines.
+         */
+        BacktestCardLimit: {
+            /** Best Hour */
+            best_hour: number;
+            /** Daily */
+            daily: number[];
+            /** Fill */
+            fill: string;
+            /** Filled */
+            filled: number;
+            /** Hours */
+            hours: number;
+            /** League */
+            league: string;
+            /** Method */
+            method: string;
+            /** Per Hour */
+            per_hour: number;
+            /** Segment */
+            segment: string;
+            /** Signals */
+            signals: number;
+            /** Total */
+            total: number;
+            /** Won */
+            won: number;
+            /** Worst Hour */
+            worst_hour: number;
+        };
+        /**
          * BacktestHourly
          * @description One hourly strategy in one stretch of a league, at fair or harsh prices.
          *     Profits are in Divines.
@@ -482,6 +515,8 @@ export interface components {
              * Format: date-time
              */
             built_at: string;
+            /** Card Limits */
+            card_limits: components["schemas"]["BacktestCardLimit"][];
             /** Hourly */
             hourly: components["schemas"]["BacktestHourly"][];
             /** Launch */
@@ -840,6 +875,8 @@ export interface components {
             loops_paid: number;
             /** Rising */
             rising: components["schemas"]["Mover"][];
+            /** Ticker */
+            ticker: components["schemas"]["Mover"][];
             /** Volatile */
             volatile: components["schemas"]["Volatile"][];
         };

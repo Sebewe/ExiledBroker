@@ -51,3 +51,33 @@
     }
   }
 }
+
+/* The Market recap's ticker: two copies of the row slide left by one copy's width, so
+   the loop is seamless. Paused on hover or focus; still (and scrollable) for anyone
+   who prefers reduced motion. */
+@keyframes ticker {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+.ticker {
+  mask-image: linear-gradient(to right, transparent, black 2rem, black calc(100% - 2rem), transparent);
+}
+.ticker-track {
+  animation: ticker var(--ticker-duration, 60s) linear infinite;
+}
+.ticker:hover .ticker-track,
+.ticker:focus-within .ticker-track {
+  animation-play-state: paused;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ticker {
+    overflow-x: auto;
+  }
+  .ticker-track {
+    animation: none;
+  }
+}

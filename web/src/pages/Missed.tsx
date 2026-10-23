@@ -1,5 +1,5 @@
 import { ArrowDownRight, ArrowUpRight, CandlestickChart, FlaskConical, Layers, Repeat, Timer, Waves } from 'lucide-react'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import type { LiveLeague, MissedCard, MissedWindow, Mover, Upcoming, Volatile } from '../api/client'
 import { useMissed, useServerNow, useStatus } from '../api/queries'
@@ -139,9 +139,11 @@ export default function Missed() {
     )
   }
   const early = hoursIn(info) < EARLY_HOURS
+  const lastHour = summary.data?.find((x) => x.hours === 1)
 
   return (
     <>
+      {lastHour && <Ticker items={lastHour.ticker} money={money} />}
       {header}
       {names.length > 1 && (
         <div>
@@ -179,6 +181,41 @@ function span(w: MissedWindow) {
 }
 
 const lastHours = (n: number) => (n === 1 ? 'the last hour' : `the last ${n} hours`)
+
+/** A news-style strip of the last hour's movers, scrolling right to left. Two copies of
+ *  the row make the loop seamless; the second is hidden from screen readers. */
+function Ticker({ items, money }: { items: Mover[]; money: Money }) {
+  if (!items.length) return null
+  const row = (copy: boolean) => (
+    <ul className="flex shrink-0 items-center gap-8 pr-8" aria-hidden={copy || undefined}>
+      {items.map((m) => {
+        const up = m.change > 0
+        return (
+          <li key={m.item_id} className="flex shrink-0 items-baseline gap-2 text-sm whitespace-nowrap">
+            <span className="text-text">{m.name}</span>
+            <span className="num text-xs text-faint">{money(m.price)}</span>
+            <span className={`num font-medium ${up ? 'text-positive' : 'text-negative'}`}>
+              {up ? '▲' : '▼'} {signedPct(m.change, 0)}
+            </span>
+          </li>
+        )
+      })}
+    </ul>
+  )
+  return (
+    <section
+      aria-label="Price changes in the last published hour"
+      className="ticker -mt-2 overflow-hidden rounded-lg border border-border bg-surface py-2"
+      tabIndex={0}
+    >
+      {/* About 3 seconds an item, whatever the count. */}
+      <div className="ticker-track flex w-max" style={{ '--ticker-duration': `${items.length * 3}s` } as CSSProperties}>
+        {row(false)}
+        {row(true)}
+      </div>
+    </section>
+  )
+}
 
 function Hero({ w, onHours }: { w: MissedWindow; onHours: (h: number) => void }) {
   const mover = [...w.rising, ...w.falling].sort((a, b) => Math.abs(b.change) - Math.abs(a.change))[0]
@@ -255,8 +292,8 @@ function Options({ w }: { w: MissedWindow }) {
           in-game before you start.
         </Option>
         <Option icon={Layers} title="A card turn-in" href="#cards" link="See the cards ↓">
-          The margins below were there at the hour's average prices. Card prices swing a lot within an hour, and in our replays buying sets at the wrong moment
-          usually cost the margin. Check the set's price in-game first.
+          The margins below were there at the hour's average prices. In our replays, buying sets at whatever the market asked lost money; bidding at the hour's
+          low and asking its average for the reward did better, when those orders filled. Many won't.
         </Option>
         <Option icon={CandlestickChart} title="Holding for a few days" to="/launch" link="Launch market →">
           Early-league picks held for about ten days were the one tool that came out ahead at the worst prices in every past league we replayed. Past leagues

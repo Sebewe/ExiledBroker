@@ -67,7 +67,17 @@ A dummy trader with 100 Divines does only what the site said at the time. Hourly
 - **The Launch picks are the only tool that clearly pays under harsh prices**, in every league tested: day-1 picks returned 21–186 Divines on 75–100 staked, while the typical affordable item lost most of its value in Divines. They ride the fortnight's biggest move rather than an hour's spread. Individual picks still lose (Allflame's day-1 Gift to the Goddess came back ×0.35), so the list pays as a basket.
 - **The recap's loops carry real information but not enough.** A flagged loop paid again the next hour 39–60% of the time against 1–11% for other liquid loops. Acting on every one loses a little at harsh prices; requiring it to have paid every hour of the last 3 brings it to about break even (a fraction of a Divine an hour, not a few).
 - **Fair prices flatter loops.** Liquid items look 5–10% dearer in Divines than in Chaos on average whether or not the recap flags them; that's most likely the buy/sell spread, which a trader pays, so the fair figures are a ceiling.
-- **Card turn-ins lose at harsh prices**: thin card markets swing so much within an hour that buying at the hour's high wipes out the margin. Leads to check, not trades.
+- **Card turn-ins lose with market orders**: thin card markets swing so much within an hour that buying at the hour's high wipes out the margin.
+- **Limit orders priced from the recap's hour help cards a lot** (`card_limit_trades`). A buy order at that hour's lowest card price, placed only if the set still pays at the reward's lowest price that hour; the reward sold at the next worst price:
+
+  | Card orders (div/h, first 14 days; Allflame's latest 14 in brackets) | Result | Orders filled |
+  |---|---|---|
+  | Market: buy at the next hour's high, sell at the low | −2.20 to −0.23 (0.00) | 21% |
+  | Limit buy, filled if any trade went under the bid | −0.05 to +0.54 (+0.01) | 37% |
+  | Limit buy and a sell order at the recap hour's average reward price | **+0.51 to +0.97** (+0.01) | 37% |
+  | Either limit, filled only if the hour's average crossed the order | −0.02 to +0.01 | 12% (17 of 140) |
+
+  Whether the orders fill is the open question: hourly data shows each hour's range, not the queue at each price. If one trade past the price means a fill, the limits turn cards into the best hourly strategy tested; if the hour's average has to cross it, almost nothing fills. Late in a league (Allflame's latest 14 days) there was nothing either way.
 - **The Rising list is not a buy signal**: risers fall after the hour they're published, at fair prices too.
 - **Thin markets flattered the first run.** Before the volume floor, many recap loops were markets with an edge over 1,000% from a couple of items traded; their few fills made acting on every loop look break-even. With the floor (now on the page too), it loses a little. The landing page was renamed from Missed opportunities to Market recap, without the "sat on the table" totals, and words its picks as options to check.
 - **Caveats:** no order book, so real fills sit between fair and harsh; one trader at small sizes; today's core pool and loot-filter card list (a small head start); five leagues, the first ones with few earlier leagues to rank picks from.

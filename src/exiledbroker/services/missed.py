@@ -33,6 +33,7 @@ from exiledbroker.storage import db
 LOOKBACKS = (1, 2, 3)  # hours
 TREND_HOURS = 6  # how far back an hour-by-hour run is followed
 TOP = 3
+TICKER = 24  # movers in the page's scrolling ticker
 MIN_PRICE = 5.0  # Chaos: below this, whole-number exchange ratios dominate the moves
 MIN_VOLUME = 2000.0  # Chaos traded an hour: thinner markets swing on a single trade
 BUFFER = 0.02  # a loop only counts if it beat this edge, as on the Arbitrage page
@@ -88,7 +89,7 @@ def _streaks(prices: pl.DataFrame, latest) -> pl.DataFrame:
     return pl.DataFrame(rows, schema={"item_id": pl.String, "streak": pl.Int64})
 
 
-def _movement(prices: pl.DataFrame, latest, hours: int) -> tuple[list, list, list]:
+def _movement(prices: pl.DataFrame, latest, hours: int) -> tuple[list, list, list, list]:
     now = prices.filter(pl.col("observed_at") == latest, pl.col("volume") >= MIN_VOLUME)
     base = (
         prices.filter(pl.col("observed_at") <= latest - timedelta(hours=hours))
@@ -125,7 +126,20 @@ def _movement(prices: pl.DataFrame, latest, hours: int) -> tuple[list, list, lis
         .with_columns(range=(pl.col("high") - pl.col("low")) / pl.col("price"))
         .sort(["range", "item_id"], descending=[True, False])
     )
-    return up.head(TOP).to_dicts(), down.head(TOP).to_dicts(), volatile.head(TOP).to_dicts()
+    # The ticker: every liquid mover, the biggest moves either way first.
+    ticker = (
+        moved.filter(pl.col("change") != 0)
+        .with_columns(size=pl.col("change").abs())
+        .sort(["size", "item_id"], descending=[True, False])
+        .head(TICKER)
+        .drop("size")
+    )
+    return (
+        up.head(TOP).to_dicts(),
+        down.head(TOP).to_dicts(),
+        volatile.head(TOP).to_dicts(),
+        ticker.to_dicts(),
+    )
 
 
 def _loops(loops: pl.DataFrame, latest, hours: int) -> tuple[list, int]:
@@ -203,7 +217,7 @@ def missed(con: duckdb.DuckDBPyConnection, league: str) -> list[dict]:
     turn_ins = turn_ins.join(cards, left_on="card", right_on="name")
     out = []
     for hours in LOOKBACKS:
-        up, down, volatile = _movement(prices, latest, hours)
+        up, down, volatile, ticker = _movement(prices, latest, hours)
         top_loops, loops_paid = _loops(loops, latest, hours)
         top_cards, cards_paid = _cards(turn_ins, latest, hours)
         out.append(
@@ -213,6 +227,7 @@ def missed(con: duckdb.DuckDBPyConnection, league: str) -> list[dict]:
                 "rising": up,
                 "falling": down,
                 "volatile": volatile,
+                "ticker": ticker,
                 "loops": top_loops,
                 "cards": top_cards,
                 "loops_paid": loops_paid,

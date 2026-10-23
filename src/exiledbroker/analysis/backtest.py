@@ -23,6 +23,13 @@ that hour (in whole items) and TRADE_DIVINES a trade. Every trade is priced two 
   to sell.
 An item that doesn't trade when the trader needs to sell is counted as lost.
 
+Card turn-ins are also tested with **limit orders** priced from the recap's own hour
+(`card_limit_trades`): a buy order at that hour's lowest card price, placed only if the
+set still pays at the reward's lowest price that hour, and optionally a sell order for
+the reward at that hour's average (else sold at the worst price). Whether an order
+fills can't be seen in hourly data, so two fill models bracket it: **touch** (some
+trade that hour went past the order's price) and **strict** (the hour's average did).
+
 The truth sits between the two: the hourly data has no order book, so we can't see
 the spread a real trader would cross. A strategy is only worth showing as advice if it
 holds up harsh. `build` runs everything on the local research database (it needs past
@@ -53,6 +60,8 @@ LAUNCH_STAKE = 10.0  # Divines per launch pick (TOP picks: the bank)
 SCENARIOS = ("fair", "harsh")
 STRATEGIES = ("loops", "cards", "rising")
 RULES = {"top": 1, "steady": STEADY_HOURS}
+CARD_METHODS = ("market", "limit_buy", "limit_both")  # see card_limit_trades
+FILLS = ("touch", "strict")
 H = timedelta(hours=1)
 DIVINE = "currency:divine-orb"
 CHAOS = "currency:chaos-orb"
@@ -242,6 +251,99 @@ def card_trades(con, prices: pl.DataFrame, rate: pl.DataFrame, rule: str, scenar
     ).select("observed_at", "item_id", filled=pl.col("k") >= 1, pnl="pnl")
 
 
+def card_limit_trades(
+    con, prices: pl.DataFrame, rate: pl.DataFrame, method: str, fill: str
+) -> pl.DataFrame:
+    """The recap's top card turn-ins, bought and sold with prices set from its hour:
+    - market: buy at the next hour's highest card price, sell at the worst (harsh);
+    - limit_buy: a buy order at the recap hour's lowest card price, placed only if the
+      set still pays at that hour's lowest reward price; the reward sold at the worst;
+    - limit_both: the same, with a sell order at the recap hour's average reward price,
+      sold at the worst instead if it doesn't fill.
+    An unfilled buy costs nothing (the order is cancelled)."""
+    cards = db.frame(
+        con,
+        """
+        SELECT item_id, reward_item_id AS reward_id, stack_size AS n, reward_quantity AS q
+        FROM divination_card WHERE followed AND reward_item_id IS NOT NULL
+        """,
+    )
+    c = prices.join(cards, on="item_id")
+    r = prices.select("observed_at", reward_id="item_id", rp="p", rlo="lo")
+    paid = (
+        c.join(r, on=["observed_at", "reward_id"])
+        .with_columns(
+            margin=pl.col("q") * pl.col("rp") - pl.col("n") * pl.col("p"),
+            sets=pl.col("units") / pl.col("n"),
+        )
+        .filter(pl.col("margin") > 0, pl.col("sets") >= missed.MIN_CARD_SETS)
+        .with_columns(missed=pl.col("margin") * pl.col("sets"))
+    )
+    # The recap hour's own prices, which the orders are priced from.
+    sig = (
+        _signals(paid, ["item_id"], 1, "item_id")
+        .join(cards, on="item_id")
+        .join(c.select("observed_at", "item_id", card_lo="lo"), on=["observed_at", "item_id"])
+        .join(r.rename({"rp": "ask", "rlo": "reward_lo"}), on=["observed_at", "reward_id"])
+    )
+    nxt = c.select(
+        "item_id",
+        observed_at=pl.col("observed_at") - H,
+        next_p="p",
+        next_lo="lo",
+        next_hi="hi",
+        buy_units="units",
+    )
+    t = sig.join(nxt, on=["observed_at", "item_id"], how="left").join(
+        rate.select(observed_at=pl.col("observed_at") - H, rate="rate"), on="observed_at"
+    )
+    if method == "market":
+        t = t.with_columns(buy=pl.col("next_hi"), placed=pl.col("next_p").is_not_null())
+    else:
+        crossed = pl.col("next_p") if fill == "strict" else pl.col("next_lo")
+        guard = pl.col("q") * pl.col("reward_lo") > pl.col("n") * pl.col("card_lo")
+        t = t.with_columns(buy=pl.col("card_lo"), placed=guard & (crossed < pl.col("card_lo")))
+    t = t.filter(pl.col("placed").fill_null(False))
+    sells = prices.select(
+        sell_at="observed_at",
+        sell_item="item_id",
+        sell_p="p",
+        sell_lo="lo",
+        sell_hi="hi",
+        sell_units="units",
+    ).sort("sell_at")
+    t = (
+        t.with_columns(sell_from=pl.col("observed_at") + 2 * H, sell_item=pl.col("reward_id"))
+        .sort("sell_from")
+        .join_asof(
+            sells,
+            left_on="sell_from",
+            right_on="sell_at",
+            by="sell_item",
+            strategy="forward",
+            tolerance=SELL_WITHIN,
+            check_sortedness=False,  # sorted by time above; checked per group it can't be
+        )
+    )
+    sell = pl.col("sell_lo")
+    if method == "limit_both":
+        crossed = pl.col("sell_p") if fill == "strict" else pl.col("sell_hi")
+        sell = pl.when(crossed > pl.col("ask")).then(pl.col("ask")).otherwise(sell)
+    t = t.with_columns(
+        sell=sell,
+        k=pl.min_horizontal(
+            (pl.col("buy_units") * CAPTURE / pl.col("n")).floor(),
+            (TRADE_DIVINES * pl.col("rate") / (pl.col("n") * pl.col("buy"))).floor(),
+            (pl.col("sell_units").fill_null(1e12) * CAPTURE / pl.col("q")).floor(),
+        ).fill_null(0),
+    )
+    cost = pl.col("k") * pl.col("n") * pl.col("buy")
+    value = (pl.col("k") * pl.col("q") * pl.col("sell")).fill_null(0)  # never sold: lost
+    return t.with_columns(
+        pnl=pl.when(pl.col("k") >= 1).then((value - cost) / pl.col("rate")).otherwise(0.0)
+    ).select("observed_at", "item_id", filled=pl.col("k") >= 1, pnl="pnl")
+
+
 # --- Rising -------------------------------------------------------------------------
 
 
@@ -348,13 +450,18 @@ def _persistence(loops: pl.DataFrame, hours: pl.DataFrame) -> dict:
     return {"flagged": get.get(True), "others": get.get(False)}
 
 
-def hourly_results(con, league: str) -> tuple[list[dict], list[dict]]:
+def hourly_results(con, league: str) -> tuple[list[dict], list[dict], list[dict]]:
     rate = _rate(con, league)
     loops = _loop_hours(con, league)
     prices = _prices(con, league)
     all_hours = loops.select("observed_at", "day_offset").unique("observed_at")
-    out, persistence = [], []
+    out, persistence, card_limits = [], [], []
     trades = {}
+    limits = {
+        (method, fill): card_limit_trades(con, prices, rate, method, fill)
+        for method in CARD_METHODS
+        for fill in (FILLS if method != "market" else FILLS[:1])
+    }
     for rule in RULES:
         for scenario in SCENARIOS:
             trades["loops", rule, scenario] = loop_trades(loops, rate, rule, scenario)
@@ -376,7 +483,17 @@ def hourly_results(con, league: str) -> tuple[list[dict], list[dict]]:
                 }
             )
         persistence.append({"league": league, "segment": segment, **_persistence(loops, hours)})
-    return out, persistence
+        for (method, fill), t in limits.items():
+            card_limits.append(
+                {
+                    "league": league,
+                    "segment": segment,
+                    "method": method,
+                    "fill": fill,
+                    **_summary(t.join(hours, on="observed_at"), hours),
+                }
+            )
+    return out, persistence, card_limits
 
 
 # --- Launch picks, walk-forward ------------------------------------------------------
@@ -510,11 +627,12 @@ def hourly_leagues(con) -> list[str]:
 
 def build(con: duckdb.DuckDBPyConnection) -> dict:
     leagues = hourly_leagues(con)
-    hourly, persistence = [], []
+    hourly, persistence, card_limits = [], [], []
     for league in leagues:
-        rows, persist = hourly_results(con, league)
+        rows, persist, limits = hourly_results(con, league)
         hourly += rows
         persistence += persist
+        card_limits += limits
     complete = [lg for lg in leagues if lg in launch_picks.complete_leagues(con)]
     return {
         "built_at": datetime.now(UTC).isoformat(),
@@ -531,6 +649,7 @@ def build(con: duckdb.DuckDBPyConnection) -> dict:
         },
         "hourly": hourly,
         "persistence": persistence,
+        "card_limits": card_limits,
         "launch": launch_results(con, complete),
     }
 

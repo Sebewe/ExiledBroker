@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { BacktestHourly, BacktestLaunch, BacktestReport } from '../api/client'
+import type { BacktestCardLimit, BacktestHourly, BacktestLaunch, BacktestReport } from '../api/client'
 import Backtest from './Backtest'
 
 function serve(routes: Record<string, { status?: number; body: unknown }>) {
@@ -60,6 +60,22 @@ const launch = (window_id: string, harsh: number): BacktestLaunch => ({
   picks: [{ name: 'Gemcutter’s Prism', rank: 1, stake: 10, fair: 4, harsh: 2.5 }],
 })
 
+const limit = (method: string, fill: string, per_hour: number, filled: number): BacktestCardLimit => ({
+  league: 'Mirage',
+  segment: 'launch',
+  method,
+  fill,
+  hours: 336,
+  signals: 300,
+  filled,
+  won: filled,
+  total: per_hour * 336,
+  per_hour,
+  best_hour: 1,
+  worst_hour: -1,
+  daily: [1],
+})
+
 const REPORT: BacktestReport = {
   built_at: '2026-10-23T10:00:00Z',
   leagues: ['Settlers', 'Mercenaries', 'Keepers', 'Mirage'],
@@ -82,6 +98,13 @@ const REPORT: BacktestReport = {
     hourly('rising', 'steady', s, s === 'fair' ? -0.93 : -9.7),
   ]),
   persistence: [{ league: 'Mirage', segment: 'launch', flagged: 0.63, others: 0.09 }],
+  card_limits: [
+    limit('market', 'touch', -1.01, 150),
+    limit('limit_buy', 'touch', 0.34, 100),
+    limit('limit_buy', 'strict', 0, 4),
+    limit('limit_both', 'touch', 0.66, 100),
+    limit('limit_both', 'strict', 0, 4),
+  ],
   launch: [launch('day1', 3.49), launch('days2_4', 1.31), launch('days5_10', 0.84)],
 }
 
@@ -103,5 +126,7 @@ describe('Backtest', () => {
     expect(screen.getByText('−0.94 to −0.89 div/h')).toBeTruthy() // card turn-ins, harsh
     expect(screen.getByText(/63% of the time, against 9%/)).toBeTruthy()
     expect(screen.getByText("Mirage's day-1 picks")).toBeTruthy()
+    expect(screen.getByText(/cards made \+0\.66 div\/h, if the orders fill/)).toBeTruthy()
+    expect(screen.getByText(/only 4 of 300 orders filled/)).toBeTruthy()
   })
 })

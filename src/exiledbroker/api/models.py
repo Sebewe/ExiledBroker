@@ -281,6 +281,7 @@ class MissedWindow(BaseModel):
     rising: list[Mover]
     falling: list[Mover]
     volatile: list[Volatile]
+    ticker: list[Mover]  # up to 24 liquid movers, biggest moves first
     loops: list[MissedLoop]
     cards: list[MissedCard]
     loops_paid: int  # how many items' loops paid, not just the top ones
@@ -325,6 +326,25 @@ class BacktestPersistence(BaseModel):
     others: float | None  # the same for every other loop that traded
 
 
+class BacktestCardLimit(BaseModel):
+    """The recap's top card turn-ins traded with orders priced from its hour, in one
+    stretch of a league. Profits are in Divines."""
+
+    league: str
+    segment: str
+    method: str  # 'market' | 'limit_buy' | 'limit_both' (analysis/backtest.card_limit_trades)
+    fill: str  # 'touch' (a trade went past the order) | 'strict' (the hour's average did)
+    hours: int
+    signals: int  # orders placed
+    filled: int
+    won: int
+    total: float
+    per_hour: float
+    best_hour: float
+    worst_hour: float
+    daily: list[float]
+
+
 class BacktestLaunchPick(BaseModel):
     name: str
     rank: int
@@ -355,4 +375,5 @@ class BacktestReport(BaseModel):
     assumptions: BacktestAssumptions
     hourly: list[BacktestHourly]
     persistence: list[BacktestPersistence]
+    card_limits: list[BacktestCardLimit]
     launch: list[BacktestLaunch]

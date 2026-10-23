@@ -57,6 +57,8 @@ def test_movers_volatility_and_streaks(con):
     [down] = one["falling"]
     assert down["name"] == "Faller" and down["streak"] == -2
     assert three["falling"][0]["change"] == pytest.approx(30 / 50 - 1)  # against 3 hours before
+    # The ticker: every liquid mover, biggest move first (Climber +33%, Faller -25%).
+    assert [m["name"] for m in one["ticker"]] == ["Climber", "Faller"]
     assert one["volatile"][0]["name"] == "Swingy"
     assert one["volatile"][0]["range"] == pytest.approx(1.0)
     # Nothing paid: no loops or cards in this data, and the counts say so.
