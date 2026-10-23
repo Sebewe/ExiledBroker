@@ -88,9 +88,9 @@ def test_the_report_is_built_stored_and_served(settings):  # noqa: F811
         # Hours with both markets of a loop (the first have no Divine rate yet).
         assert 0 < h.hours <= 12 and h.filled <= h.signals, key
         assert h.per_hour == pytest.approx(h.total / h.hours), key
-    for strategy in ("cards", "loops"):
+    for strategy, orders in bt.LIMIT_ORDERS.items():
         methods = {(c.method, c.fill) for c in checked.limits if c.strategy == strategy}
-        limited = {(m, f) for m in ("limit_buy", "limit_both") for f in bt.FILLS}
+        limited = {(m, f) for m in orders if m != "market" for f in bt.FILLS}
         assert methods == {("market", "touch"), *limited}, strategy
     # The worst traded price is never better than the average less slippage.
     for strategy in bt.STRATEGIES:

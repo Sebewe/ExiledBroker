@@ -333,7 +333,7 @@ class BacktestLimit(BaseModel):
     league: str
     segment: str
     strategy: str  # 'cards' | 'loops'
-    method: str  # 'market' | 'limit_buy' | 'limit_both' (analysis/backtest.*_limit_trades)
+    method: str  # 'market' | 'limit' | 'limit_mid' (analysis/backtest.LIMIT_ORDERS)
     fill: str  # 'touch' (a trade went past the order) | 'strict' (the hour's average did)
     hours: int
     signals: int  # orders placed

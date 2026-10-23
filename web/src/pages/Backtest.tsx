@@ -69,7 +69,8 @@ function Report({ r }: { r: BacktestReport }) {
   const top = rows(r, 'loops', 'top', 'harsh')
   const cards = [...rows(r, 'cards', 'top', 'harsh'), ...rows(r, 'cards', 'steady', 'harsh')]
   const rising = [...rows(r, 'rising', 'top', 'fair'), ...rows(r, 'rising', 'steady', 'fair')]
-  const limits = r.limits.filter((c) => c.strategy === 'cards' && c.method === 'limit_both' && c.fill === 'touch' && c.segment === 'launch')
+  const limits = r.limits.filter((c) => c.strategy === 'cards' && c.method === 'limit' && c.fill === 'touch' && c.segment === 'launch')
+  const loopOrders = r.limits.filter((c) => c.strategy === 'loops' && c.method === 'limit_mid' && c.fill === 'touch' && c.segment === 'launch')
   const a = r.assumptions
   return (
     <>
@@ -87,7 +88,8 @@ function Report({ r }: { r: BacktestReport }) {
           every league we tested.
         </Verdict>
         <Verdict kind="even" title="Steady loops about break even" figure={`${range(perHour(steady), signed)} div/h`} figureNote="harsh, loops that paid every hour of the last 3">
-          Pocket change, not a few Divines an hour. Acting on every loop the recap shows makes {range(perHour(top), signed)} div/h harsh.
+          Pocket change, not a few Divines an hour. Acting on every loop the recap shows makes {range(perHour(top), signed)} div/h harsh; limit orders priced
+          mid-range made {range(perHour(loopOrders), signed)}, if they fill (below).
         </Verdict>
         <Verdict kind="loses" title="Cards and risers lose" figure={`${range(perHour(cards), signed)} div/h`} figureNote="card turn-ins at market prices, harsh">
           With limit orders priced from the recap's hour, cards made {range(perHour(limits), signed)} div/h, if the orders fill (below). Buying the Rising list
@@ -126,7 +128,7 @@ function Report({ r }: { r: BacktestReport }) {
 
       <LaunchSection launch={r.launch} />
       <HourlySection r={r} />
-      <LimitSections limits={r.limits} />
+      <LimitSection limits={r.limits} />
 
       <Section title="What to do with this">
         <ol className="flex max-w-3xl list-decimal flex-col gap-2 pl-5 text-sm leading-relaxed text-muted marker:text-accent">
@@ -142,8 +144,9 @@ function Report({ r }: { r: BacktestReport }) {
             <span className="text-text">Later windows pay less.</span> Days 2–4 still beat the typical item; days 5–10 is close to break-even at harsh prices.
           </li>
           <li>
-            <span className="text-text">Only run a loop that paid every hour</span> (the "paid every hour" badge on the 3-hour recap), or put in orders: bid
-            the last hour's lowest price for the item and ask the last hour's average in the other currency. Either way, expect a fraction of a Divine an hour.
+            <span className="text-text">For loops, put in orders instead of buying at the market.</span> Bid about halfway up the last hour's price range for the
+            item, and ask about three quarters up its range in the other currency. Without orders, only run a loop that paid every hour (the badge on the
+            3-hour recap). Either way, expect under a Divine an hour.
           </li>
           <li>
             <span className="text-text">For card turn-ins, use limit orders, not market buys.</span> Bid for cards at the last hour's lowest price, only if a set
@@ -371,133 +374,118 @@ function Finding({ icon, title, children }: { icon: ReactNode; title: string; ch
   )
 }
 
-type Method = { method: string; fill: string; name: string; what: string }
-const METHODS: Record<'cards' | 'loops', Method[]> = {
-  cards: [
-    { method: 'market', fill: 'touch', name: 'Market orders', what: 'buy at the next hour’s highest card price, sell the reward at its lowest' },
-    { method: 'limit_buy', fill: 'touch', name: 'Limit buy', what: 'bid at the recap hour’s lowest card price; fills if any trade went under it' },
-    { method: 'limit_buy', fill: 'strict', name: 'Limit buy, strict fill', what: 'fills only if the next hour’s average went under the bid' },
-    { method: 'limit_both', fill: 'touch', name: 'Limit buy and sell', what: 'also ask the recap hour’s average for the reward; fills if any trade went over it' },
-    { method: 'limit_both', fill: 'strict', name: 'Limit buy and sell, strict fill', what: 'fills only if the hour’s average crossed the order' },
-  ],
-  loops: [
-    { method: 'market', fill: 'touch', name: 'Market orders', what: 'buy the item at the next hour’s highest price, sell it the hour after at the lowest' },
-    { method: 'limit_buy', fill: 'touch', name: 'Limit buy', what: 'bid at the recap hour’s lowest price for the item; fills if any trade went under it' },
-    { method: 'limit_buy', fill: 'strict', name: 'Limit buy, strict fill', what: 'fills only if the next hour’s average went under the bid' },
-    { method: 'limit_both', fill: 'touch', name: 'Limit buy and sell', what: 'also ask the recap hour’s average in the other currency; fills if any trade went over it' },
-    { method: 'limit_both', fill: 'strict', name: 'Limit buy and sell, strict fill', what: 'fills only if the hour’s average crossed the order' },
-  ],
-}
+// The orders compared, one row each (analysis/backtest.LIMIT_ORDERS).
+const ORDERS: { strategy: string; method: string; name: string; what: string }[] = [
+  { strategy: 'cards', method: 'market', name: 'Cards, market orders', what: 'buy sets at the next hour’s highest price, sell the reward at its lowest' },
+  {
+    strategy: 'cards',
+    method: 'limit',
+    name: 'Cards, limit orders',
+    what: 'bid the recap hour’s lowest card price if the set still pays at the reward’s lowest; ask the reward’s average',
+  },
+  { strategy: 'loops', method: 'market', name: 'Loops, market orders', what: 'buy the item at the next hour’s highest price, sell it the hour after at the lowest' },
+  { strategy: 'loops', method: 'limit', name: 'Loops, limit orders at the low', what: 'bid the recap hour’s lowest price; ask its average in the other currency' },
+  {
+    strategy: 'loops',
+    method: 'limit_mid',
+    name: 'Loops, limit orders mid-range',
+    what: 'bid halfway up the recap hour’s range; ask three quarters up the other currency’s',
+  },
+]
+type Order = (typeof ORDERS)[number]
 
-function fills(limits: BacktestLimit[], m: Method) {
-  const rs = limits.filter((c) => c.method === m.method && c.fill === m.fill)
+const pick = (limits: BacktestLimit[], o: Order, fill: string) => limits.filter((c) => c.strategy === o.strategy && c.method === o.method && c.fill === fill)
+
+function fills(limits: BacktestLimit[], o: Order, fill: string) {
+  const rs = pick(limits, o, fill)
   return { placed: rs.reduce((s, c) => s + c.signals, 0), filled: rs.reduce((s, c) => s + c.filled, 0) }
 }
 
-/** One strategy's limit-order results: a row per way of ordering, a column per league. */
-function LimitTable({ limits, methods, caption }: { limits: BacktestLimit[]; methods: Method[]; caption: string }) {
-  const segments = limits.filter((c) => c.method === 'market')
-  const find = (m: Method, league: string, segment: string) =>
-    limits.find((c) => c.method === m.method && c.fill === m.fill && c.league === league && c.segment === segment)
-  return (
-    <div className="overflow-x-auto rounded-lg border border-border">
-      <table className="w-full min-w-[46rem] text-sm">
-        <caption className="sr-only">{caption}</caption>
-        <thead className="bg-surface-2 text-xs text-muted">
-          <tr>
-            <th scope="col" className="px-3 py-2 text-left font-medium">
-              Orders
-            </th>
-            {segments.map((h) => (
-              <th key={h.league + h.segment} scope="col" className="px-3 py-2 text-right font-medium">
-                {h.league}
-                <span className="block font-normal text-faint">{SEGMENT[h.segment] ?? h.segment}</span>
-              </th>
-            ))}
-            <th scope="col" className="px-3 py-2 text-right font-medium" title="Orders that filled, of all placed">
-              Filled
-            </th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border">
-          {methods.map((m) => {
-            const f = fills(limits, m)
-            return (
-              <tr key={m.method + m.fill}>
-                <th scope="row" className="px-3 py-2 text-left font-normal">
-                  <span className="text-text">{m.name}</span>
-                  <span className="block text-xs text-faint">{m.what}</span>
-                </th>
-                {segments.map((h) => {
-                  const c = find(m, h.league, h.segment)
-                  return (
-                    <td
-                      key={h.league + h.segment}
-                      className={`num px-3 py-2 text-right font-medium ${tone(c?.per_hour, 0)}`}
-                      title={c ? `${c.filled} of ${c.signals} orders filled, ${c.won} won` : ''}
-                    >
-                      {c ? signed(c.per_hour) : '–'}
-                    </td>
-                  )
-                })}
-                <td className="num px-3 py-2 text-right text-muted">{f.placed ? pctOf(f.filled / f.placed) : '–'}</td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
-  )
-}
+const filledShare = (f: { placed: number; filled: number }) => (f.placed ? pctOf(f.filled / f.placed) : '–')
+const launchHours = (limits: BacktestLimit[], o: Order, fill: string) => perHour(pick(limits, o, fill).filter((c) => c.segment === 'launch'))
 
-function LimitSections({ limits }: { limits: BacktestLimit[] }) {
-  const cards = limits.filter((c) => c.strategy === 'cards')
-  const loops = limits.filter((c) => c.strategy === 'loops')
-  const both = (rows: BacktestLimit[]) => rows.filter((c) => c.method === 'limit_both' && c.fill === 'touch' && c.segment === 'launch')
-  const strictCards = fills(cards, METHODS.cards.at(-1)!)
-  const strictLoops = fills(loops, METHODS.loops.at(-1)!)
-  const touchCards = fills(cards, METHODS.cards[3]!)
-  const touchLoops = fills(loops, METHODS.loops[3]!)
+/** Cards and loops traded with orders priced from the recap's hour: a row per way of
+ *  ordering, a column per league; each cell the result if a trade past the order fills
+ *  it, and below it the result if the hour's average has to cross it. */
+function LimitSection({ limits }: { limits: BacktestLimit[] }) {
+  if (!limits.length) return null
+  const segments = limits.filter((c) => c.strategy === 'cards' && c.method === 'market')
+  const find = (o: Order, fill: string, league: string, segment: string) =>
+    pick(limits, o, fill).find((c) => c.league === league && c.segment === segment)
+  const [cardsMarket, cardsLimit, loopsMarket, , loopsMid] = ORDERS as [Order, Order, Order, Order, Order]
   return (
-    <>
-      {cards.length > 0 && (
-        <Section
-          title="Card turn-ins with limit orders"
-          description="The same card picks, with orders priced from the recap's hour instead of whatever the next hour asks. Divines an hour; unsold rewards count as lost, orders that don't fill cost nothing. Hover a cell for its fills."
-        >
-          <LimitTable limits={cards} methods={METHODS.cards} caption="Card turn-ins with limit orders" />
-          <div className="grid gap-3 md:grid-cols-2">
-            <Finding icon={<FlaskConical aria-hidden className="size-4 text-accent" />} title="The last hour's range is a better price guide than the market">
-              Market orders lost in every launch fortnight. Bidding at the recap hour's low, and skipping sets that wouldn't pay at the reward's low, brings it to
-              about break even or better; asking the hour's average for the reward, instead of taking the worst bid, made {range(perHour(both(cards)), signed)}{' '}
-              div/h.
-            </Finding>
-            <Finding icon={<FlaskConical aria-hidden className="size-4 text-accent" />} title="Whether the orders fill is the open question">
-              Hourly data shows the hour's range, not the queue at each price. If a single trade past your price means a fill, {pctOf(touchCards.filled / (touchCards.placed || 1))} of
-              orders filled and they paid. If the hour's average has to cross it, only {strictCards.filled} of {strictCards.placed} filled, and there's next to
-              nothing to earn.
-            </Finding>
-          </div>
-        </Section>
-      )}
-      {loops.length > 0 && (
-        <Section
-          title="Loops with limit orders"
-          description="The same loops, but the item is bought with an order at the recap hour's lowest price and sold the hour after (Divines always converted at the worst rate). Divines an hour."
-        >
-          <LimitTable limits={loops} methods={METHODS.loops} caption="Loops with limit orders" />
-          <div className="grid gap-3 md:grid-cols-2">
-            <Finding icon={<FlaskConical aria-hidden className="size-4 text-accent" />} title="Limit orders help loops less than cards">
-              Spread over two hours, market orders lose. Bidding at the recap hour's low makes it a small earner, and asking the hour's average on the way out
-              makes {range(perHour(both(loops)), signed)} div/h: about what steady loops make, from fewer trades.
-            </Finding>
-            <Finding icon={<FlaskConical aria-hidden className="size-4 text-accent" />} title="Same caveat on fills">
-              {pctOf(touchLoops.filled / (touchLoops.placed || 1))} of orders filled if a single trade past the price counts, {strictLoops.filled} of{' '}
-              {strictLoops.placed} if the hour's average has to cross it.
-            </Finding>
-          </div>
-        </Section>
-      )}
-    </>
+    <Section
+      title="Limit orders"
+      description="The recap's top card turn-ins and loops again, with orders priced from the recap's own hour instead of whatever the next hour asks. Divines an hour: on top if any trade past the order fills it, below if the hour's average has to cross it. Unsold items count as lost; orders that don't fill cost nothing."
+    >
+      <div className="overflow-x-auto rounded-lg border border-border">
+        <table className="w-full min-w-[48rem] text-sm">
+          <caption className="sr-only">Card turn-ins and loops with limit orders</caption>
+          <thead className="bg-surface-2 text-xs text-muted">
+            <tr>
+              <th scope="col" className="px-3 py-2 text-left font-medium">
+                Orders
+              </th>
+              {segments.map((h) => (
+                <th key={h.league + h.segment} scope="col" className="px-3 py-2 text-right font-medium">
+                  {h.league}
+                  <span className="block font-normal text-faint">{SEGMENT[h.segment] ?? h.segment}</span>
+                </th>
+              ))}
+              <th scope="col" className="px-3 py-2 text-right font-medium" title="Orders that filled, of all placed">
+                Filled
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {ORDERS.map((o) => {
+              const market = o.method === 'market'
+              return (
+                <tr key={o.strategy + o.method}>
+                  <th scope="row" className="px-3 py-2 text-left font-normal">
+                    <span className="text-text">{o.name}</span>
+                    <span className="block text-xs text-faint">{o.what}</span>
+                  </th>
+                  {segments.map((h) => {
+                    const touch = find(o, 'touch', h.league, h.segment)
+                    const strict = market ? undefined : find(o, 'strict', h.league, h.segment)
+                    return (
+                      <td
+                        key={h.league + h.segment}
+                        className="px-3 py-2 text-right"
+                        title={[touch, strict]
+                          .filter((c) => c)
+                          .map((c) => `${c!.filled} of ${c!.signals} orders filled, ${c!.won} won (${c!.fill})`)
+                          .join('; ')}
+                      >
+                        <span className={`num block font-medium ${tone(touch?.per_hour, 0)}`}>{touch ? signed(touch.per_hour) : '–'}</span>
+                        {strict && <span className={`num block text-xs ${tone(strict.per_hour, 0)}`}>{signed(strict.per_hour)}</span>}
+                      </td>
+                    )
+                  })}
+                  <td className="num px-3 py-2 text-right text-muted">
+                    <span className="block">{filledShare(fills(limits, o, 'touch'))}</span>
+                    {!market && <span className="block text-xs">{filledShare(fills(limits, o, 'strict'))}</span>}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        <Finding icon={<FlaskConical aria-hidden className="size-4 text-accent" />} title="Price from the last hour's range, not the market">
+          Market orders lost for both in every launch fortnight ({range(launchHours(limits, cardsMarket, 'touch'), signed)} div/h for cards,{' '}
+          {range(launchHours(limits, loopsMarket, 'touch'), signed)} for loops). Cards did best bidding at the hour's low and asking the reward's average (
+          {range(launchHours(limits, cardsLimit, 'touch'), signed)}). Loops did best bidding mid-range ({range(launchHours(limits, loopsMid, 'touch'), signed)}
+          ), and were the only orders that still made money when the hour's average had to cross them ({range(launchHours(limits, loopsMid, 'strict'), signed)}).
+        </Finding>
+        <Finding icon={<FlaskConical aria-hidden className="size-4 text-accent" />} title="Whether the orders fill is the open question">
+          Hourly data shows each hour's range, not the queue at each price, so the two figures bracket it. The mid-range loop orders were picked from a grid of
+          bid and ask levels on Mirage and Allflame, then checked on the other leagues, where they held up but earned less. Cards' best settings didn't beat the
+          simple ones.
+        </Finding>
+      </div>
+    </Section>
   )
 }

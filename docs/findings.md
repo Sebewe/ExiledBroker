@@ -88,6 +88,17 @@ A dummy trader with 100 Divines does only what the site said at the time. Hourly
   | Either limit, filled only if the hour's average crossed the order | −0.01 to +0.02 (+0.02) | 1.4% (52 of 3,672) |
 
   About what steady loops make with market orders, from fewer trades, and unlike cards it held up late in the league. The same fill caveat applies.
+- **Where in the range to place the orders** (`bid_at` / `ask_at`: 0 = the recap hour's lowest trade, 1 = its highest). A 5 × 5 grid of bid and ask levels (min, 25%, 50%, 75%, max) on Mirage's and Allflame's first 14 days, then the best settings checked on Settlers, Mercenaries and Keepers:
+
+  | Div/h, touch / strict fill | Settlers | Mercenaries | Keepers | Mirage | Allflame |
+  |---|---|---|---|---|---|
+  | Loops: bid at the low, ask the average | +0.10 / 0.00 | +0.18 / 0.00 | +0.04 / −0.01 | +0.29 / +0.02 | +0.26 / 0.00 |
+  | Loops: bid 25%, ask 75% | +0.34 / +0.03 | +0.66 / +0.03 | +0.24 / +0.01 | +0.90 / +0.10 | +0.90 / +0.06 |
+  | **Loops: bid 50%, ask 75%** | +0.25 / +0.05 | +0.52 / +0.13 | +0.20 / +0.01 | +0.78 / +0.32 | +0.76 / +0.16 |
+  | Cards: bid at the low, ask the average | +0.79 / +0.01 | +0.97 / −0.02 | +0.59 / 0.00 | +0.66 / 0.00 | +0.51 / 0.00 |
+  | Cards: bid 25%, ask 50% | +0.93 / +0.07 | +0.78 / −0.03 | +0.56 / 0.00 | +0.62 / −0.02 | +0.52 / 0.00 |
+
+  For loops, a higher bid fills far more often (about two thirds of orders at touch from 25% up, against a fifth at the low) and pays more; bid 50%, ask 75% is the only setting positive under both fill models in every league, so it's the one on the page. Gains in the three leagues it wasn't picked on are smaller, as expected of a setting picked from 25. For cards, bidding higher lets in sets that no longer pay, and no setting beat the low bid reliably.
 - **The Rising list is not a buy signal**: risers fall after the hour they're published, at fair prices too.
 - **Thin markets flattered the first run.** Before the volume floor, many recap loops were markets with an edge over 1,000% from a couple of items traded; their few fills made acting on every loop look break-even. With the floor (now on the page too), it loses a little. The landing page was renamed from Missed opportunities to Market recap, without the "sat on the table" totals, and words its picks as options to check.
 - **Caveats:** no order book, so real fills sit between fair and harsh; one trader at small sizes; today's core pool and loot-filter card list (a small head start); five leagues, the first ones with few earlier leagues to rank picks from.

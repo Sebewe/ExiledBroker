@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { BacktestLimit, BacktestHourly, BacktestLaunch, BacktestReport } from '../api/client'
@@ -99,13 +99,16 @@ const REPORT: BacktestReport = {
     hourly('rising', 'steady', s, s === 'fair' ? -0.93 : -9.7),
   ]),
   persistence: [{ league: 'Mirage', segment: 'launch', flagged: 0.63, others: 0.09 }],
-  limits: ['cards', 'loops'].flatMap((s) => [
-    limit(s, 'market', 'touch', -1.01, 150),
-    limit(s, 'limit_buy', 'touch', 0.34, 100),
-    limit(s, 'limit_buy', 'strict', 0, 4),
-    limit(s, 'limit_both', 'touch', s === 'cards' ? 0.66 : 0.29, 100),
-    limit(s, 'limit_both', 'strict', 0, 4),
-  ]),
+  limits: [
+    limit('cards', 'market', 'touch', -1.01, 150),
+    limit('cards', 'limit', 'touch', 0.66, 100),
+    limit('cards', 'limit', 'strict', 0, 4),
+    limit('loops', 'market', 'touch', -1.23, 250),
+    limit('loops', 'limit', 'touch', 0.29, 100),
+    limit('loops', 'limit', 'strict', 0.02, 4),
+    limit('loops', 'limit_mid', 'touch', 0.78, 200),
+    limit('loops', 'limit_mid', 'strict', 0.32, 90),
+  ],
   launch: [launch('day1', 3.49), launch('days2_4', 1.31), launch('days5_10', 0.84)],
 }
 
@@ -128,7 +131,10 @@ describe('Backtest', () => {
     expect(screen.getByText(/63% of the time, against 9%/)).toBeTruthy()
     expect(screen.getByText("Mirage's day-1 picks")).toBeTruthy()
     expect(screen.getByText(/cards made \+0\.66 div\/h, if the orders fill/)).toBeTruthy()
-    expect(screen.getByText(/only 4 of 300 filled/)).toBeTruthy()
-    expect(screen.getByText(/makes \+0\.29 div\/h: about what steady loops make/)).toBeTruthy()
+    // One table for both strategies, each limit cell with both fill models.
+    const table = screen.getByRole('table', { name: 'Card turn-ins and loops with limit orders' })
+    expect(within(table).getByText('Loops, limit orders mid-range')).toBeTruthy()
+    expect(within(table).getByText('+0.32')).toBeTruthy() // strict fill, under +0.78
+    expect(screen.getByText(/Loops did best bidding mid-range \(\+0\.78/)).toBeTruthy()
   })
 })

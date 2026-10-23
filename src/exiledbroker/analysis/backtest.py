@@ -60,7 +60,18 @@ LAUNCH_STAKE = 10.0  # Divines per launch pick (TOP picks: the bank)
 SCENARIOS = ("fair", "harsh")
 STRATEGIES = ("loops", "cards", "rising")
 RULES = {"top": 1, "steady": STEADY_HOURS}
-LIMIT_METHODS = ("market", "limit_buy", "limit_both")  # see card_limit_trades
+# The orders the Backtest page compares, per strategy: (method, bid_at, ask_at); see
+# card_limit_trades. "limit_mid" was picked on Mirage's and Allflame's first 14 days from
+# a 5 × 5 grid of bid and ask levels, and held up in the other leagues: the only setting
+# positive under both fill models in all five. For cards no setting beat "limit".
+LIMIT_ORDERS = {
+    "cards": {"market": ("market", 0.0, None), "limit": ("limit_both", 0.0, None)},
+    "loops": {
+        "market": ("market", 0.0, None),
+        "limit": ("limit_both", 0.0, None),
+        "limit_mid": ("limit_both", 0.5, 0.75),
+    },
+}
 FILLS = ("touch", "strict")
 H = timedelta(hours=1)
 DIVINE = "currency:divine-orb"
@@ -627,10 +638,14 @@ def hourly_results(con, league: str) -> tuple[list[dict], list[dict], list[dict]
     trades = {}
     cross = _cross_hours(con, league)
     limits = {}
-    for method in LIMIT_METHODS:
-        for fill in FILLS if method != "market" else FILLS[:1]:
-            limits["cards", method, fill] = card_limit_trades(con, prices, rate, method, fill)
-            limits["loops", method, fill] = loop_limit_trades(loops, cross, rate, method, fill)
+    for strategy, orders in LIMIT_ORDERS.items():
+        for name, (method, bid_at, ask_at) in orders.items():
+            for fill in FILLS if method != "market" else FILLS[:1]:
+                if strategy == "cards":
+                    t = card_limit_trades(con, prices, rate, method, fill, bid_at, ask_at)
+                else:
+                    t = loop_limit_trades(loops, cross, rate, method, fill, bid_at, ask_at)
+                limits[strategy, name, fill] = t
     for rule in RULES:
         for scenario in SCENARIOS:
             trades["loops", rule, scenario] = loop_trades(loops, rate, rule, scenario)

@@ -288,8 +288,8 @@ function Options({ w }: { w: MissedWindow }) {
       <ol className="grid gap-3 md:grid-cols-3">
         <Option icon={Repeat} title="A loop that keeps paying" href="#loops" link="See the loops ↓">
           {loops}
-          When we replayed past leagues, loops that paid hour after hour held up best, and still only about broke even at the worst prices. Check both prices
-          in-game before you start.
+          When we replayed past leagues, buying at the market about broke even at best. Orders priced from the last hour's range did better when they
+          filled, and many don't. Check both prices in-game before you start.
         </Option>
         <Option icon={Layers} title="A card turn-in" href="#cards" link="See the cards ↓">
           The margins below were there at the hour's average prices. In our replays, buying sets at whatever the market asked lost money; bidding at the hour's
