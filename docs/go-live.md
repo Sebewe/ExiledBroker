@@ -25,7 +25,13 @@ Deadline: the next league launches in about a month. The server must be live, ca
 - [ ] When a league ends, the pipeline adds that league's reduced fortnight to the history tables and rebuilds the Launch picks from those tables, so it never needs the full history.
 - [ ] Re-run the simulation's tiers on the new shape (no volume) and update the bill.
 
-### 2. Railway project (setup)
+### 2. League switch, rehearsed (works in the local simulation before going live)
+
+- [ ] Study the real switches on disk: GGG's pages across the last league changes (Settlers → … → Mirage → Allflame). What changes at launch: new league keys, new items, item order, response size, the first hours' thin markets, and RePoE lagging behind new items.
+- [ ] Replay a switch through the hosted pipeline in the simulation: `EB_NEXT_LEAGUE` set, the old league running, the new league's first pages. It must switch exactly at launch, drop the old league from the site, add its reduced fortnight to history, rebuild the picks, and show "waiting for the first trades" to the first hour.
+- [ ] Make the loader agnostic to response shape: no reliance on item order or count, unknown items (not yet in RePoE) handled without failing or merging, and pages bigger than any seen so far fine. Test with recorded pages, reordered and padded, and with RePoE missing the new items.
+
+### 3. Railway project (setup)
 
 - [ ] Project with Railway's Postgres template, plus `web` and `pipeline` services pointing their config-as-code at `deploy/railway/web.json` / `pipeline.json`.
 - [ ] Variables:
@@ -35,24 +41,18 @@ Deadline: the next league launches in about a month. The server must be live, ca
 - [ ] Custom domain on the web service (CNAME), HTTPS from Railway.
 - [ ] Decide whether Railway deploys on every push to `main` or waits for CI (Railway's "wait for CI" setting).
 
-### 3. Seed, then catch up (first run)
+### 4. Seed, then catch up (first run)
 
 - [ ] A seed command loads the server's Postgres from the local data: the live league's site rows, the reduced history, the Launch picks, and the live window's raw pages. It sends nothing to GGG.
 - [ ] The first pass then fetches only the hours after the local copy's last hour. Watch it run and check that its `ingest_run` row has one request per missing hour.
 - [ ] Afterwards: take the pipeline down for a few hours, bring it back, and check it fetches exactly the missed hours.
 
-### 4. Limits and the fallback page
+### 5. Limits and the fallback page
 
 - [ ] Railway usage settings: an email alert (e.g. $7) and a hard limit (e.g. $10). The hard limit stops the services.
 - [ ] Per-service resource caps in Railway (e.g. web 512 MB, pipeline 1 GB), so a runaway is contained before it reaches the limit.
 - [ ] **The fallback page can't live on Railway**, since a hard limit stops everything there. Put the domain behind Cloudflare (free). A small Worker passes requests to Railway and returns a static "Something went wrong, we're investigating" page when the origin is down or erroring. It also covers deploys and crashes.
 - [ ] Pipeline failure alert: a failed cron pass shows in Railway, and the site shows its stale-feed state. Add an email or uptime ping so someone hears about it.
-
-### 5. League switch, rehearsed
-
-- [ ] Study the real switches on disk: GGG's pages across the last league changes (Settlers → … → Mirage → Allflame). What changes at launch: new league keys, new items, item order, response size, the first hours' thin markets, and RePoE lagging behind new items.
-- [ ] Replay a switch through the hosted pipeline in the simulation: `EB_NEXT_LEAGUE` set, the old league running, the new league's first pages. It must switch exactly at launch, drop the old league from the site, add its reduced fortnight to history, rebuild the picks, and show "waiting for the first trades" to the first hour.
-- [ ] Make the loader agnostic to response shape: no reliance on item order or count, unknown items (not yet in RePoE) handled without failing or merging, and pages bigger than any seen so far fine. Test with recorded pages, reordered and padded, and with RePoE missing the new items.
 
 ### 6. Before flipping DNS
 
