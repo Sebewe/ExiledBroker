@@ -8,8 +8,9 @@ and a reference seeded from the local copy."""
 
 import os
 
-import psycopg
 import pytest
+
+psycopg = pytest.importorskip("psycopg")  # the Postgres extra; CI's main job runs without it
 
 from exiledbroker.storage import backup, db
 from test_pipeline import LEAGUE, _dump, _seed, local, needs_pg, run  # noqa: F401
