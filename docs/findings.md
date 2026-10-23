@@ -105,9 +105,20 @@ A dummy trader with 100 Divines does only what the site said at the time. Hourly
 
 ## 5. Patient flips on volatile items: real only if GGG's hourly lows and highs are real trades
 
-*`analysis/flips.py` (`python -m exiledbroker.analysis.flips`; on the Backtest page via `backtest.flip_results`, bid 10%, ask 75%, cut 1% an hour). Settlers, Mercenaries, Keepers, Mirage and Allflame, first 14 days each, built 2026-10-23.*
+*`analysis/flips.py` (`python -m exiledbroker.analysis.flips`; on the Backtest page via `backtest.flip_results`: Chaos market, whole-Chaos lots, bid 10%, ask 75%, cut 1% an hour). Settlers, Mercenaries, Keepers, Mirage and Allflame, first 14 days each, built 2026-10-23.*
 
 **The idea.** Pick a random hour in a league's first 14 days and put capital into the Market recap's 3 most volatile liquid items that hour. Volatile means the widest traded range (high − low over the average), among items with at least 10k Chaos traded in the hour, a price of at least 5c and a range of at most 50%. Bid 10% of the way up that hour's range, filled the next hour or cancelled. List at 75% up from the hour after. Cut the ask by a fixed percentage every hour it doesn't sell, for up to 72 hours, then dump what's left at that hour's low. 300 random entry hours per league (seeded), at most 10 Divines and 10% of the hour's traded units per position.
+
+**Correction (2026-10-23): place flips in the Chaos market, in whole-number lots.** Exchange orders are whole numbers on both sides (so many Chaos for so many items) and fill in whole lots, so a bid of 2.05 Divines for one item can't be placed: it takes 41 Divines for 20. The first version also priced from the combined Chaos and Divine markets, and the Divine market sets the hour's high about half the time and its low about a quarter of the time (Mirage and Allflame), because items worth a few Divines trade there at whole numbers (2:1, 3:1): a step of 31–36% of the price for one item. The median candidate's range is 29% combined but 20% in the Chaos market alone; Voidborn Reliquary Key's 22% was 3% in Chaos. The test now uses the Chaos market only (`flips.chaos_prices`), with orders in whole Chaos for the smallest lot of up to 20 items within 1% of the target price (`missed.whole`: bid rounded down, ask rounded up, the ask's total cut in whole Chaos), filled lot by lot, and a range of at least 10% (narrower leaves too little between the bid and the ask). The returns barely changed, because the top picks each hour are cheaper items with a wide range in Chaos too, and finer orders (51c for 10) can sit between the coarse trades (5c and 6c each) that make that range:
+
+| Bid 10%, ask 75%, cut 1%/h | Both markets (first version) | Chaos market | Chaos market, whole lots (now) |
+|---|---|---|---|
+| Touch | +34% | +32% | +33% (52% of bids filled) |
+| Even | +32% | +29% | +30% |
+| Peaked | +29% | +26% | +26% |
+| Strict | +6.6% | +6.6% | +6.6% (3% filled; by league +17%, −11%, +5%, +4%, +17%) |
+
+The tables below are from the first version. The Market recap lists the latest hour's flips from the Chaos market with these whole-lot orders.
 
 **Volatility lasts.** The picks' range barely shrinks over the next day, and almost all of them keep trading:
 

@@ -66,3 +66,12 @@ def test_spread_fill_models_take_only_the_share_past_the_price():
     held = {m: flips.positions(px, RATE, [T0], m)["held"][0] for m in ("touch", "even", "peaked")}
     # Bid 8.4c in an 8–12c hour: 10% of the even share under it (0.4 / 4), less peaked.
     assert held["touch"] == 100 and held["even"] == 10 and held["peaked"] < held["even"]
+
+
+def test_whole_lots_fill_lot_by_lot_at_whole_chaos():
+    px = _prices([(10, 8, 12), (10, 8, 12), (10, 9, 12), (10, 9, 12), (10, 9, 12)])
+    [p] = flips.positions(px, RATE, [T0], "touch", cut=0.0, whole_lots=True).to_dicts()
+    # Bid 8.4c: 25c for 3 (8.33c each), so 99 of the 100 items it could take; the 11c
+    # ask is 11c each.
+    assert (p["buy_lot"], p["held"]) == (3, 99)
+    assert p["profit"] == pytest.approx(99 * (11 - 25 / 3) / 100)

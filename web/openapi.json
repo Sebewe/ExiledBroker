@@ -171,6 +171,17 @@
             "title": "Entries",
             "type": "integer"
           },
+          "lot_max": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lot Max"
+          },
           "max_hold": {
             "title": "Max Hold",
             "type": "integer"
@@ -178,6 +189,17 @@
           "max_range": {
             "title": "Max Range",
             "type": "number"
+          },
+          "min_range": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Range"
           },
           "min_volume": {
             "title": "Min Volume",
@@ -1069,8 +1091,24 @@
             "title": "Ask",
             "type": "number"
           },
+          "ask_lot": {
+            "title": "Ask Lot",
+            "type": "integer"
+          },
+          "ask_total": {
+            "title": "Ask Total",
+            "type": "number"
+          },
           "bid": {
             "title": "Bid",
+            "type": "number"
+          },
+          "bid_lot": {
+            "title": "Bid Lot",
+            "type": "integer"
+          },
+          "bid_total": {
+            "title": "Bid Total",
             "type": "number"
           },
           "chance": {
@@ -1149,6 +1187,10 @@
           "volume",
           "bid",
           "ask",
+          "bid_lot",
+          "bid_total",
+          "ask_lot",
+          "ask_total",
           "cut"
         ],
         "title": "MissedFlip",

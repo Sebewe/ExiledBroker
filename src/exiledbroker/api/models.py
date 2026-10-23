@@ -157,8 +157,13 @@ class MissedFlip(BaseModel):
     high: float
     range: float  # (high - low) / price
     volume: float  # Chaos traded in the hour
-    bid: float
+    bid: float  # Chaos an item: bid_total / bid_lot
     ask: float
+    # The orders as placed, whole numbers on both sides: so many Chaos for so many items.
+    bid_lot: int
+    bid_total: float
+    ask_lot: int
+    ask_total: float
     cut: float
     tries: int | None = None
     through: int | None = None
@@ -287,9 +292,11 @@ class BacktestFlipSettings(BaseModel):
     entries: int  # random entry hours per league
     top: int  # items bought per entry hour
     max_range: float
+    min_range: float | None = None
     min_volume: float  # Chaos traded in the entry hour
     trade_divines: float
     capture: float
+    lot_max: int | None = None  # orders in whole Chaos for lots of up to this many items
 
 
 class BacktestFlip(BaseModel):

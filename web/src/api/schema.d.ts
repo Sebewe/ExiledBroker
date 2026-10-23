@@ -174,10 +174,14 @@ export interface components {
             cut: number;
             /** Entries */
             entries: number;
+            /** Lot Max */
+            lot_max?: number | null;
             /** Max Hold */
             max_hold: number;
             /** Max Range */
             max_range: number;
+            /** Min Range */
+            min_range?: number | null;
             /** Min Volume */
             min_volume: number;
             /** Top */
@@ -466,8 +470,16 @@ export interface components {
         MissedFlip: {
             /** Ask */
             ask: number;
+            /** Ask Lot */
+            ask_lot: number;
+            /** Ask Total */
+            ask_total: number;
             /** Bid */
             bid: number;
+            /** Bid Lot */
+            bid_lot: number;
+            /** Bid Total */
+            bid_total: number;
             /** Chance */
             chance?: number | null;
             /** Cut */

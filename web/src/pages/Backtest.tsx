@@ -555,8 +555,8 @@ function FlipVerdict({ flips, s }: { flips: BacktestFlip[]; s: NonNullable<Backt
       figure={`${signedPct(strict.ret)} to ${signedPct(touch.ret)} a trade`}
       figureNote="from the strictest fill rule (the hour's average must cross your price) to the most optimistic (one trade past it fills you)"
     >
-      On the recap's most volatile liquid items: bid {pctOf(s.bid_at)} of the way up the hour's range, list at {pctOf(s.ask_at)}. A bid that doesn't fill
-      costs nothing: cancel it and keep your Divines. Of the bids that filled, {range(won, pctOf)} sold at a profit. How often bids fill is the open question:{' '}
+      On the recap's most volatile liquid items, in the Chaos market: bid {pctOf(s.bid_at)} of the way up the hour's range, list at {pctOf(s.ask_at)}, in
+      whole Chaos for whole numbers of items as the exchange takes them. A bid that doesn't fill costs nothing: cancel it and keep your Divines. Of the bids that filled, {range(won, pctOf)} sold at a profit. How often bids fill is the open question:{' '}
       {pctOf(strict.bought / (strict.tried || 1))} to {pctOf(touch.bought / (touch.tried || 1))} here, and a league launch's busier market should fill more.
     </Verdict>
   )
@@ -567,7 +567,7 @@ function FlipSection({ flips, s }: { flips: BacktestFlip[]; s: NonNullable<Backt
   return (
     <Section
       title="Volatile flips, with patience"
-      description={`${s.entries} random hours in each league's first 14 days. Each time, the recap's top ${s.top} volatile items (at least ${Math.round(s.min_volume / 1000)}k Chaos traded that hour, a range of at most ${pctOf(s.max_range)}): bid ${pctOf(s.bid_at)} up the hour's range, filled the next hour or cancelled; listed at ${pctOf(s.ask_at)} up from the hour after, the ask cut ${pctOf(s.cut)} every hour it doesn't sell, and what's left after ${s.max_hold} hours dumped at the low. At most ${s.trade_divines} Divines and ${pctOf(s.capture)} of the hour's trading a position.`}
+      description={`${s.entries} random hours in each league's first 14 days. Each time, the recap's top ${s.top} volatile items in the Chaos market (at least ${Math.round(s.min_volume / 1000)}k Chaos traded that hour, a range of ${s.min_range != null ? `${pctOf(s.min_range)}–` : 'at most '}${pctOf(s.max_range)}), ordered in whole Chaos for lots of up to ${s.lot_max ?? 1} items and filled lot by lot: bid ${pctOf(s.bid_at)} up the hour's range, filled the next hour or cancelled; listed at ${pctOf(s.ask_at)} up from the hour after, the ask cut ${pctOf(s.cut)} every hour it doesn't sell, and what's left after ${s.max_hold} hours dumped at the low. At most ${s.trade_divines} Divines and ${pctOf(s.capture)} of the hour's trading a position.`}
     >
       <div className="overflow-x-auto rounded-lg border border-border">
         <table className="w-full min-w-[52rem] text-sm">

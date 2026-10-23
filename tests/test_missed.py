@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
+import polars as pl
 import pytest
 
 from exiledbroker.normalize.exchange_loader import SOURCE as HOURLY
@@ -109,16 +110,44 @@ def test_loops_need_enough_traded_and_the_steadiest_come_first(con):
     assert (steady["tries"], steady["through"], steady["chance"]) == (1, 0, None)
 
 
+def _chaos_market(con, item_id: str, hours: int, low: float, high: float, items: float):
+    """An item's Chaos-market hours ending at LATEST (cross_market_hour, no Divine leg),
+    averaging midway between `low` and `high`."""
+    _item(con, item_id, [(low + high) / 2] * hours)  # the item row, and the latest hour
+    for h in range(hours):
+        con.execute(
+            "INSERT INTO cross_market_hour (league_id, item_id, observed_at, day_offset,"
+            " chaos_price, chaos_volume, chaos_low, chaos_high) VALUES ('L', ?, ?, 1, ?, ?, ?, ?)",
+            [item_id, LATEST - timedelta(hours=h), (low + high) / 2, items, low, high],
+        )
+
+
 def test_volatile_flips_are_liquid_wide_but_not_wild(con):
-    _item(con, "currency:flip", [20] * 8, volume=20_000, spread=0.2)  # 16–24c: a 40% range
-    _item(con, "currency:wild", [20] * 8, volume=20_000, spread=0.5)  # 100%: one odd trade
-    _item(con, "currency:quiet", [20] * 8, volume=5_000, spread=0.2)  # too little traded
+    _chaos_market(con, "currency:flip", 8, 16, 24, items=1000)  # 20c, a 40% range
+    _chaos_market(con, "currency:wild", 8, 10, 30, items=1000)  # 100%: one odd trade
+    _chaos_market(con, "currency:flat", 8, 19.5, 20.5, items=1000)  # 5%: nothing to gain
+    _chaos_market(con, "currency:quiet", 8, 16, 24, items=100)  # 2k Chaos traded: too little
     [one, _, three] = missed.missed(con, "L")
     [flip] = one["flips"]
     assert flip["name"] == "Flip" and flip["range"] == pytest.approx(0.4)
-    # Bid 10% up the hour's range, list 75% up, cut 1% an hour.
-    assert (flip["bid"], flip["ask"], flip["cut"]) == pytest.approx((16.8, 22.0, 0.01))
+    # Bid 10% up the hour's range (16.8c), list 75% up (22c), cut 1% an hour, in whole
+    # Chaos: the smallest lot within 1% is 50c for 3 (16.67c each); 22c each.
+    assert (flip["bid_total"], flip["bid_lot"], flip["bid"]) == pytest.approx((50, 3, 50 / 3))
+    assert (flip["ask_total"], flip["ask_lot"]) == (22, 1) and flip["cut"] == 0.01
     # The same flip from each earlier hour: bought (the next low, 16c, is under 16.8c),
     # then sold at 22c within 6 hours (highs of 24c). Hours with the outcome known: 1.
     assert (flip["tries"], flip["through"], flip["chance"]) == (1, 1, None)
     assert three["flips"] == []  # the latest hour's, so sent once, with the 1-hour look-back
+
+
+def test_orders_are_whole_chaos_for_whole_lots():
+    """The smallest lot whose whole-Chaos total is within 1% of the target: a bid never
+    pays more than the target, an ask never asks less."""
+    target = pl.DataFrame({"x": [16.8, 5.5, 662.4, 4.27]})
+    want = {
+        "buy": [(3, 50), (2, 11), (1, 662), (4, 17)],  # 16.67c, 5.5c, 662c, 4.25c each
+        "sell": [(5, 84), (2, 11), (1, 663), (7, 30)],  # 16.8c, 5.5c, 663c, 4.29c each
+    }
+    for side, rows in want.items():
+        lot, total = missed.whole(pl.col("x"), side)
+        assert target.select(lot=lot, total=total).rows() == [(n, float(c)) for n, c in rows], side

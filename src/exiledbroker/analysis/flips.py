@@ -44,6 +44,7 @@ TOP = 3
 MIN_VOLUME = missed.FLIP_MIN_VOLUME  # Chaos traded in the entry hour
 MIN_PRICE = missed.MIN_PRICE
 MAX_RANGE = missed.FLIP_MAX_RANGE
+MIN_RANGE = missed.FLIP_MIN_RANGE
 MODELS = ("touch", "even", "peaked", "strict")
 
 
@@ -82,6 +83,28 @@ def prices(con, league: str) -> pl.DataFrame:
     )
 
 
+def chaos_prices(con, league: str) -> pl.DataFrame:
+    """The same, from the Chaos market alone (cross_market_hour's Chaos side): the
+    Divine market's whole-number trades of items worth a few Divines (2:1, 3:1) widen
+    the combined range without being a price anyone can trade at in Chaos."""
+    tracked = [r[0] for r in db.rows(con, "SELECT DISTINCT item_id FROM tracked_item")]
+    return (
+        db.frame(
+            con,
+            """
+            SELECT item_id, observed_at, day_offset, chaos_price AS p, chaos_low AS lo,
+                   chaos_high AS hi, chaos_volume AS units, chaos_price * chaos_volume AS cv
+            FROM cross_market_hour
+            WHERE league_id = (SELECT id FROM league WHERE name = ?) AND chaos_price > 0
+            """,
+            [league],
+        )
+        .filter(pl.col("item_id").is_in(tracked), pl.col("item_id") != bt.CHAOS)
+        .with_columns(rng=(pl.col("hi") - pl.col("lo")) / pl.col("p"))
+        .sort("observed_at")
+    )
+
+
 def entry_hours(px: pl.DataFrame, league: str, seed: int = 7, n: int = ENTRIES) -> list:
     """`n` random hours in the first 14 days with MAX_HOLD hours after them."""
     last = 14 - (MAX_HOLD + 2) / 24
@@ -97,16 +120,19 @@ def positions(
     bid_at: float = 0.1,
     ask_at: float = 0.75,
     cut: float = 0.02,
+    whole_lots: bool = False,
 ) -> pl.DataFrame:
     """One row per position bought: cost and value in Divines, profit, return, and
-    `sold_at` (hours after the entry hour it sold out; MAX_HOLD + 1 if dumped)."""
+    `sold_at` (hours after the entry hour it sold out; MAX_HOLD + 1 if dumped).
+    `whole_lots`: orders in whole Chaos for whole lots (`missed.whole`), filled lot by
+    lot, the ask's total cut in whole Chaos."""
     at = pl.DataFrame({"observed_at": when}).cast({"observed_at": px.schema["observed_at"]})
     sig = (
         px.join(at, on="observed_at")
         .filter(
             pl.col("cv") >= MIN_VOLUME,
             pl.col("p") >= MIN_PRICE,
-            pl.col("rng") > 0,
+            pl.col("rng") >= MIN_RANGE,
             pl.col("rng") <= MAX_RANGE,
         )
         .sort(["observed_at", "rng"], descending=[False, True])
@@ -118,6 +144,14 @@ def positions(
         )
         .select("observed_at", "item_id", "bid", "ask0")
     )
+    if whole_lots:  # the Market recap's orders: whole Chaos for whole lots
+        buy_lot, bid_total = missed.whole(pl.col("bid"), "buy")
+        sell_lot, ask_total = missed.whole(pl.col("ask0"), "sell")
+        sig = sig.with_columns(
+            buy_lot=buy_lot, sell_lot=sell_lot, ask_total=ask_total, bid_total=bid_total
+        ).with_columns(bid=pl.col("bid_total") / pl.col("buy_lot"))
+    else:
+        sig = sig.with_columns(buy_lot=pl.lit(1), sell_lot=pl.lit(1), ask_total=pl.col("ask0"))
     items = px.join(sig.select("item_id").unique(), on="item_id")
 
     def hour(k: int) -> pl.DataFrame:
@@ -139,10 +173,18 @@ def positions(
     t = sig.join(hour(1), on=["observed_at", "item_id"], how="left").join(
         rate.select(observed_at=pl.col("observed_at") - H, rate="rate"), on="observed_at"
     )
+
+    def lots(units: pl.Expr, lot: str) -> pl.Expr:
+        return (units / pl.col(lot)).floor() * pl.col(lot)
+
     t = (
         t.with_columns(
-            held=pl.min_horizontal(
-                take(pl.col("bid"), "buy"), (TRADE_DIVINES * pl.col("rate") / pl.col("bid")).floor()
+            held=lots(
+                pl.min_horizontal(
+                    take(pl.col("bid"), "buy"),
+                    (TRADE_DIVINES * pl.col("rate") / pl.col("bid")).floor(),
+                ),
+                "buy_lot",
             ).fill_null(0)
         )
         .drop(hour_cols)
@@ -154,9 +196,11 @@ def positions(
         )
     )
     for k in range(2, 2 + MAX_HOLD):
-        ask = pl.col("ask0") * (1 - cut) ** (k - 2)
+        # The listing's total comes down each hour; with whole lots, in whole Chaos.
+        total = pl.col("ask_total") * (1 - cut) ** (k - 2)
+        ask = (total.ceil() if whole_lots else total) / pl.col("sell_lot")
         t = t.join(hour(k), on=["observed_at", "item_id"], how="left")
-        sold = pl.min_horizontal(pl.col("left"), take(ask, "sell"))
+        sold = lots(pl.min_horizontal(pl.col("left"), take(ask, "sell")), "sell_lot")
         t = t.with_columns(got=pl.col("got") + sold * ask, left=pl.col("left") - sold)
         if k == 1 + MAX_HOLD:  # what's left is dumped at the last hour's low
             t = t.with_columns(

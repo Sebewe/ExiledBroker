@@ -750,8 +750,18 @@ function Cards({ w, money }: { w: MissedWindow; money: Money }) {
   )
 }
 
-/** The ask after `hours` hours of cuts, for the schedule in the rates popup. */
-const cutAsk = (f: MissedFlip, hours: number) => f.ask * (1 - f.cut) ** hours
+/** The listing's whole-Chaos total after `hours` hourly cuts, for the rates popup. */
+const cutTotal = (f: MissedFlip, hours: number) => Math.ceil(f.ask_total * (1 - f.cut) ** hours)
+
+/** An order as placed on the exchange: whole Chaos for a whole number of items. */
+function Lot({ total, lot }: { total: number; lot: number }) {
+  return (
+    <span className="num text-text">
+      {Math.round(total)}c {lot === 1 ? 'each' : `for ${lot}`}
+      {lot > 1 && <span className="text-faint"> ({(total / lot).toFixed(2)}c each)</span>}
+    </span>
+  )
+}
 
 /** The latest hour's flips: the same whatever the look-back (sent with the 1-hour one). */
 function Flips({ flips, money }: { flips: MissedFlip[]; money: Money }) {
@@ -762,7 +772,7 @@ function Flips({ flips, money }: { flips: MissedFlip[]; money: Money }) {
       id="flips"
       title="Volatile flips"
       icon={Activity}
-      note="Liquid items whose latest hour traded across a wide range (at least 10k Chaos traded, a range of at most 50%: wider is usually one odd trade). Likeliest to go through first. The orders, behind Show rates, are the ones the backtest tested: bid low in the hour's range, list high, cut the ask a little each hour until it sells. A bid that doesn't fill costs nothing: cancel it."
+      note="Liquid items whose latest hour traded across a wide range in the Chaos market (at least 10k Chaos traded, a range of 10–50%: wider is usually one odd trade). Likeliest to go through first. The orders, behind Show rates, are the ones the backtest tested, in whole Chaos for whole numbers of items as the exchange takes them: bid low in the hour's range, list high, cut the ask a little each hour until it sells. A bid that doesn't fill costs nothing: cancel it."
       more={<ShowAll all={all} total={flips.length} onToggle={() => setAll(!all)} />}
     >
       {flips.length === 0 ? (
@@ -791,12 +801,11 @@ function Flips({ flips, money }: { flips: MissedFlip[]; money: Money }) {
                   <span className="text-[11px] font-medium tracking-wide text-faint uppercase">Orders for this hour</span>
                   <ol className="flex flex-col gap-0.5 text-muted">
                     <li>
-                      Bid <span className="num text-text">{money(f.bid, f.high)}</span> each; cancel it if it hasn't filled by the end of the hour
+                      Bid <Lot total={f.bid_total} lot={f.bid_lot} />, in Chaos; cancel it if it hasn't filled by the end of the hour
                     </li>
                     <li>
-                      Then list at <span className="num text-text">{money(f.ask, f.high)}</span>, {Math.round(f.cut * 100)}% lower each hour it doesn't sell:
-                      <span className="num text-text"> {money(cutAsk(f, 6), f.high)}</span> after 6 hours,
-                      <span className="num text-text"> {money(cutAsk(f, 24), f.high)}</span> after a day
+                      Then list <Lot total={f.ask_total} lot={f.ask_lot} />, {Math.round(f.cut * 100)}% lower each hour it doesn't sell:{' '}
+                      <span className="num text-text">{cutTotal(f, 6)}c</span> after 6 hours, <span className="num text-text">{cutTotal(f, 24)}c</span> after a day
                     </li>
                   </ol>
                 </div>

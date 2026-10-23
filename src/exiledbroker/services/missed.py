@@ -62,9 +62,30 @@ MIN_TRIES = 3
 # one odd trade nobody can repeat.
 FLIP_MIN_VOLUME = 10_000.0  # Chaos traded in the hour
 FLIP_MAX_RANGE = 0.5
+FLIP_MIN_RANGE = 0.10  # narrower leaves too little between the bid and the ask
 FLIP_ORDER = (0.1, 0.75)  # bid and ask, as a share of the hour's range
 FLIP_CUT = 0.01  # the ask comes down this much each hour it doesn't sell
 FLIP_SELL_HOURS = 6  # the estimate's window to sell in (at the first, uncut ask)
+# Flips are priced from the Chaos market alone and placed in it: an item worth a few
+# Divines trades in the Divine market at whole numbers (2:1, 3:1), which widens the
+# range without being a price anyone can order at. Exchange orders are whole numbers on
+# both sides (so many Chaos for so many items) and fill in whole lots, so a price is
+# reached with the smallest lot of up to LOT_MAX items whose whole-Chaos total is within
+# LOT_TOLERANCE of it (`whole`).
+LOT_MAX = 20
+LOT_TOLERANCE = 0.01
+
+
+def whole(target: pl.Expr, side: str) -> tuple[pl.Expr, pl.Expr]:
+    """(lot, whole-Chaos total) for an order at `target` Chaos an item: the smallest lot
+    whose total is within LOT_TOLERANCE, rounded down for a bid and up for an ask, so the
+    order never pays more or asks less than the target."""
+    rnd = (lambda x: x.floor()) if side == "buy" else (lambda x: x.ceil())
+    lot = pl.lit(LOT_MAX)
+    for n in range(LOT_MAX - 1, 0, -1):
+        close = (rnd(target * n) / n - target).abs() <= LOT_TOLERANCE * target
+        lot = pl.when(close).then(n).otherwise(lot)
+    return lot, rnd(target * lot)
 
 
 def paying_loops(loops: pl.DataFrame) -> pl.DataFrame:
@@ -338,24 +359,45 @@ def _card_chances(con, league: str, latest, card_ids: list[str]) -> pl.DataFrame
     return _chance_frame([(i, n, k or 0) for i, n, k in rows], keys)
 
 
-def _flips(prices: pl.DataFrame, latest) -> pl.DataFrame:
-    """The latest hour's flip candidates, widest range first, with their orders."""
+def _flips(con, league: str, latest) -> pl.DataFrame:
+    """The latest hour's flip candidates in the Chaos market, widest range first, with
+    their orders as placed: whole Chaos for whole lots."""
+    market = db.frame(
+        con,
+        """
+        SELECT x.item_id, i.canonical_name AS name, x.chaos_price AS price,
+               x.chaos_low AS low, x.chaos_high AS high,
+               x.chaos_price * x.chaos_volume AS volume
+        FROM cross_market_hour x
+        JOIN item i ON i.id = x.item_id
+        WHERE x.league_id = (SELECT id FROM league WHERE name = ?) AND x.observed_at = ?
+          AND x.chaos_price >= ? AND x.chaos_price * x.chaos_volume >= ?
+          AND x.chaos_high > x.chaos_low
+          AND x.item_id IN (SELECT item_id FROM tracked_item)
+        """,
+        [league, latest, MIN_PRICE, FLIP_MIN_VOLUME],
+    ).cast(  # typed even when empty (Postgres gives an empty result no types)
+        {"item_id": pl.String, "name": pl.String}
+        | {c: pl.Float64 for c in ("price", "low", "high", "volume")}
+    )
     bid_at, ask_at = FLIP_ORDER
+    bid_lot, bid_total = whole(pl.col("low") + bid_at * (pl.col("high") - pl.col("low")), "buy")
+    ask_lot, ask_total = whole(pl.col("low") + ask_at * (pl.col("high") - pl.col("low")), "sell")
     return (
-        prices.filter(
-            pl.col("observed_at") == latest,
-            pl.col("volume") >= FLIP_MIN_VOLUME,
-            pl.col("price") >= MIN_PRICE,
-            pl.col("high") > pl.col("low"),
-        )
-        .with_columns(range=(pl.col("high") - pl.col("low")) / pl.col("price"))
-        .filter(pl.col("range") <= FLIP_MAX_RANGE)
+        market.with_columns(range=(pl.col("high") - pl.col("low")) / pl.col("price"))
+        .filter(pl.col("range") >= FLIP_MIN_RANGE, pl.col("range") <= FLIP_MAX_RANGE)
         .with_columns(
-            bid=pl.col("low") + bid_at * (pl.col("high") - pl.col("low")),
-            ask=pl.col("low") + ask_at * (pl.col("high") - pl.col("low")),
+            bid_lot=bid_lot,
+            bid_total=bid_total,
+            ask_lot=ask_lot,
+            ask_total=ask_total,
             cut=pl.lit(FLIP_CUT),
         )
-        .select("item_id", "name", "price", "low", "high", "range", "volume", "bid", "ask", "cut")
+        .with_columns(
+            bid=pl.col("bid_total") / pl.col("bid_lot"),
+            ask=pl.col("ask_total") / pl.col("ask_lot"),
+        )
+        .cast({"bid_lot": pl.Int64, "ask_lot": pl.Int64})
         .sort(["range", "item_id"], descending=[True, False])
     )
 
@@ -373,9 +415,9 @@ def _flip_chances(con, league: str, latest, item_ids: list[str]) -> pl.DataFrame
         f"""
         WITH h AS (
             SELECT item_id, observed_at, chaos_low AS lo, chaos_high AS hi
-            FROM price_observation
-            WHERE league_id = (SELECT id FROM league WHERE name = ?) AND source = ?
-              AND observed_at > ? AND chaos_value > 0
+            FROM cross_market_hour
+            WHERE league_id = (SELECT id FROM league WHERE name = ?)
+              AND observed_at > ? AND chaos_price > 0
               AND item_id IN ({", ".join("?" for _ in item_ids)})
         )
         SELECT h.item_id, count(*) AS tries,
@@ -393,7 +435,6 @@ def _flip_chances(con, league: str, latest, item_ids: list[str]) -> pl.DataFrame
         """,
         [
             league,
-            HOURLY,
             latest - timedelta(hours=CHANCE_HOURS),
             *item_ids,
             bid_at,
@@ -524,7 +565,7 @@ def missed(con: duckdb.DuckDBPyConnection, league: str) -> list[dict]:
     card_ranges = _ranges(con, league, latest, "price_observation", listed["cards"])
     loop_chances = _loop_chances(con, league, latest, listed["loops"])
     card_chances = _card_chances(con, league, latest, listed["cards"])
-    flips = _flips(prices, latest)
+    flips = _flips(con, league, latest)
     flips = (
         flips.join(
             _flip_chances(con, league, latest, flips["item_id"].to_list()), on="item_id", how="left"

@@ -40,8 +40,44 @@ const recap = (hours: number, scale: number): MissedWindow => ({
   falling: [{ item_id: 'currency:b', name: 'Essence of Horror', price: 30, before: 45, change: -1 / 3, volume: 3000, streak: -2 }],
   volatile: [{ item_id: 'currency:c', name: 'Abyss Scarab', low: 4, high: 64, price: 10, range: 6, volume: 9000 }],
   flips: [
-    { item_id: 'currency:f1', name: 'Orb of Conflict', price: 100, low: 80, high: 120, range: 0.4, volume: 50000, bid: 84, ask: 110, cut: 0.01, tries: 60, through: 54, chance: 0.9 },
-    { item_id: 'currency:f2', name: 'Stacked Deck', price: 5, low: 4, high: 6, range: 0.4, volume: 20000, bid: 4.2, ask: 5.5, cut: 0.01, tries: 1, through: 0, chance: null },
+    {
+      item_id: 'currency:f1',
+      name: 'Orb of Conflict',
+      price: 100,
+      low: 80,
+      high: 120,
+      range: 0.4,
+      volume: 50000,
+      bid: 84,
+      ask: 110,
+      bid_lot: 1,
+      bid_total: 84,
+      ask_lot: 1,
+      ask_total: 110,
+      cut: 0.01,
+      tries: 60,
+      through: 54,
+      chance: 0.9,
+    },
+    {
+      item_id: 'currency:f2',
+      name: 'Stacked Deck',
+      price: 5,
+      low: 4,
+      high: 6,
+      range: 0.4,
+      volume: 20000,
+      bid: 4.2,
+      ask: 5.5,
+      bid_lot: 5,
+      bid_total: 21,
+      ask_lot: 2,
+      ask_total: 11,
+      cut: 0.01,
+      tries: 1,
+      through: 0,
+      chance: null,
+    },
   ],
   ticker: [
     { item_id: 'currency:a', name: 'Domination Scarab', price: 60, before: 40, change: 0.5, volume: 5000, streak: 3 },
@@ -117,9 +153,15 @@ describe('Market recap', () => {
     expect(within(flips).queryByText(/after 6 hours/)).not.toBeInTheDocument()
     fireEvent.click(within(flips).getAllByRole('button', { name: 'Show rates' })[0]!)
     const rates = screen.getByRole('dialog', { name: 'Rates for Orb of Conflict' })
-    expect(within(rates).getByText('84.0c')).toBeInTheDocument() // the bid
-    expect(within(rates).getByText('110.0c')).toBeInTheDocument() // the first ask
-    expect(within(rates).getByText(/103\.6c/)).toBeInTheDocument() // 1% lower each hour: after 6 hours
+    expect(within(rates).getByText('84c each')).toBeInTheDocument() // the bid, whole Chaos
+    expect(within(rates).getByText('110c each')).toBeInTheDocument() // the first ask
+    expect(within(rates).getByText('104c')).toBeInTheDocument() // 1% lower each hour, rounded up: after 6 hours
+    fireEvent.pointerDown(document.body)
+    // A cheap item is ordered in lots: whole Chaos for a whole number of items.
+    fireEvent.click(within(flips).getAllByRole('button', { name: 'Show rates' })[1]!)
+    const lots = screen.getByRole('dialog', { name: 'Rates for Stacked Deck' })
+    expect(within(lots).getByText(/21c for 5/)).toBeInTheDocument()
+    expect(within(lots).getByText(/11c for 2/)).toBeInTheDocument()
     fireEvent.pointerDown(document.body)
     expect(screen.getByText('+12%')).toBeInTheDocument() // the loop's edge, not a total
     expect(screen.queryByText(/likely one odd trade/)).not.toBeInTheDocument() // 12% isn't odd

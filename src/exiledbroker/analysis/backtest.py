@@ -869,11 +869,12 @@ def flip_results(con, leagues: list[str]) -> dict:
 
     rows = []
     for league in leagues:
-        px, rate = flips.prices(con, league), _rate(con, league)
+        # As the Market recap places them: in the Chaos market, whole Chaos for whole lots.
+        px, rate = flips.chaos_prices(con, league), _rate(con, league)
         when = flips.entry_hours(px, league)
         tried = len(when) * flips.TOP
         for model in flips.MODELS:
-            t = flips.positions(px, rate, when, model, **FLIP)
+            t = flips.positions(px, rate, when, model, whole_lots=True, **FLIP)
             s = flips.summary(t, tried)
             rows.append(
                 {
@@ -896,9 +897,11 @@ def flip_results(con, leagues: list[str]) -> dict:
         "entries": flips.ENTRIES,
         "top": flips.TOP,
         "max_range": flips.MAX_RANGE,
+        "min_range": flips.MIN_RANGE,
         "min_volume": flips.MIN_VOLUME,
         "trade_divines": flips.TRADE_DIVINES,
         "capture": flips.CAPTURE,
+        "lot_max": missed.LOT_MAX,
     }
     return {"flip_settings": settings, "flips": rows}
 
