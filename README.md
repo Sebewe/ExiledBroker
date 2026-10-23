@@ -38,7 +38,7 @@ After that:
 
 | Page | What it shows | API |
 |---|---|---|
-| **Market recap** (landing) | What traded in the last 1–3 published hours: every loop and card turn-in that paid (liquid markets only), likeliest to go through first with how often its orders went through in the last 3 days, and behind Show rates the orders the backtest's best option would place this hour and its 24-hour price range, what moved, and options to look into | `/api/status`, `/api/missed/{league}` |
+| **Market recap** (landing) | What traded in the last 1–3 published hours: the latest hour's volatile flips, then every loop and card turn-in that paid (liquid markets only), likeliest to go through first with how often its orders went through in the last 3 days, and behind Show rates the orders the backtest's best option would place this hour and its 24-hour price range, what moved, and options to look into | `/api/status`, `/api/missed/{league}` |
 | **Backtest** | Would following the site have paid? The site's tools replayed an hour late at fair and harsh prices (`eb backtest run`) | `/api/backtest` |
 | **Launch market** | What to buy on day 1, days 2–4 and days 5–10 with a couple of Divines, ranked from the last five leagues | `/api/launch/picks` |
 | **About** | Sources and credits | |

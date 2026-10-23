@@ -107,3 +107,18 @@ def test_loops_need_enough_traded_and_the_steadiest_come_first(con):
     # How often the orders went through: only the hour 2 back has its outcome known, and
     # flat prices never trade past the bid. One try is too few to give a share.
     assert (steady["tries"], steady["through"], steady["chance"]) == (1, 0, None)
+
+
+def test_volatile_flips_are_liquid_wide_but_not_wild(con):
+    _item(con, "currency:flip", [20] * 8, volume=20_000, spread=0.2)  # 16–24c: a 40% range
+    _item(con, "currency:wild", [20] * 8, volume=20_000, spread=0.5)  # 100%: one odd trade
+    _item(con, "currency:quiet", [20] * 8, volume=5_000, spread=0.2)  # too little traded
+    [one, _, three] = missed.missed(con, "L")
+    [flip] = one["flips"]
+    assert flip["name"] == "Flip" and flip["range"] == pytest.approx(0.4)
+    # Bid 10% up the hour's range, list 75% up, cut 1% an hour.
+    assert (flip["bid"], flip["ask"], flip["cut"]) == pytest.approx((16.8, 22.0, 0.01))
+    # The same flip from each earlier hour: bought (the next low, 16c, is under 16.8c),
+    # then sold at 22c within 6 hours (highs of 24c). Hours with the outcome known: 1.
+    assert (flip["tries"], flip["through"], flip["chance"]) == (1, 1, None)
+    assert three["flips"] == []  # the latest hour's, so sent once, with the 1-hour look-back

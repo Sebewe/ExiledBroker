@@ -1062,6 +1062,98 @@
         "title": "MissedCard",
         "type": "object"
       },
+      "MissedFlip": {
+        "description": "A volatile flip from the latest hour: bid `bid` (Chaos) low in its range, list at\n`ask` and cut it by `cut` each hour it doesn't sell. tries / through / chance: how\noften the same flip went through in the last 72 hours (optimistic fills).",
+        "properties": {
+          "ask": {
+            "title": "Ask",
+            "type": "number"
+          },
+          "bid": {
+            "title": "Bid",
+            "type": "number"
+          },
+          "chance": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chance"
+          },
+          "cut": {
+            "title": "Cut",
+            "type": "number"
+          },
+          "high": {
+            "title": "High",
+            "type": "number"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "string"
+          },
+          "low": {
+            "title": "Low",
+            "type": "number"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "price": {
+            "title": "Price",
+            "type": "number"
+          },
+          "range": {
+            "title": "Range",
+            "type": "number"
+          },
+          "through": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Through"
+          },
+          "tries": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tries"
+          },
+          "volume": {
+            "title": "Volume",
+            "type": "number"
+          }
+        },
+        "required": [
+          "item_id",
+          "name",
+          "price",
+          "low",
+          "high",
+          "range",
+          "volume",
+          "bid",
+          "ask",
+          "cut"
+        ],
+        "title": "MissedFlip",
+        "type": "object"
+      },
       "MissedLoop": {
         "properties": {
           "ask": {
@@ -1256,6 +1348,14 @@
               "$ref": "#/components/schemas/Mover"
             },
             "title": "Falling",
+            "type": "array"
+          },
+          "flips": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/MissedFlip"
+            },
+            "title": "Flips",
             "type": "array"
           },
           "hours": {

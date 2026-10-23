@@ -56,6 +56,15 @@ RANGE_HOURS = 24  # the price range shown with each loop and card
 # tries is too few to say.
 CHANCE_HOURS = 72
 MIN_TRIES = 3
+# Volatile flips (analysis/flips.py, finding 5): liquid items whose latest hour traded
+# across a wide range, bid low in it and listed high, the ask cut each hour until it
+# sells. Shared with the backtest. Wider ranges than FLIP_MAX_RANGE are almost always
+# one odd trade nobody can repeat.
+FLIP_MIN_VOLUME = 10_000.0  # Chaos traded in the hour
+FLIP_MAX_RANGE = 0.5
+FLIP_ORDER = (0.1, 0.75)  # bid and ask, as a share of the hour's range
+FLIP_CUT = 0.01  # the ask comes down this much each hour it doesn't sell
+FLIP_SELL_HOURS = 6  # the estimate's window to sell in (at the first, uncut ask)
 
 
 def paying_loops(loops: pl.DataFrame) -> pl.DataFrame:
@@ -329,6 +338,72 @@ def _card_chances(con, league: str, latest, card_ids: list[str]) -> pl.DataFrame
     return _chance_frame([(i, n, k or 0) for i, n, k in rows], keys)
 
 
+def _flips(prices: pl.DataFrame, latest) -> pl.DataFrame:
+    """The latest hour's flip candidates, widest range first, with their orders."""
+    bid_at, ask_at = FLIP_ORDER
+    return (
+        prices.filter(
+            pl.col("observed_at") == latest,
+            pl.col("volume") >= FLIP_MIN_VOLUME,
+            pl.col("price") >= MIN_PRICE,
+            pl.col("high") > pl.col("low"),
+        )
+        .with_columns(range=(pl.col("high") - pl.col("low")) / pl.col("price"))
+        .filter(pl.col("range") <= FLIP_MAX_RANGE)
+        .with_columns(
+            bid=pl.col("low") + bid_at * (pl.col("high") - pl.col("low")),
+            ask=pl.col("low") + ask_at * (pl.col("high") - pl.col("low")),
+            cut=pl.lit(FLIP_CUT),
+        )
+        .select("item_id", "name", "price", "low", "high", "range", "volume", "bid", "ask", "cut")
+        .sort(["range", "item_id"], descending=[True, False])
+    )
+
+
+def _flip_chances(con, league: str, latest, item_ids: list[str]) -> pl.DataFrame:
+    """Per listed item: how often the same flip went through in the last CHANCE_HOURS,
+    priced from each hour: bought if the next hour traded under the bid, sold if any of
+    the FLIP_SELL_HOURS after traded over the (uncut) ask. One row back per item."""
+    keys = {"item_id": pl.String}
+    if not item_ids:
+        return _chance_frame([], keys)
+    bid_at, ask_at = FLIP_ORDER
+    rows = db.rows(
+        con,
+        f"""
+        WITH h AS (
+            SELECT item_id, observed_at, chaos_low AS lo, chaos_high AS hi
+            FROM price_observation
+            WHERE league_id = (SELECT id FROM league WHERE name = ?) AND source = ?
+              AND observed_at > ? AND chaos_value > 0
+              AND item_id IN ({", ".join("?" for _ in item_ids)})
+        )
+        SELECT h.item_id, count(*) AS tries,
+               sum(CASE WHEN n.lo < h.lo + ? * (h.hi - h.lo) AND EXISTS (
+                       SELECT 1 FROM h s
+                       WHERE s.item_id = h.item_id
+                         AND s.observed_at >= h.observed_at + INTERVAL '2 hours'
+                         AND s.observed_at <= h.observed_at + INTERVAL '{1 + FLIP_SELL_HOURS} hours'
+                         AND s.hi > h.lo + ? * (h.hi - h.lo)
+                   ) THEN 1 ELSE 0 END)
+        FROM h
+        LEFT JOIN h n ON n.item_id = h.item_id AND n.observed_at = h.observed_at + INTERVAL '1 hour'
+        WHERE h.observed_at <= ?
+        GROUP BY h.item_id
+        """,
+        [
+            league,
+            HOURLY,
+            latest - timedelta(hours=CHANCE_HOURS),
+            *item_ids,
+            bid_at,
+            ask_at,
+            latest - timedelta(hours=1 + FLIP_SELL_HOURS),
+        ],
+    )
+    return _chance_frame([(i, n, k or 0) for i, n, k in rows], keys)
+
+
 def _likeliest_first(rows: pl.DataFrame) -> pl.DataFrame:
     """The backtest's lesson as an order: orders that still pay from the bid first, then
     those most likely to go through, then the steadiest and what paid most."""
@@ -449,6 +524,17 @@ def missed(con: duckdb.DuckDBPyConnection, league: str) -> list[dict]:
     card_ranges = _ranges(con, league, latest, "price_observation", listed["cards"])
     loop_chances = _loop_chances(con, league, latest, listed["loops"])
     card_chances = _card_chances(con, league, latest, listed["cards"])
+    flips = _flips(prices, latest)
+    flips = (
+        flips.join(
+            _flip_chances(con, league, latest, flips["item_id"].to_list()), on="item_id", how="left"
+        )
+        .with_columns(
+            chance=pl.when(pl.col("tries") >= MIN_TRIES).then(pl.col("through") / pl.col("tries"))
+        )
+        .sort(["chance", "range", "item_id"], descending=[True, True, False], nulls_last=True)
+        .to_dicts()
+    )
     out = []
     for hours in LOOKBACKS:
         up, down, volatile, ticker = _movement(prices, latest, hours)
@@ -483,6 +569,9 @@ def missed(con: duckdb.DuckDBPyConnection, league: str) -> list[dict]:
                 "cards": all_cards,
                 "loops_paid": loops_paid,
                 "cards_paid": cards_paid,
+                # The latest hour's, so the same for every look-back: sent once, with the
+                # 1-hour one (it's the biggest list in the response).
+                "flips": flips if hours == min(LOOKBACKS) else [],
             }
         )
     return out

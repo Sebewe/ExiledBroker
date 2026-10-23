@@ -31,6 +31,7 @@ import polars as pl
 
 from exiledbroker.analysis import backtest as bt
 from exiledbroker.config import get_settings
+from exiledbroker.services import missed
 from exiledbroker.storage import db
 
 H = timedelta(hours=1)
@@ -39,9 +40,10 @@ ENTRIES = 300  # random entry hours per league
 CAPTURE = 0.10
 TRADE_DIVINES = 10.0
 TOP = 3
-MIN_VOLUME = 10_000.0  # Chaos traded in the entry hour
-MIN_PRICE = 5.0
-MAX_RANGE = 0.5
+# The Market recap's flip rules (services/missed), so the page and the test agree.
+MIN_VOLUME = missed.FLIP_MIN_VOLUME  # Chaos traded in the entry hour
+MIN_PRICE = missed.MIN_PRICE
+MAX_RANGE = missed.FLIP_MAX_RANGE
 MODELS = ("touch", "even", "peaked", "strict")
 
 

@@ -859,7 +859,7 @@ def build(con: duckdb.DuckDBPyConnection) -> dict:
 
 
 # The patient flip the Backtest page shows (analysis/flips.py, finding 5).
-FLIP = {"bid_at": 0.1, "ask_at": 0.75, "cut": 0.01}
+FLIP = {"bid_at": missed.FLIP_ORDER[0], "ask_at": missed.FLIP_ORDER[1], "cut": missed.FLIP_CUT}
 
 
 def flip_results(con, leagues: list[str]) -> dict:

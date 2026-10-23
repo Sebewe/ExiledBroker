@@ -457,6 +457,40 @@ export interface components {
             /** Tries */
             tries?: number | null;
         };
+        /**
+         * MissedFlip
+         * @description A volatile flip from the latest hour: bid `bid` (Chaos) low in its range, list at
+         *     `ask` and cut it by `cut` each hour it doesn't sell. tries / through / chance: how
+         *     often the same flip went through in the last 72 hours (optimistic fills).
+         */
+        MissedFlip: {
+            /** Ask */
+            ask: number;
+            /** Bid */
+            bid: number;
+            /** Chance */
+            chance?: number | null;
+            /** Cut */
+            cut: number;
+            /** High */
+            high: number;
+            /** Item Id */
+            item_id: string;
+            /** Low */
+            low: number;
+            /** Name */
+            name: string;
+            /** Price */
+            price: number;
+            /** Range */
+            range: number;
+            /** Through */
+            through?: number | null;
+            /** Tries */
+            tries?: number | null;
+            /** Volume */
+            volume: number;
+        };
         /** MissedLoop */
         MissedLoop: {
             /** Ask */
@@ -506,6 +540,11 @@ export interface components {
             cards_paid: number;
             /** Falling */
             falling: components["schemas"]["Mover"][];
+            /**
+             * Flips
+             * @default []
+             */
+            flips: components["schemas"]["MissedFlip"][];
             /** Hours */
             hours: number;
             /**

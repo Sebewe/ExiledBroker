@@ -1,7 +1,7 @@
-import { ArrowDownRight, ArrowUpRight, CandlestickChart, FlaskConical, Layers, Repeat, Tag, Timer, Waves } from 'lucide-react'
+import { Activity, ArrowDownRight, ArrowUpRight, CandlestickChart, FlaskConical, Layers, Repeat, Tag, Timer, Waves } from 'lucide-react'
 import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Link } from 'react-router'
-import type { LiveLeague, MissedCard, MissedWindow, Mover, Upcoming, Volatile } from '../api/client'
+import type { LiveLeague, MissedCard, MissedFlip, MissedWindow, Mover, Upcoming } from '../api/client'
 import { useMissed, useServerNow, useStatus } from '../api/queries'
 import { Select } from '../components/Controls'
 import { FreshnessBanner } from '../components/Freshness'
@@ -165,8 +165,9 @@ export default function Missed() {
         (queryFallback(summary, 4) ??
           (w ? (
             <>
-              <Hero w={w} onHours={setHours} />
-              <Options w={w} />
+              <Hero w={w} flips={lastHour?.flips ?? []} onHours={setHours} />
+              <Options w={w} flips={lastHour?.flips ?? []} />
+              <Flips flips={lastHour?.flips ?? []} money={money} />
               <Loops w={w} money={money} />
               <Cards w={w} money={money} />
               <KeyMovement w={w} money={money} />
@@ -221,7 +222,7 @@ function Ticker({ items, money }: { items: Mover[]; money: Money }) {
   )
 }
 
-function Hero({ w, onHours }: { w: MissedWindow; onHours: (h: number) => void }) {
+function Hero({ w, flips, onHours }: { w: MissedWindow; flips: MissedFlip[]; onHours: (h: number) => void }) {
   const mover = [...w.rising, ...w.falling].sort((a, b) => Math.abs(b.change) - Math.abs(a.change))[0]
   return (
     <section className="flex flex-col gap-4 rounded-xl border border-accent/40 bg-gradient-to-br from-accent/10 via-surface to-surface p-5" aria-label="Recap">
@@ -251,7 +252,8 @@ function Hero({ w, onHours }: { w: MissedWindow; onHours: (h: number) => void })
           </span>
         </label>
       </div>
-      <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Fact label="Volatile flips" value={String(flips.length)} note="liquid items that traded across a wide range" />
         <Fact label="Loops that paid" value={String(w.loops_paid)} note="beat a 2% edge at the hour's worst prices" />
         <Fact label="Card turn-ins that paid" value={String(w.cards_paid)} note="a full set cost less than its reward" />
         <Fact
@@ -278,27 +280,33 @@ function Fact({ label, value, note, tone = 'text-text' }: { label: string; value
 }
 
 /** Things a player could do with the recap, each with what the backtest saw. No promises. */
-function Options({ w }: { w: MissedWindow }) {
+function Options({ w, flips: flipList }: { w: MissedWindow; flips: MissedFlip[] }) {
   const likely = (xs: { chance?: number | null }[]) => xs.filter((x) => (x.chance ?? 0) >= LIKELY).length
   const loops = likely(w.loops)
   const cards = likely(w.cards)
+  const flips = likely(flipList)
   return (
     <section aria-label="Options" className="flex flex-col gap-3">
       <h2 className="text-lg font-semibold">Things you could look into</h2>
-      <ol className="grid gap-3 md:grid-cols-3">
+      <ol className="grid gap-3 md:grid-cols-2">
+        <Option icon={CandlestickChart} title="Holding for a few days" to="/launch" link="Launch market →">
+          Early-league picks held for about ten days were the one tool that came out ahead at the worst prices in every past league we replayed. Past leagues
+          don't promise the next one.
+        </Option>
+        <Option icon={Activity} title="A volatile flip" href="#flips" link="See the flips ↓">
+          {flips ? `${flips} of the items below went through at least half the time recently. ` : ''}
+          Bid low in the hour's range, list high and lower the ask a little each hour until it sells. A bid that doesn't fill costs nothing: cancel it. It
+          needs a busy market, so it should work best in a league's first days.
+        </Option>
         <Option icon={Repeat} title="A loop with limit orders" href="#loops" link="See the loops ↓">
           {loops ? `${loops} of the loops below went through at least half the time recently. ` : ''}
-          In our replays, loops caught at the worst prices lost; limit orders priced from the last hour's range came out ahead when they filled. They're
-          sorted by how often their orders went through in the last 3 days. Check both prices in-game first.
+          In our replays, loops caught at the worst prices lost; limit orders priced from the last hour's range came out ahead when they filled. Check both
+          prices in-game first.
         </Option>
         <Option icon={Layers} title="A card turn-in with limit orders" href="#cards" link="See the cards ↓">
           {cards ? `${cards} of the cards below went through at least half the time recently. ` : ''}
           Bidding at the hour's low and asking the reward's average paid in our replays when the orders filled, but card orders fill less often than loops,
           so expect many to sit unfilled.
-        </Option>
-        <Option icon={CandlestickChart} title="Holding for a few days" to="/launch" link="Launch market →">
-          Early-league picks held for about ten days were the one tool that came out ahead at the worst prices in every past league we replayed. Past leagues
-          don't promise the next one.
         </Option>
       </ol>
       <p className="flex items-center gap-1.5 text-xs text-faint">
@@ -387,15 +395,12 @@ function KeyMovement({ w, money }: { w: MissedWindow; money: Money }) {
       icon={Waves}
       note="Context for what you check, not a tip: by the time an hour is published the move has happened, and in our replays buying the risers an hour later lost money."
     >
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-2">
         <Column title="Rising" hint={`Price now against ${w.hours}h before`}>
           {w.rising.length ? w.rising.map((m) => <MoverRow key={m.item_id} m={m} money={money} />) : <Empty>Nothing liquid rose.</Empty>}
         </Column>
         <Column title="Falling" hint={`Price now against ${w.hours}h before`}>
           {w.falling.length ? w.falling.map((m) => <MoverRow key={m.item_id} m={m} money={money} />) : <Empty>Nothing liquid fell.</Empty>}
-        </Column>
-        <Column title="Volatile" hint="Widest gap between the lowest and highest trade">
-          {w.volatile.length ? w.volatile.map((v) => <VolatileRow key={v.item_id} v={v} money={money} />) : <Empty>No wide swings.</Empty>}
         </Column>
       </div>
     </Block>
@@ -446,28 +451,6 @@ function MoverRow({ m, money }: { m: Mover; money: Money }) {
   )
 }
 
-function VolatileRow({ v, money }: { v: Volatile; money: Money }) {
-  // Where the typical price sat between the low and high trades.
-  const at = v.high > v.low ? ((v.price - v.low) / (v.high - v.low)) * 100 : 50
-  return (
-    <li className="flex flex-col gap-1">
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="truncate text-sm font-medium" title={v.name}>
-          {v.name}
-        </span>
-        <span className="num text-sm font-semibold text-warning">{Math.round(v.range * 100)}% range</span>
-      </div>
-      <div className="relative h-2 rounded-full bg-gradient-to-r from-info/40 to-warning/50" title={`Typical ${money(v.price)}`}>
-        <span className="absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-bg bg-text" style={{ left: `${at}%` }} />
-      </div>
-      <div className="num flex justify-between text-[11px] text-faint">
-        <span>low {money(v.low, v.high)}</span>
-        <span>high {money(v.high, v.high)}</span>
-      </div>
-    </li>
-  )
-}
-
 function Steady({ paid, hours }: { paid: number; hours: number }) {
   if (hours === 1) return null
   return paid === hours ? (
@@ -507,7 +490,8 @@ function Orders({ steps, ok, skip, missing }: { steps: ReactNode[]; ok: boolean 
   )
 }
 
-/** The last 24 hours' range: lowest to highest trade, the average, and where the order sits. */
+/** A price range (by default the last 24 hours'): lowest to highest trade, the average,
+ *  and where the order sits. */
 function RangeBar({
   low,
   avg,
@@ -516,6 +500,7 @@ function RangeBar({
   mark,
   markLabel,
   money,
+  label = '24h',
 }: {
   low: number | null | undefined
   avg: number | null | undefined
@@ -524,11 +509,12 @@ function RangeBar({
   mark?: number | null
   markLabel?: string
   money: Money
+  label?: string
 }) {
   if (low == null || high == null || !hours) return null
   const at = (x: number) => (high > low ? Math.min(100, Math.max(0, ((x - low) / (high - low)) * 100)) : 50)
   return (
-    <div className="flex flex-col gap-1" title={`Last 24 hours (${hours} traded): low ${money(low, high)}, average ${money(avg, high)}, high ${money(high, high)}`}>
+    <div className="flex flex-col gap-1" title={`${label === '24h' ? `Last 24 hours (${hours} traded)` : label}: low ${money(low, high)}, average ${money(avg, high)}, high ${money(high, high)}`}>
       <div className="relative h-2 rounded-full bg-surface-2">
         {avg != null && <span className="absolute top-0 h-2 w-0.5 -translate-x-1/2 bg-muted" style={{ left: `${at(avg)}%` }} />}
         {mark != null && (
@@ -540,7 +526,9 @@ function RangeBar({
         )}
       </div>
       <div className="num flex justify-between text-[11px] text-faint">
-        <span>24h low {money(low, high)}</span>
+        <span>
+          {label} low {money(low, high)}
+        </span>
         <span>avg {money(avg, high)}</span>
         <span>high {money(high, high)}</span>
       </div>
@@ -607,14 +595,24 @@ function Rates({ label, children }: { label: string; children: ReactNode }) {
 }
 
 /** How often the same orders went through in the last 3 days (optimistic fills). */
-function Chance({ tries, through, chance }: { tries?: number | null; through?: number | null; chance?: number | null }) {
+function Chance({
+  tries,
+  through,
+  chance,
+  sell = 'sold if the hour after traded past the ask',
+}: {
+  tries?: number | null
+  through?: number | null
+  chance?: number | null
+  sell?: string
+}) {
   if (chance == null) return <p className="text-xs text-faint">Too few tries in the last 3 days to say how often its orders go through.</p>
   return (
     <div className="flex flex-col gap-0.5">
       <Meter
         label="Went through"
         value={chance}
-        hint="The same orders priced from each of the last 72 hours: bought if the next hour traded past the bid, sold if the hour after traded past the ask. That counts a fill whenever one trade crossed the price, so real fills are likely lower."
+        hint={`The same orders priced from each of the last 72 hours: bought if the next hour traded past the bid, ${sell}. That counts a fill whenever one trade crossed the price, so real fills are likely lower.`}
       />
       <span className="text-[11px] text-faint">
         {through} of {tries} tries in the last 3 days, by the optimistic fill rule
@@ -743,6 +741,66 @@ function Cards({ w, money }: { w: MissedWindow; money: Money }) {
                   ]}
                 />
                 <RangeBar low={c.range_low} avg={c.range_avg} high={c.range_high} hours={c.range_hours} mark={c.bid} markLabel="your bid" money={money} />
+              </Rates>
+            </Opportunity>
+          ))}
+        </ol>
+      )}
+    </Block>
+  )
+}
+
+/** The ask after `hours` hours of cuts, for the schedule in the rates popup. */
+const cutAsk = (f: MissedFlip, hours: number) => f.ask * (1 - f.cut) ** hours
+
+/** The latest hour's flips: the same whatever the look-back (sent with the 1-hour one). */
+function Flips({ flips, money }: { flips: MissedFlip[]; money: Money }) {
+  const [all, setAll] = useState(false)
+  const shown = all ? flips : flips.slice(0, TOP)
+  return (
+    <Block
+      id="flips"
+      title="Volatile flips"
+      icon={Activity}
+      note="Liquid items whose latest hour traded across a wide range (at least 10k Chaos traded, a range of at most 50%: wider is usually one odd trade). Likeliest to go through first. The orders, behind Show rates, are the ones the backtest tested: bid low in the hour's range, list high, cut the ask a little each hour until it sells. A bid that doesn't fill costs nothing: cancel it."
+      more={<ShowAll all={all} total={flips.length} onToggle={() => setAll(!all)} />}
+    >
+      {flips.length === 0 ? (
+        <Empty>No liquid item traded across a wide enough range in the latest hour.</Empty>
+      ) : (
+        <ol className="grid gap-3 md:grid-cols-3">
+          {shown.map((f) => (
+            <Opportunity
+              key={f.item_id}
+              title={f.name}
+              amount={`${Math.round(f.range * 100)}%`}
+              label="the latest hour's range"
+              muted
+              footer={
+                <>
+                  <span>
+                    <span className="num text-text">{money(f.volume)}</span> traded that hour
+                  </span>
+                  <span>average {money(f.price, f.high)}</span>
+                </>
+              }
+            >
+              <Chance tries={f.tries} through={f.through} chance={f.chance} sell="sold within 6 hours at the ask" />
+              <Rates label={`Rates for ${f.name}`}>
+                <div className="flex flex-col gap-1 rounded-md border border-border bg-bg/40 px-2.5 py-2 text-xs">
+                  <span className="text-[11px] font-medium tracking-wide text-faint uppercase">Orders for this hour</span>
+                  <ol className="flex flex-col gap-0.5 text-muted">
+                    <li>
+                      Bid <span className="num text-text">{money(f.bid, f.high)}</span> each; cancel it if it hasn't filled by the end of the hour
+                    </li>
+                    <li>
+                      Then list at <span className="num text-text">{money(f.ask, f.high)}</span>, {Math.round(f.cut * 100)}% lower each hour it doesn't sell:
+                      <span className="num text-text"> {money(cutAsk(f, 6), f.high)}</span> after 6 hours,
+                      <span className="num text-text"> {money(cutAsk(f, 24), f.high)}</span> after a day
+                    </li>
+                  </ol>
+                </div>
+                <RangeBar low={f.low} avg={f.price} high={f.high} hours={1} mark={f.bid} markLabel="your bid" money={money} label="latest hour" />
               </Rates>
             </Opportunity>
           ))}

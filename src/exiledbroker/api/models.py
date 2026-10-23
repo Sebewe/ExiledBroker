@@ -145,6 +145,26 @@ class MissedCard(BaseModel):
     chance: float | None = None
 
 
+class MissedFlip(BaseModel):
+    """A volatile flip from the latest hour: bid `bid` (Chaos) low in its range, list at
+    `ask` and cut it by `cut` each hour it doesn't sell. tries / through / chance: how
+    often the same flip went through in the last 72 hours (optimistic fills)."""
+
+    item_id: str
+    name: str
+    price: float  # Chaos, the hour's average
+    low: float
+    high: float
+    range: float  # (high - low) / price
+    volume: float  # Chaos traded in the hour
+    bid: float
+    ask: float
+    cut: float
+    tries: int | None = None
+    through: int | None = None
+    chance: float | None = None
+
+
 class MissedWindow(BaseModel):
     hours: int  # the look-back
     latest_hour: datetime
@@ -154,6 +174,9 @@ class MissedWindow(BaseModel):
     ticker: list[Mover]  # up to 24 liquid movers, biggest moves first
     loops: list[MissedLoop]
     cards: list[MissedCard]
+    flips: list[
+        MissedFlip
+    ] = []  # the latest hour's volatile flips, likeliest first; 1-hour look-back only
     loops_paid: int  # how many items' loops paid, not just the top ones
     cards_paid: int
 

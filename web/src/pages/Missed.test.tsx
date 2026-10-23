@@ -39,6 +39,10 @@ const recap = (hours: number, scale: number): MissedWindow => ({
   rising: [{ item_id: 'currency:a', name: 'Domination Scarab', price: 60, before: 40, change: 0.5, volume: 5000, streak: 3 }],
   falling: [{ item_id: 'currency:b', name: 'Essence of Horror', price: 30, before: 45, change: -1 / 3, volume: 3000, streak: -2 }],
   volatile: [{ item_id: 'currency:c', name: 'Abyss Scarab', low: 4, high: 64, price: 10, range: 6, volume: 9000 }],
+  flips: [
+    { item_id: 'currency:f1', name: 'Orb of Conflict', price: 100, low: 80, high: 120, range: 0.4, volume: 50000, bid: 84, ask: 110, cut: 0.01, tries: 60, through: 54, chance: 0.9 },
+    { item_id: 'currency:f2', name: 'Stacked Deck', price: 5, low: 4, high: 6, range: 0.4, volume: 20000, bid: 4.2, ask: 5.5, cut: 0.01, tries: 1, through: 0, chance: null },
+  ],
   ticker: [
     { item_id: 'currency:a', name: 'Domination Scarab', price: 60, before: 40, change: 0.5, volume: 5000, streak: 3 },
     { item_id: 'currency:f', name: 'Ancient Orb', price: 90, before: 100, change: -0.1, volume: 9000, streak: -1 },
@@ -52,7 +56,7 @@ const recap = (hours: number, scale: number): MissedWindow => ({
   loops_paid: 2 * scale,
   cards_paid: scale,
 })
-const RECAP = [recap(1, 1), recap(2, 2), recap(3, 3)]
+const RECAP = [recap(1, 1), { ...recap(2, 2), flips: [] }, { ...recap(3, 3), flips: [] }]
 
 // A league's first hour, as the API reports it (tests/test_league_start.py replays
 // Allflame's): nothing to compare against and nothing paid yet.
@@ -62,6 +66,7 @@ const empty = (hours: number): MissedWindow => ({
   rising: [],
   falling: [],
   volatile: [],
+  flips: [],
   ticker: [],
   loops: [],
   cards: [],
@@ -103,7 +108,19 @@ describe('Market recap', () => {
     expect(screen.getByRole('link', { name: /Backtest/ })).toHaveAttribute('href', '/backtest')
     expect(screen.getByText(/^up 3h running$/)).toBeInTheDocument()
     expect(screen.getByText(/^down 2h running$/)).toBeInTheDocument()
-    expect(screen.getByText('600% range')).toBeInTheDocument()
+    // Volatile flips come before the loops, their rates behind Show rates too.
+    const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)
+    expect(headings.indexOf('Volatile flips')).toBe(headings.indexOf('Loops that paid') - 1)
+    const flips = screen.getByRole('heading', { name: 'Volatile flips' }).closest('section')!
+    expect(within(flips).getByText('90%')).toBeInTheDocument() // went through, recently
+    expect(within(flips).getByText(/Too few tries/)).toBeInTheDocument() // the one with 1 try
+    expect(within(flips).queryByText(/after 6 hours/)).not.toBeInTheDocument()
+    fireEvent.click(within(flips).getAllByRole('button', { name: 'Show rates' })[0]!)
+    const rates = screen.getByRole('dialog', { name: 'Rates for Orb of Conflict' })
+    expect(within(rates).getByText('84.0c')).toBeInTheDocument() // the bid
+    expect(within(rates).getByText('110.0c')).toBeInTheDocument() // the first ask
+    expect(within(rates).getByText(/103\.6c/)).toBeInTheDocument() // 1% lower each hour: after 6 hours
+    fireEvent.pointerDown(document.body)
     expect(screen.getByText('+12%')).toBeInTheDocument() // the loop's edge, not a total
     expect(screen.queryByText(/likely one odd trade/)).not.toBeInTheDocument() // 12% isn't odd
     expect(screen.getByText('20.0div')).toBeInTheDocument() // 4000c traded an hour, at 200c
@@ -175,6 +192,7 @@ describe('Market recap', () => {
     const calls = vi.mocked(fetch).mock.calls.length
     fireEvent.change(screen.getByRole('slider'), { target: { value: '3' } })
     expect(await screen.findByText('paid every hour')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Orb of Conflict' })).toBeInTheDocument() // the flips, sent once
     expect(vi.mocked(fetch).mock.calls.length).toBe(calls)
   })
 
