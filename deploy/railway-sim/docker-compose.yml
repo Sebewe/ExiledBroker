@@ -1,0 +1,82 @@
+# The Railway project, simulated locally (see README.md here). Same image and start
+# commands as Railway; a separate compose project, so the development stack is left
+# alone. Driven by run.py; by hand:
+#   docker compose -f deploy/railway-sim/docker-compose.yml up -d --build web
+#   docker compose -f deploy/railway-sim/docker-compose.yml run --rm pipeline
+#
+# Networks: everything is on `private` (internal: no route out), so the pipeline can
+# only reach the upstream stand-in, never GGG or poe.ninja. Only `web` is also on
+# `public`, for the load generator (Railway's public domain).
+name: ebsim
+
+x-limits: &limits
+  # Railway bills what's used, not a cap; these only stop a runaway.
+  deploy:
+    resources:
+      limits: { cpus: "2", memory: 2g }
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: eb
+      POSTGRES_PASSWORD: eb
+      POSTGRES_DB: railway
+    volumes: [pgdata:/var/lib/postgresql/data]
+    networks: [private]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "eb", "-d", "railway"]
+      interval: 5s
+      retries: 20
+    <<: *limits
+
+  web:
+    build: { context: ../.., dockerfile: Dockerfile }
+    image: ebsim-app
+    environment:
+      PORT: "8080"
+      EB_DATABASE_URL: postgresql://eb:eb@postgres:5432/railway
+    ports: ["8100:8080"]
+    networks: [private, public]
+    depends_on:
+      postgres: { condition: service_healthy }
+    <<: *limits
+
+  upstream:
+    image: ebsim-app
+    command: ["uvicorn", "upstream:app", "--app-dir", "/sim", "--host", "0.0.0.0", "--port", "9000"]
+    environment:
+      SIM_PAGES: /pages
+      SIM_REFERENCE: /sim-cache/reference.json
+    volumes:
+      - ./:/sim:ro
+      - ./.cache:/sim-cache:ro
+      - ../../data/raw/ggg/currency_exchange:/pages:ro
+    networks: [private, public]  # public only so run.py can set its clock
+    ports: ["9100:9000"]
+
+  pipeline:
+    image: ebsim-app
+    command: ["eb", "pipeline", "run"]
+    environment:
+      EB_DATA_DIR: /data
+      EB_PUBLISH_URL: postgresql://eb:eb@postgres:5432/railway
+      EB_EXCHANGE_BASE_URL: http://upstream:9000/api/currency-exchange
+      EB_POE_NINJA_BASE_URL: http://upstream:9000/ninja
+      EB_REPOE_BASE_ITEMS_URL: http://upstream:9000/repoe/base_items.min.json
+      EB_LOOT_FILTER_URL: http://upstream:9000/filter/{strictness}.filter
+    volumes: [pipeline:/data]
+    networks: [private]
+    depends_on:
+      postgres: { condition: service_healthy }
+    profiles: [cron]
+    <<: *limits
+
+volumes:
+  pgdata:
+  pipeline:
+
+networks:
+  private:
+    internal: true
+  public:

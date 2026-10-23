@@ -113,7 +113,7 @@ def run(
     if not _has_history(settings):
         raise EmptyVolume(
             f"No history in {settings.db_path}. Seed the volume with the research database "
-            "and raw pages (deploy/railway-sim/seed.sh) rather than fetching it all from GGG."
+            "and raw pages (see deploy/railway-sim/seed_volume.py) rather than fetching it all from GGG."
         )
     moment = now or datetime.now(UTC)
     name = league or pick_league(client, settings, moment)
