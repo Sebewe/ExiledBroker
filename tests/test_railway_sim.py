@@ -151,3 +151,12 @@ def test_the_stand_in_follows_ggg_rules(upstream):
         "ninja_304": 1,
         "ninja_200": 1,
     }
+
+
+def test_the_stand_in_can_serve_unrecorded_hours_as_empty(upstream):
+    """For the league switch replay: the days between leagues weren't recorded."""
+    client, up = upstream
+    client.post("/_sim/now", params={"ts": 5 * 3600, "missing_empty": True})
+    page = client.get("/api/currency-exchange/3600").json()
+    assert page == {"next_change_id": 7200, "markets": []}
+    assert up.counts["exchange_empty"] == 1

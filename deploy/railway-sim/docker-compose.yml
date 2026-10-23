@@ -36,6 +36,8 @@ services:
     environment:
       PORT: "8080"
       EB_DATABASE_URL: postgresql://eb:eb@postgres:5432/railway
+    # EB_NEXT_LEAGUE / _START for the league switch replay (run.py writes it).
+    env_file: [{ path: .cache/next.env, required: false }]
     ports: ["8100:8080"]
     networks: [private, public]
     depends_on:
@@ -64,6 +66,7 @@ services:
       EB_POE_NINJA_BASE_URL: http://upstream:9000/ninja
       EB_REPOE_BASE_ITEMS_URL: http://upstream:9000/repoe/base_items.min.json
       EB_LOOT_FILTER_URL: http://upstream:9000/filter/{strictness}.filter
+    env_file: [{ path: .cache/next.env, required: false }]
     networks: [private]  # no volume: the server keeps everything in Postgres
     depends_on:
       postgres: { condition: service_healthy }

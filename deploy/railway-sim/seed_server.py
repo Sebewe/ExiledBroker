@@ -10,6 +10,10 @@ sources are pointed at the stand-in, so their checks are conditional requests
 answered 304 instead of fresh downloads (a changed URL counts as a new source).
 
     python seed_server.py --start 1785103200 --league Allflame
+    python seed_server.py --league Mirage --drop Allflame   # just before a switch
+
+`--drop` removes later leagues from the copy, as if they hadn't happened yet: the
+league switch replay seeds a server following Mirage, before Allflame launched.
 """
 
 import argparse
@@ -47,10 +51,11 @@ def sim_url(key: str, league: str) -> str | None:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--start", type=int, required=True, help="first hour (unix) not yet loaded")
+    ap.add_argument("--start", type=int, help="first hour (unix) not yet loaded")
     ap.add_argument("--league", default="Allflame")
+    ap.add_argument("--drop", action="append", default=[], help="a later league to remove")
     args = ap.parse_args()
-    start = datetime.fromtimestamp(args.start, UTC).replace(tzinfo=None)
+    start = datetime.fromtimestamp(args.start or 2**31, UTC).replace(tzinfo=None)
 
     shutil.rmtree(WORK, ignore_errors=True)
     WORK.mkdir(parents=True)
@@ -58,6 +63,12 @@ def main() -> None:
     shutil.copy2(SRC / "exiledbroker.duckdb", copy)
     con = duckdb.connect(str(copy))
     db.init_schema(con)
+    for name in args.drop:
+        drop = db.scalar(con, "SELECT id FROM league WHERE name = ?", [name])
+        for table in ("price_observation", "cross_market_hour", "exchange_hour_loaded"):
+            con.execute(f"DELETE FROM {table} WHERE league_id = ?", [drop])
+        con.execute("DELETE FROM ingest_load WHERE league_id = ?", [drop])
+        con.execute("UPDATE league SET exchange_tracked = FALSE WHERE id = ?", [drop])
     lid = db.scalar(con, "SELECT id FROM league WHERE name = ?", [args.league])
     for table, col in (
         ("price_observation", "observed_at"),

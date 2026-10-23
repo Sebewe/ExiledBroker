@@ -22,11 +22,14 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request, Response
 
 PAGES = Path(os.environ.get("SIM_PAGES", "/pages"))
+# The league switch replay crosses days no page was recorded for (between leagues,
+# where only Standard and events trade): those hours are served as finished, empty
+# pages instead of 404s, so "the league isn't trading" is answered the real way.
 REFERENCE = Path(os.environ.get("SIM_REFERENCE", "/sim-cache/reference.json"))
 HOUR = 3600
 
 app = FastAPI(title="ExiledBroker upstream stand-in")
-state = {"now": None}
+state: dict = {"now": None}
 counts: Counter = Counter()
 log: list[dict] = []
 
@@ -46,8 +49,8 @@ def _count(kind: str, **extra) -> None:
 
 
 @app.post("/_sim/now")
-def set_now(ts: int) -> dict:
-    state["now"] = ts
+def set_now(ts: int, missing_empty: bool = False) -> dict:
+    state["now"], state["missing_empty"] = ts, missing_empty
     return {"now": ts}
 
 
@@ -73,6 +76,10 @@ def exchange_page(ts: int) -> Response:
         body = {"next_change_id": ts, "markets": []}
         return Response(json.dumps(body), media_type="application/json")
     path = PAGES / f"{ts}.json.gz"
+    if not path.exists() and state.get("missing_empty"):
+        _count("exchange_empty", ts=ts)
+        body = {"next_change_id": ts + HOUR, "markets": []}
+        return Response(json.dumps(body), media_type="application/json")
     if not path.exists():
         _count("exchange_missing", ts=ts)
         raise HTTPException(404, f"no recorded page for {ts}")

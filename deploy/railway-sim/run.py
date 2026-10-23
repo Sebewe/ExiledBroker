@@ -3,6 +3,7 @@
     .venv/bin/python deploy/railway-sim/run.py run --users 100            # a day in ~24 min
     .venv/bin/python deploy/railway-sim/run.py run --users 1000 --seconds-per-hour 3600  # real time
     .venv/bin/python deploy/railway-sim/run.py spike --users 1000          # all at once
+    .venv/bin/python deploy/railway-sim/run.py switch                      # Mirage → Allflame
     .venv/bin/python deploy/railway-sim/run.py down                        # remove it all
 
 A run starts from a fresh server (`seed`): Allflame replayed from 48 hours after its
@@ -60,13 +61,14 @@ def iso(ts: float) -> str:
     return datetime.fromtimestamp(ts, UTC).isoformat()
 
 
-def set_upstream_now(ts: float) -> None:
-    httpx.post(f"{UPSTREAM}/_sim/now", params={"ts": int(ts)}, timeout=10).raise_for_status()
+def set_upstream_now(ts: float, missing_empty: bool = False) -> None:
+    params = {"ts": int(ts), "missing_empty": missing_empty}
+    httpx.post(f"{UPSTREAM}/_sim/now", params=params, timeout=10).raise_for_status()
 
 
-def pipeline_pass(at: float) -> dict:
+def pipeline_pass(at: float, missing_empty: bool = False) -> dict:
     """One cron run of the pipeline at simulated time `at`; its wall time and output."""
-    set_upstream_now(at)
+    set_upstream_now(at, missing_empty)
     started = time.monotonic()
     out = subprocess.run(
         [
@@ -106,11 +108,18 @@ def wait_healthy(url: str, seconds: int = 120) -> None:
     raise RuntimeError(f"{url} didn't come up")
 
 
-def reset_and_seed() -> None:
-    """A fresh simulation: rebuilt image, an empty Postgres seeded from the local copy."""
+NEXT_ENV = HERE / ".cache" / "next.env"  # the announced league, for both services
+
+
+def reset_and_seed(
+    seed: list[str] | None = None, first_at: float | None = None, next_league: str = ""
+) -> None:
+    """A fresh simulation: rebuilt image, an empty Postgres seeded from the local copy
+    (by default Allflame cut back to START), then a first pipeline pass."""
     sh([*COMPOSE, "--profile", "cron", "down", "-v", "--remove-orphans"], capture_output=True)
-    sh([*COMPOSE, "build", "web"])
     (HERE / ".cache").mkdir(exist_ok=True)
+    NEXT_ENV.write_text(next_league)
+    sh([*COMPOSE, "build", "web"])
     sh([*COMPOSE, "up", "-d", "--wait", "postgres"])
     sh(
         [
@@ -131,15 +140,13 @@ def reset_and_seed() -> None:
             "python",
             "pipeline",
             "/sim/seed_server.py",
-            "--start",
-            str(START),
-            "--league",
-            LEAGUE,
+            *(seed or ["--start", str(START), "--league", LEAGUE]),
         ]
     )
     sh([*COMPOSE, "up", "-d", "upstream"])
     wait_healthy(f"{UPSTREAM}/_sim/stats")
-    first = pipeline_pass(START + CRON_MINUTE * 60)  # nothing new yet: checks it's caught up
+    # Nothing new yet: checks it's caught up.
+    first = pipeline_pass(first_at or START + CRON_MINUTE * 60, missing_empty=bool(seed))
     if not first["ok"]:
         raise RuntimeError(f"the first pipeline pass failed: {first['out']}")
     print(f"first pass: {first['out']}")
@@ -347,6 +354,43 @@ def spike(args) -> dict:
     return out
 
 
+def switch(args) -> dict:
+    """A league switch on the real pages: a server following Mirage (which had ended four
+    days earlier) with Allflame announced for its real launch, passes hourly from two
+    hours before the launch to four after. After each pass, what the site shows."""
+    launch = LAUNCH
+    announced = f"EB_NEXT_LEAGUE={LEAGUE}\nEB_NEXT_LEAGUE_START={iso(launch)}\n"
+    first = launch - 2 * 3600 + CRON_MINUTE * 60
+    reset_and_seed(["--league", "Mirage", "--drop", LEAGUE], first, announced)
+    steps = []
+    for h in range(-1, 5):
+        at = launch + h * 3600 + CRON_MINUTE * 60
+        p = pipeline_pass(at, missing_empty=True)
+        time.sleep(16)  # the web trusts its data version for 15 s
+        status = httpx.get(f"{WEB}/api/status", timeout=10).json()
+        names = [lg["name"] for lg in status["leagues"]]
+        missed = httpx.get(f"{WEB}/api/missed/{names[0]}", timeout=30) if names else None
+        steps.append(
+            {
+                "at": iso(at),
+                "ok": p["ok"],
+                "seconds": p["seconds"],
+                "pipeline": p["out"].splitlines()[-1] if p["out"] else "",
+                "site_leagues": names,
+                "latest_hour": status["leagues"][0]["latest_hour"] if names else None,
+                "upcoming": (status.get("upcoming") or {}).get("name"),
+                "missed_status": missed.status_code if missed else None,
+            }
+        )
+        print(json.dumps(steps[-1]))
+    upstream = httpx.get(f"{UPSTREAM}/_sim/stats", timeout=10).json()["counts"]
+    out = {"label": "switch", "steps": steps, "upstream": upstream}
+    (ROOT / "data" / "perf" / "railway-switch.json").write_text(json.dumps(out, indent=2))
+    print(f"upstream requests: {upstream}")
+    NEXT_ENV.write_text("")
+    return out
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -372,12 +416,15 @@ def main() -> None:
     s.add_argument("--users", type=int, default=1000)
     s.add_argument("--minutes", type=float, default=5)
     s.add_argument("--label")
+    sub.add_parser("switch", help="a league switch, Mirage to Allflame, on the real pages")
     sub.add_parser("down", help="remove the simulation's containers and volumes")
     args = ap.parse_args()
     if args.cmd == "run":
         run(args)
     elif args.cmd == "spike":
         spike(args)
+    elif args.cmd == "switch":
+        switch(args)
     else:
         sh([*COMPOSE, "--profile", "cron", "down", "-v", "--remove-orphans"])
 

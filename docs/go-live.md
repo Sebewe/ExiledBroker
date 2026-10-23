@@ -28,9 +28,20 @@ Deadline: the next league launches in about a month. The server must be live, ca
 
 ### 2. League switch, rehearsed (works in the local simulation before going live)
 
-- [ ] Study the real switches on disk: GGG's pages across the last league changes (Settlers → … → Mirage → Allflame). What changes at launch: new league keys, new items, item order, response size, the first hours' thin markets, and RePoE lagging behind new items.
-- [ ] Replay a switch through the hosted pipeline in the simulation: `EB_NEXT_LEAGUE` set, the old league running, the new league's first pages. It must switch exactly at launch, drop the old league from the site, add its reduced fortnight to history, rebuild the picks, and show "waiting for the first trades" to the first hour.
-- [ ] Make the loader agnostic to response shape: no reliance on item order or count, unknown items (not yet in RePoE) handled without failing or merging, and pages bigger than any seen so far fine. Test with recorded pages, reordered and padded, and with RePoE missing the new items.
+What the last four switches on disk show (Settlers → Mercenaries → Keepers → Mirage → Allflame, read from the pages already stored):
+- **The old league ends 3–4 days before the next launches.** E.g. Mirage's last trades were 2026-07-20 and Allflame launched 07-24 22:00. In between, only Standard, Hardcore and event leagues (Phrecia, Ancestors) trade. The old league never appears in the hours before a launch.
+- **The new league trades in its launch hour.** Allflame had 57 markets at 22:00, then 254, 429 … 1,205 by hour 17. Its first hour is published just after 23:00.
+- **The response's shape didn't change across four launches:** the same 8 market keys (`league`, `market_id`, `market_pair`, `volume_traded`, `lowest/highest_stock`, `lowest/highest_ratio`) and the same top level (`markets`, `next_change_id`). Pages grow tenfold in the first hours (165 KB → 1.5 MB).
+- **New items trade from the start:** 9 items Allflame traded in its first 4 hours (its own currency, two new cards) had never appeared before; 16 in its first day.
+
+- [x] **Follow the right league through the gap.** The pipeline keeps the league it has (even after it stops trading) and switches only to the announced one, at its first published hour. It no longer falls back to whatever poe.ninja lists first, which in the gap could be Standard or an event. It never picks Standard, Hardcore, Ruthless, SSF or private leagues. The new league's first hour is searched for from a day before the announcement (a handful of pages), not from 2024. Without an announcement, the old league stays and the site says the feed stopped: set `EB_NEXT_LEAGUE` / `_START` on both services.
+- [x] **Drop the old league once the new one has data**, keeping its Launch history (captured when its fortnight ended). The pages kept are only the new league's window.
+- [x] **The core pool comes from the followed league**: poe.ninja's lists for that league, kept as they are while poe.ninja doesn't list it (an ended league, or a new one poe.ninja hasn't added yet).
+- [x] **RePoE lagging behind the launch.** While the exchange trades items RePoE doesn't name, RePoE is rechecked daily instead of weekly. Once they're named, the league is rebuilt from its stored pages (no requests), so an item never splits into a placeholder and its real name.
+- [x] **The loader doesn't depend on the page's shape:** shuffled markets, pairs listed the other way round, numbers as floats, unknown fields and pages padded with other leagues give identical rows.
+- [x] **The site in the gap** says "Mirage has ended" (with the countdown) instead of "the live feed may have stopped", once a next league is announced.
+- [x] Replayed on the real pages (`tests/test_league_switch.py`, `tests/fixtures/league_switch.json.gz`): the hosted pipeline from 2 hours before Allflame's launch to 4 after. Mirage is kept through the gap; Allflame is picked up at its first published hour with ≤ 8 requests; one request per hour after; every endpoint answers.
+- [ ] The same switch in the Railway simulation (`deploy/railway-sim/run.py switch`), real containers.
 
 ### 3. Railway project (setup)
 
