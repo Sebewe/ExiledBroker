@@ -9,7 +9,7 @@ Deadline: the next league launches in about a month. The server must be live, ca
 - **The server keeps only what the site reads, in Postgres. No DuckDB and no full history on the server.** New hours are fetched as GGG publishes them, loaded, and the raw page is dropped. History pages (Launch market, Conversions) read reduced tables, not the full history. This also removes the pipeline volume and the need to seed one (the old blocker).
 - **Seed the server with what we already have, then let it catch up the rest.** Postgres is loaded from the local data: the live league's site rows, the reduced history and the live window's raw pages. The first pass then fetches only the hours since the local copy ended, which also tests that the server recovers after downtime. Never re-fetch from GGG what we already have locally.
 - **Raw pages: keep only the live window's, compressed in Postgres** (open question A, option 2). Each new hour's page is stored as it's loaded, and pages that leave the window are deleted. A loader rebuild re-reads them instead of downloading again.
-- **No backups.** The data is small and can be fetched again, and the local copy stays.
+- ~~**No backups.**~~ Replaced 2026-10-23: **an off-site backup on Supabase's free tier** ([supabase.md](supabase.md)). The pipeline syncs the site's database to it after each pass (uploads only; it reads back ~25 kB), and it's read only to restore. The local copy stays as a third copy.
 - **Usage limits are set**, and when the site is down because of them it shows a static "Something went wrong, we're investigating" page. Real traffic can raise the limit; a bug shouldn't be able to eat the credit.
 - **The league switch is rehearsed** on historical data before it happens for real, including changed API responses (new items, different order and size).
 - **Custom domain:** bought.
@@ -24,7 +24,7 @@ Deadline: the next league launches in about a month. The server must be live, ca
 - [x] Reduced history for the history pages: only Launch market reads history (Conversions is a static research note, no data). `launch_history` holds each finished league's window medians: 12,332 rows for the five reference leagues instead of 977k hourly; the picks ranked from it are identical on the real data.
 - [x] When the live league's fortnight is over, the pipeline captures it into the history and rebuilds the picks (`launch_picks.refresh`); a replaced league's rows are dropped once the new league has data (`site.drop_leagues`).
 - [x] `eb site seed --hosted` seeds a new server from the local copy (rows, history, picks, the loaded hours' pages); the pipeline refuses an unseeded database.
-- [ ] Re-run the simulation's tiers on the new shape (no volume) and update the bill (running). Seeded at hour 48 of the league the server's Postgres is 29 MB; pages average ~77 KB, so a full window is ~50–80 MB.
+- [x] Re-run the simulation's tiers on the new shape (no volume) and update the bill: $2.64 of usage a month at 10 daily visitors, $2.83 at 100, ~$3.2 estimated at 1000 (the 1000 run was interrupted), against the $5 Hobby includes ([hosting.md](hosting.md#the-railway-bill)). Seeded at hour 48 of the league the server's Postgres is 29 MB; a full window is ~280–320 MB with its pages.
 
 ### 2. League switch, rehearsed (works in the local simulation before going live)
 
@@ -41,14 +41,14 @@ What the last four switches on disk show (Settlers → Mercenaries → Keepers �
 - [x] **The loader doesn't depend on the page's shape:** shuffled markets, pairs listed the other way round, numbers as floats, unknown fields and pages padded with other leagues give identical rows.
 - [x] **The site in the gap** says "Mirage has ended" (with the countdown) instead of "the live feed may have stopped", once a next league is announced.
 - [x] Replayed on the real pages (`tests/test_league_switch.py`, `tests/fixtures/league_switch.json.gz`): the hosted pipeline from 2 hours before Allflame's launch to 4 after. Mirage is kept through the gap; Allflame is picked up at its first published hour with ≤ 8 requests; one request per hour after; every endpoint answers.
-- [x] The same switch in the Railway simulation (`deploy/railway-sim/run.py switch`, real containers): Mirage kept with the countdown at 21:06 and 22:06; Allflame live at 23:06 (9.7 s, Mirage dropped); then one hour a pass in 2–3 s. 8 exchange requests in 7 passes, and the core pool's Allflame lists downloaded once.
+- [x] The same switch in the Railway simulation (`deploy/railway-sim/run.py switch`, real containers): Mirage kept with the countdown at 21:06 and 22:06; Allflame live at 23:06 (9.7 s, Mirage dropped); then one hour a pass in 2–3 s. 8 exchange requests in 7 passes, and the core pool's Allflame lists downloaded once. Rerun with the backup container (2026-10-23): every pass synced it, Mirage's rows and 339 pages left it at the switch, and it matched the site at the end.
 
 ### 3. Railway project (setup)
 
 - [ ] Project with Railway's Postgres template, plus `web` and `pipeline` services pointing their config-as-code at `deploy/railway/web.json` / `pipeline.json`.
 - [ ] Variables:
   - web: `EB_DATABASE_URL`;
-  - pipeline: `EB_DATABASE_URL` (both set to Postgres's private URL);
+  - pipeline: `EB_DATABASE_URL` (both set to Postgres's private URL), and `EB_BACKUP_URL` = Supabase's session-pooler URL, sealed ([supabase.md](supabase.md#the-connection-string));
   - **both** services: `EB_NEXT_LEAGUE` / `EB_NEXT_LEAGUE_START` before a launch (the web service shows the countdown, the pipeline switches leagues).
 - [ ] Custom domain on the web service (CNAME), HTTPS from Railway.
 - [ ] Railway waits for CI before deploying a push to `main` (decided 2026-10-23: turn on "Wait for CI" on both app services).
@@ -59,6 +59,7 @@ What the last four switches on disk show (Settlers → Mercenaries → Keepers �
 - [ ] A seed command loads the server's Postgres from the local data: the live league's site rows, the reduced history, the Launch picks, and the live window's raw pages. It sends nothing to GGG.
 - [ ] The first pass then fetches only the hours after the local copy's last hour. Watch it run and check that its `ingest_run` row has one request per missing hour.
 - [ ] Afterwards: take the pipeline down for a few hours, bring it back, and check it fetches exactly the missed hours.
+- [ ] The backup: the first pass's log ends with "Backup: …" adding the hours since Supabase's seed (2026-10-22 18:00), then one hour a pass. After a day, Supabase's Usage page shows well under 1 MB of egress a day.
 
 ### 5. Limits and the fallback page
 
@@ -69,7 +70,7 @@ What the last four switches on disk show (Settlers → Mercenaries → Keepers �
 
 ### 6. Before flipping DNS
 
-- [ ] Finish the cost report (after-fix tiers, the real 24 h run) in [hosting.md](hosting.md#the-railway-bill).
+- [x] Finish the cost report in [hosting.md](hosting.md#the-railway-bill) (the real 24 h run was dropped, 2026-10-23).
 - [ ] Rebuild and check every page on the Railway URL: no data, catching up, live, and stale.
 
 ## Settled questions

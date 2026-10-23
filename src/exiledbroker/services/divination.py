@@ -11,7 +11,7 @@ A positive margin means buying a set of cards, turning it in and selling the rew
 was profitable at that hour's prices (before trade friction). Unique-item rewards
 need the expected value of the reward (it can roll differently), which comes later.
 
-SQL here must stay Postgres-compatible: Supabase will serve the same queries.
+SQL here must stay Postgres-compatible: the hosted site's Postgres serves the same queries.
 """
 
 from datetime import datetime

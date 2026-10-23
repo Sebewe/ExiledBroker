@@ -18,7 +18,7 @@ whole-number trade ratios). These are hourly summaries, not an order book: a pos
 edge says trades happened at those prices within the hour, not that one player could
 have caught both sides, so treat results as candidates to check live.
 
-SQL here must stay Postgres-compatible: Supabase will serve the same queries.
+SQL here must stay Postgres-compatible: the hosted site's Postgres serves the same queries.
 """
 
 from datetime import datetime

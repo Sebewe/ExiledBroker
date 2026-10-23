@@ -6,7 +6,7 @@ an ingest_load row records what was loaded. Interrupting rolls the whole league
 back; re-running with unchanged inputs is skipped.
 
 Only softcore rows, and only currency and uniques, are loaded. The SQL keeps to what DuckDB and Postgres share so
-the same row shapes can be pushed to Supabase later.
+the same row shapes can be copied to the site's Postgres.
 """
 
 import json

@@ -1,4 +1,4 @@
-# Local copy of the hosted setup. Postgres stands in for Supabase; `api` and `worker` run
+# Local copy of the hosted setup. Postgres stands in for Railway's; `api` and `worker` run
 # the same image Railway runs.
 #   docker compose up -d db                      just the database (dev: eb serve + npm run dev)
 #   docker compose up -d --build api             the site, as hosted, on http://localhost:8000

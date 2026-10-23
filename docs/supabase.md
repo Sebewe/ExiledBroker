@@ -1,32 +1,80 @@
-# Railway + Supabase: connecting them
+# Supabase: the off-site backup
 
-How to run the site's database on Supabase's free tier, with the web service and the pipeline on Railway, and what's left to finish that integration. Measurements and the reasoning behind it are in [hosting.md](hosting.md#supabase-for-the-database-tried-2026-10-23-fits-after-the-pipeline-fix). This is the reference for doing the switch.
+The site runs entirely on Railway: web, Postgres and the hourly pipeline, talking over Railway's free private network. Supabase's free tier holds an **off-site copy** of the site's database, in a second provider. The pipeline keeps it up to date after every pass, and it's read back only to restore the site after losing Railway's database. Measurements and the history behind this choice are in [hosting.md](hosting.md#supabase-tried-as-the-database-now-the-off-site-backup).
 
 ```
-Railway (US East)                               Supabase (AWS us-east-1, free)
-  web       (always on: /api + the built site) ──┐
-                                                  ├─ session pooler :5432 ──> Postgres 17
-  pipeline  (cron "6 * * * *", then exits) ──────┘     (what the site reads)
+Railway (US East)                                  Supabase (AWS us-east-1, free)
+  web ──────── private network ──┐
+                                 ├── Postgres (the site's database)
+  pipeline (cron, hourly) ───────┘
+      │ after each pass: storage/backup.sync          the backup (Postgres 17)
+      └──────── session pooler :5432 ───────────────>   uploads the changes,
+                                                        reads back ~25 kB
 ```
 
-Railway's Postgres template is **not** used in this shape: `EB_DATABASE_URL` on both Railway services points at Supabase. Nothing in the code is Supabase-specific; the same URL variable picks the database.
+**Why it's shaped this way.** Supabase bills what is read out of it (egress, 5 GB a month on the free plan), not what is written in. As the site's main database it needed ~1.4 GB a month and a set of guardrails, and one careless full read could use up the month. As a backup it's written to every hour and read from almost never. Railway's Postgres is next to the services, so reading it is free.
 
-## What exists already (2026-10-23)
+## What a sync does
 
-- **Supabase project** `qoroikeceewhwqccffrv`, region **us-east-1**, Postgres 17.11, free plan (dashboard: supabase.com, the account that owns it).
-- **Data API turned off** (Project Settings → Data API). Keep it off: it serves every `public` table over REST to anyone holding the publishable key, which is public by design. The site talks to Postgres directly and doesn't use it.
-- **Seeded fresh on 2026-10-23** (tables emptied, then one `eb site seed --hosted`): Allflame through 2026-10-22 18:00, 672 hours and their raw pages, the Launch history (5 leagues) and picks, and the backtest report rebuilt on the current code. **282 MB of the 500 MB**, no dead rows (`cross_market_hour` 114 MB, `price_observation` 96 MB, `exchange_page` 57 MB); no security advisories. The first Railway pass catches up the hours since then, one request per missing hour.
-- **The pipeline fix that makes it fit** (`db.pushdown`, the `SCHEMA 'public'` attach, reference and page caches by MD5): a pass reads ~1.8 MB from the database instead of ~98 MB. `tests/test_pipeline.py::test_a_pass_never_copies_a_whole_table_out_of_postgres` guards it.
-- **Local connection string** in `/Users/sebm/Documents/ExiledBroker/.env.supabase`, one folder above the repo, so it can't be committed. `EB_DATABASE_URL` holds the session-pooler URL with a `[YOUR-PASSWORD]` placeholder, and the password is in `SUPABSAE_PASSWORD` (sic). Substitute it URL-encoded, never print it:
+`storage/backup.py`, `sync(src, dst)`: makes the backup hold what the site's database holds, incrementally, in one transaction on the backup:
+- **Per league:** the hours the site has loaded and the backup hasn't (price and loop rows, copied in chunks of 48 hours), and the hours the backup has that the site doesn't are deleted.
+- **Shared tables** (leagues, items, tracked items, cards): rows that differ. Tracked items and cards the site no longer has are deleted, and leagues once their rows are gone.
+- **Reference data:** the metadata always, the content (RePoE's is ~1 MB) only when its MD5 differs.
+- **The Launch tables and the backtest report:** replaced when they've been rebuilt.
+- **Raw pages:** the window's pages, and none outside it.
+- **A replaced league** (a league switch) is dropped.
+- **A league rebuilt by a new `LOADER_VERSION`** (a deploy) is emptied in a transaction of its own, then `VACUUM FULL` gives its space back before the fresh copy goes in. A plain `VACUUM` isn't enough: on the real data the fresh copy still grew the backup from 319 to 439 MB.
+- **Checks:** at the end, the row counts on both sides. A mismatch is reported as a warning: it would mean a sync bug.
+
+What it reads back from the backup: which hours and pages it has (one compact string each), the reference checksums, a few counts and stamps. Measured on the real Allflame data, through a byte-counting relay:
+
+| Sync | Read from the backup | Uploaded | Time (local) | Backup size |
+|---|---|---|---|---|
+| First copy into an empty backup | 6.6 kB | 244 MB | 11 s | 319 MB |
+| An hour with nothing new | 24.6 kB | 0.3 MB | 0.3 s | 319 MB |
+| Two new hours | 24.7 kB | 0.8 MB | 0.3 s | 319 MB |
+| The league rebuilt (new loader), twice in a row | 19.6 kB | 129 MB | 10 s | 319 MB |
+
+So about 18 MB of egress a month at one pass an hour, under 0.5% of the free allowance. Uploads are free.
+
+**The pipeline never fails because of the backup.** With `EB_BACKUP_URL` set, `eb pipeline run` syncs after its pass. An unreachable or failing backup is reported on the pass's log line ("Backup failed (…); the next pass catches up"), with a 10-second connection timeout, and the next pass brings it up to date in one go: a sync adds every hour the backup is missing.
+
+**Tests:**
+- `tests/test_backup.py`, on Postgres, covers each case above:
+  - after each pass, the backup is identical to the site, and a pass reads under 2 kB back on the fixture;
+  - a failed backup doesn't fail the pass;
+  - hours and pages leaving the window leave the backup;
+  - a rebuilt league is copied afresh;
+  - a restore rebuilds the site, and the pipeline carries on from it with one request per new hour;
+  - a league switch is dropped from the backup;
+  - a backup of the local copy matches a seed.
+- `deploy/railway-sim/` has a backup container too. In its league-switch replay, the backup matched the site after every pass, and Mirage's rows and pages left the backup when Allflame took over.
+
+## Commands
+
+```bash
+eb pipeline run                          # on Railway, hourly: the pass, then the backup (EB_BACKUP_URL)
+EB_BACKUP_URL=… eb site backup -l Allflame              # from the local copy (no EB_DATABASE_URL): the named league
+EB_DATABASE_URL=… EB_BACKUP_URL=… eb site backup        # from a site database: mirrored whole
+EB_DATABASE_URL=… EB_BACKUP_URL=… eb site restore       # says how big the backup is; --yes restores
+```
+
+**Restoring** is the one bulk read of the backup (most of its ~300 MB, about 6% of a month's egress), so `eb site restore` shows the backup's size and does nothing without `--yes`. If the local copy is up to date, `eb site seed --hosted` restores the site from it for free; then the next pass syncs the backup. Restore from the backup when the local copy isn't available.
+
+## The Supabase project (2026-10-23)
+
+- **Project** `qoroikeceewhwqccffrv`, region **us-east-1**, Postgres 17.11, free plan (dashboard: supabase.com, the account that owns it).
+- **Data API turned off** (Project Settings → Data API). Keep it off: it serves every `public` table over REST to anyone holding the publishable key, which is public by design. Nothing here uses it.
+- **Contents:** seeded fresh on 2026-10-23 (tables emptied, then one `eb site seed --hosted`), from when it was tried as the site's database. Allflame through 2026-10-22 18:00, 672 hours and their raw pages, the Launch history (5 leagues) and picks, the backtest report. 282 MB of the 500 MB, no security advisories. That's already a valid backup: the first Railway pass's sync brings it up to date, uploading the hours since then.
+- **Local connection string** in `/Users/sebm/Documents/ExiledBroker/.env.supabase`, one folder above the repo, so it can't be committed. Its `EB_DATABASE_URL` line is the session-pooler URL with a `[YOUR-PASSWORD]` placeholder, and the password is in `SUPABSAE_PASSWORD` (sic). For the commands above it's the **backup** URL (`EB_BACKUP_URL`), never `EB_DATABASE_URL`. Substitute it URL-encoded, and never print it:
 
   ```bash
-  set -a; source ../.env.supabase; set +a
-  export EB_DATABASE_URL=$(.venv/bin/python -c 'import os, urllib.parse as u
+  export EB_BACKUP_URL=$(set -a; source ../.env.supabase; set +a; .venv/bin/python -c 'import os, urllib.parse as u
   pw = u.quote(os.environ.get("SUPABASE_PASSWORD") or os.environ["SUPABSAE_PASSWORD"], safe="")
   print(os.environ["EB_DATABASE_URL"].replace("[YOUR-PASSWORD]", pw))')
   ```
 
-- **Supabase MCP** for Claude Code, configured in `/Users/sebm/Documents/ExiledBroker/.mcp.json` (outside the repo). Useful read-only calls: `execute_sql` (sizes, row counts, `extensions.pg_stat_statements`), `get_advisors` (security / performance). It can't hand out the database password and isn't needed for seeding.
+- **Supabase MCP** for Claude Code, configured in `/Users/sebm/Documents/ExiledBroker/.mcp.json` (outside the repo). Use it for small metadata queries only (sizes, counts, `get_advisors`): every read is egress.
 
 ## The connection string
 
@@ -37,53 +85,29 @@ postgresql://postgres.qoroikeceewhwqccffrv:<password>@aws-0-us-east-1.pooler.sup
 ```
 
 - **Not the direct connection** (`db.<ref>.supabase.co`): it's IPv6 only, and Railway's outbound IPv6 isn't something we've confirmed.
-- **Not the transaction pooler** (port 6543): the pipeline holds a transaction open across many statements through DuckDB's postgres extension (ATTACH, `COPY`, `postgres_execute`), which needs one server connection for the whole session. The web pool (`db._pool`) already disables prepared statements, but the pipeline is what rules it out.
+- **The session pooler holds one server connection for the whole sync**, which its temp tables, its transaction and its `VACUUM FULL` after a rebuild are simplest with. The transaction pooler (port 6543) would hand them different connections.
 - **URL-encode the password** (`urllib.parse.quote(pw, safe="")`). Characters like `@ : / # ?` otherwise break the URL. A letters-and-digits password avoids the issue.
-- Optionally append `?sslmode=require`. libpq's default (`prefer`) already uses TLS with the pooler; `require` refuses a plaintext fallback. (Not yet tried with the pipeline's DuckDB attach; check one pass if you add it.)
-- **Connections:** the free plan allows 60. The web service pools at most 5 (`db._pool`), and a pipeline pass opens a few, one at a time.
+- **Connections:** the free plan allows 60; a sync uses one.
 
-## Steps to finish the integration
+## Setting it up on Railway
 
-1. **Railway project, US East region**, with only the two app services: `web` and `pipeline` from this repo, config-as-code at `deploy/railway/web.json` / `pipeline.json`, "Wait for CI" on. Don't add the Postgres template.
-2. **Variables on both services** (Railway → service → Variables; a shared variable is simplest):
-   - `EB_DATABASE_URL` = the session-pooler URL above, with the password filled in. Mark it as sealed/secret.
-   - `EB_NEXT_LEAGUE` / `EB_NEXT_LEAGUE_START` once the next league is announced (launch around 2026-11-13).
-3. **Before any re-seed, empty the tables** (done for the current seed, 2026-10-23). Seeding replaces rows with a DELETE then COPY, which leaves the old rows as dead space: two re-seeds during the trial took the project to 488 MB, and `VACUUM` makes that space reusable but doesn't shrink the files (`VACUUM FULL` needs room for a second copy, which would cross the limit). Above 500 MB Supabase makes the database read-only. Empty the site tables, then seed once:
+1. Railway project in **US East**, with Railway's Postgres template and the `web` and `pipeline` services (`deploy/railway/README.md`).
+2. On the **pipeline** service only: `EB_BACKUP_URL` = the session-pooler URL above, with the password filled in, as a sealed variable. The web service doesn't need it.
+3. Seed Railway's Postgres from the local copy (`eb site seed --hosted`, `deploy/railway/README.md`). The backup is already seeded.
+4. Watch the first cron pass's log: it should end with a "Backup: …" line adding the hours since 2026-10-22 18:00, and then "Backup: poe1-… +1/-0 hours" each hour.
+5. After a day, check Supabase's Usage page: egress should be well under 1 MB a day of syncs.
 
-   ```sql
-   -- via psql / psycopg on the session pooler: empties every table in public (the site's
-   -- copy; the local DuckDB is the source). TRUNCATE frees the space at once.
-   DO $$ BEGIN
-     EXECUTE (SELECT 'TRUNCATE ' || string_agg(format('%I.%I', schemaname, tablename), ', ')
-                     || ' CASCADE' FROM pg_tables WHERE schemaname = 'public');
-   END $$;
-   ```
-
-   It's destructive, so it needs the user's go-ahead, and Claude Code's auto mode blocks it even then: the user runs it in the Supabase dashboard's SQL Editor. Check it took (`SELECT pg_size_pretty(pg_database_size(current_database()))`: ~11 MB empty), then seed; expect ~282 MB at a full window.
-4. **Seed from the local copy** (done for now; repeat after emptying), never from GGG (`eb pipeline run` refuses an unseeded database):
-
-   ```bash
-   .venv/bin/eb live sync         # local copy up to date (the user runs the live feed)
-   .venv/bin/eb launch picks      # Launch history and picks
-   .venv/bin/eb backtest run      # the Backtest page's report
-   EB_DATABASE_URL=<session pooler URL> .venv/bin/eb site seed --hosted
-   ```
-
-   Takes ~2–3 minutes from home (uploads are free; Supabase bills egress, not ingress). Check that no `eb live watch` is writing the local DuckDB while it runs.
-5. **First cron pass:** watch its log in Railway. It should fetch exactly the hours since the seed (one request per missing hour; `ingest_run` records it) and finish in seconds from US East. Then check `/api/status` and the pages on the Railway URL.
-6. **After a day:** Supabase dashboard → Usage. Egress should be ~70–100 MB a day (about 1.8 MB a pass, plus ~0.8 MB when the web service rebuilds its cached views each hour). Much more means a statement is copying a table again: look at `extensions.pg_stat_statements` for `COPY (SELECT … ctid BETWEEN …)` with high row counts.
-7. **Update the docs that describe the old shape:** `deploy/railway/README.md` (Postgres row, "Postgres's private URL"), `docs/go-live.md` section 3, `docs/hosting.md` "Shape", `docs/decisions.md` (a dated entry: database on Supabase, why), and the hosting target in `CLAUDE.md`.
-
-## Free-plan limits to keep in mind
+## Free-plan limits
 
 | Limit | Ours | What happens |
 |---|---|---|
-| 500 MB database | ~282 MB at a full window (launch fortnight + latest 14 days; a league switch drops the old one) | above it, read-only: the pipeline's writes fail |
-| 5 GB egress a month | ~2–3 GB estimated | billed only on paid plans; on free, usage is restricted |
-| Paused after 7 days without activity | the hourly pipeline is activity | if the pipeline stops for a week, the site's database pauses: resume it in the dashboard (data is kept) |
-| 500 MB RAM, shared CPU | the site's reads are small and cached | — |
-| No backups | decided: none needed | re-seed from the local copy |
+| 500 MB database | ~320 MB at a full window (launch fortnight + latest 14 days; a switch drops the old league); a rebuild doesn't grow it | above it, read-only: syncs fail, and the pipeline reports it and carries on |
+| 5 GB egress a month | ~18 MB of syncs; a restore ~300 MB | billed only on paid plans; on free, usage is restricted |
+| Paused after 7 days without activity | the hourly sync is activity | if the pipeline stops for a week, resume the project in the dashboard (data is kept) |
+| No backups of its own | it *is* the backup; the local copy is the third copy | — |
 
-## Going back to Railway's Postgres
+## Rules
 
-Add Railway's Postgres template, set `EB_DATABASE_URL` on both services to its private URL, seed it the same way, and pause the Supabase project. Nothing in the code changes. The pipeline fix stays useful there too: shorter passes, less CPU.
+- **Development and tests never touch Supabase:** they use local databases. `tests/conftest.py` blanks `EB_DATABASE_URL` and `EB_BACKUP_URL`. The simulation's backup is a local container.
+- **Only the hosted pipeline's sync talks to it** each hour. Plus, when asked, `eb site backup` from the local copy, or a restore.
+- **A sync must stay incremental:** it reads which hours and pages the backup has, never their rows. `tests/test_backup.py` budgets a pass's reads from it.

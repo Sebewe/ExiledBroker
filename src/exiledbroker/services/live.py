@@ -5,7 +5,7 @@ newest loaded hour, roughly an hour behind real time. Everything here looks back
 `lookback_hours` from that hour: the latest edge or margin says where things stand,
 and the share of paying hours over the lookback says whether it's a pattern or a blip.
 
-SQL here must stay Postgres-compatible: Supabase will serve the same queries.
+SQL here must stay Postgres-compatible: the hosted site's Postgres serves the same queries.
 """
 
 from datetime import datetime, timedelta

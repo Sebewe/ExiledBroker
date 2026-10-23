@@ -1,6 +1,6 @@
 """Hourly launch-market queries over the tracked price mappings.
 
-SQL here must stay Postgres-compatible: Supabase will serve the same queries.
+SQL here must stay Postgres-compatible: the hosted site's Postgres serves the same queries.
 """
 
 import duckdb

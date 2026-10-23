@@ -30,6 +30,21 @@ services:
       retries: 20
     <<: *limits
 
+  # Stands in for the off-site backup (Supabase's free tier, docs/supabase.md): not on
+  # Railway's bill, so the meter leaves it out. The pipeline syncs to it after each pass.
+  backup:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: eb
+      POSTGRES_PASSWORD: eb
+      POSTGRES_DB: backup
+    volumes: [backupdata:/var/lib/postgresql/data]
+    networks: [private]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "eb", "-d", "backup"]
+      interval: 5s
+      retries: 20
+
   web:
     build: { context: ../.., dockerfile: Dockerfile }
     image: ebsim-app
@@ -66,15 +81,18 @@ services:
       EB_POE_NINJA_BASE_URL: http://upstream:9000/ninja
       EB_REPOE_BASE_ITEMS_URL: http://upstream:9000/repoe/base_items.min.json
       EB_LOOT_FILTER_URL: http://upstream:9000/filter/{strictness}.filter
+      EB_BACKUP_URL: postgresql://eb:eb@backup:5432/backup
     env_file: [{ path: .cache/next.env, required: false }]
     networks: [private]  # no volume: the server keeps everything in Postgres
     depends_on:
       postgres: { condition: service_healthy }
+      backup: { condition: service_healthy }
     profiles: [cron]
     <<: *limits
 
 volumes:
   pgdata:
+  backupdata:
 
 networks:
   private:

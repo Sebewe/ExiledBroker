@@ -17,7 +17,7 @@ A Path of Exile market tool for league starts. It turns historical and live exch
 | 4 | Baseline + backtest: first honest accuracy numbers | 🟨 The site's tools backtested at fair and harsh prices: Launch picks pay, hourly tools at best break even ([finding 4](docs/findings.md#4-backtest-the-launch-picks-pay-the-hourly-tools-at-best-break-even), the Backtest page) |
 | 5 | Signals: "farm X", "buy Y on day 2, sell day 6" | ⬜ |
 | 6 | Live mode: hourly ingest of the running league, live arbitrage view, later drift alerts | 🟨 Live feed and Market recap page built; poe.ninja poller and alerts not started |
-| 7 | Hosted site: React on the JSON API, all on Railway (web, Postgres, hourly pipeline) | 🟨 Built and simulated locally with Railway's billing (about $4 a month of usage at 1000 daily visitors, inside the $5 Hobby fee); not deployed |
+| 7 | Hosted site: React on the JSON API, all on Railway (web, Postgres, hourly pipeline), with an off-site backup on Supabase | 🟨 Built and simulated locally with Railway's billing ($2.6–2.8 a month of usage at 10–100 daily visitors, ~$3.2 estimated at 1000, inside the $5 Hobby fee); the backup is seeded; not deployed |
 
 Legend: ⬜ not started · 🟨 in progress · ✅ done. Phases 1–2 alone are useful: knowing which categories reliably spike in the first week is already an edge.
 
@@ -92,6 +92,7 @@ RePoE, loot filter ──────┘                  │
 | [docs/data.md](docs/data.md) | Sources, how dumps and exchange hours become rows, the live feed, core pool, divination cards, new-league handling, data model, running the ingest |
 | [docs/go-live.md](docs/go-live.md) | The checklist for going live on Railway, with decisions and open questions |
 | [docs/hosting.md](docs/hosting.md) | Hosting shape, cost issues and their fixes, performance tooling and findings |
+| [docs/supabase.md](docs/supabase.md) | The off-site backup on Supabase: what a sync does and costs, restoring, setting it up |
 | [docs/findings.md](docs/findings.md) | Phase-2 findings from past launches |
 | [docs/decisions.md](docs/decisions.md) | Decision log by topic, dated |
 | [docs/roadmap.md](docs/roadmap.md) | The prediction design (patch notes, models, backtest), planned modules, add-ons, risks |
@@ -127,7 +128,7 @@ ExiledBroker/
 
 Planned modules are listed in [roadmap.md](docs/roadmap.md#planned-modules).
 
-**Stack:** Python (`httpx`, `polars`, DuckDB, `pydantic`, `typer`, FastAPI), Postgres (Railway), React + Vite + TypeScript (TanStack Query/Table, ECharts, Tailwind); `scikit-learn`/LightGBM later.
+**Stack:** Python (`httpx`, `polars`, DuckDB, `pydantic`, `typer`, FastAPI), Postgres (Railway; off-site backup on Supabase), React + Vite + TypeScript (TanStack Query/Table, ECharts, Tailwind); `scikit-learn`/LightGBM later.
 
 ## License
 

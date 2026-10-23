@@ -600,3 +600,77 @@ def site_seed(
             result = site.seed(duck, pg, names, settings if hosted else None)
     rows = ", ".join(f"{t} {n:,}" for t, n in result.rows.items())
     typer.echo(f"Seeded {', '.join(result.leagues)}: {rows}")
+
+
+@site_app.command("backup")
+def site_backup(
+    league: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--league",
+            "-l",
+            help="From the local copy only. Repeatable. Default: the newest exchange league.",
+        ),
+    ] = None,
+) -> None:
+    """Sync the site's database (EB_DATABASE_URL, else the local copy) to the off-site
+    backup (EB_BACKUP_URL), as each hosted pipeline pass does. Uploads the changes and
+    reads back only what it needs to know which they are (docs/supabase.md)."""
+    import psycopg
+
+    from exiledbroker.services.live import live_leagues
+    from exiledbroker.storage import backup
+
+    settings = get_settings()
+    if not settings.backup_url:
+        typer.echo("Set EB_BACKUP_URL to the backup's database (docs/supabase.md).", err=True)
+        raise typer.Exit(1)
+    with psycopg.connect(settings.backup_url, autocommit=True) as dst:
+        if settings.database_url:
+            with psycopg.connect(settings.database_url, autocommit=True) as src:
+                result = backup.sync(
+                    src, dst, settings.model_copy(update={"exchange_pages": "database"})
+                )
+        else:
+            with db.session(read_only=True) as duck:
+                names = league or live_leagues(duck)["name"].head(1).to_list()
+                if not names:
+                    typer.echo("No exchange league in the local database.", err=True)
+                    raise typer.Exit(1)
+                result = backup.sync(duck, dst, settings, names)
+    typer.echo(str(result))
+
+
+@site_app.command("restore")
+def site_restore(
+    yes: Annotated[
+        bool, typer.Option("--yes", help="Read the whole backup (it's billed egress).")
+    ] = False,
+) -> None:
+    """Rebuild the site's database (EB_DATABASE_URL) from the off-site backup
+    (EB_BACKUP_URL), after losing it. The one bulk read of the backup, so it says how
+    much first and needs --yes. With the local copy at hand, `eb site seed --hosted`
+    does the same for free."""
+    import psycopg
+
+    from exiledbroker.storage import backup
+
+    settings = get_settings()
+    if not (settings.backup_url and settings.database_url):
+        typer.echo("Set EB_BACKUP_URL (the backup) and EB_DATABASE_URL (the site).", err=True)
+        raise typer.Exit(1)
+    with psycopg.connect(settings.backup_url, autocommit=True) as src:
+        size = db.scalar(src, "SELECT pg_size_pretty(pg_database_size(current_database()))")
+        if not yes:
+            typer.echo(
+                f"The backup's database is {size}: restoring reads most of that from it, "
+                "against its monthly egress allowance. If the local copy is up to date, "
+                "`eb site seed --hosted` restores for free instead. Re-run with --yes to "
+                "restore from the backup."
+            )
+            raise typer.Exit(1)
+        with psycopg.connect(settings.database_url, autocommit=True) as dst:
+            hosted = settings.model_copy(update={"exchange_pages": "database"})
+            result = backup.sync(src, dst, hosted)
+    result.title = "Restored from the backup"
+    typer.echo(str(result))

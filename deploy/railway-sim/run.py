@@ -97,6 +97,8 @@ def pipeline_pass(at: float, missing_empty: bool = False) -> dict:
         "seconds": round(time.monotonic() - started, 1),
         "ok": out.returncode == 0,
         "out": (out.stdout + out.stderr).strip()[-400:],
+        # The pass's own line (stderr carries docker's "Container … Created" too).
+        "result": (out.stdout.strip().splitlines() or [""])[-1],
     }
 
 
@@ -123,7 +125,7 @@ def reset_and_seed(
     (HERE / ".cache").mkdir(exist_ok=True)
     NEXT_ENV.write_text(next_league)
     sh([*COMPOSE, "build", "web"])
-    sh([*COMPOSE, "up", "-d", "--wait", "postgres"])
+    sh([*COMPOSE, "up", "-d", "--wait", "postgres", "backup"])
     sh(
         [
             *COMPOSE,
@@ -156,6 +158,47 @@ def reset_and_seed(
     sh([*COMPOSE, "up", "-d", "web"])
     wait_healthy(f"{WEB}/api/health")
     httpx.post(f"{UPSTREAM}/_sim/reset", timeout=10)
+
+
+# What the backup must match: the site's leagues, hours, rows, pages and data version.
+BACKUP_CHECK = """SELECT json_build_object(
+    'leagues', (SELECT string_agg(league_id || ':' || fingerprint, ',' ORDER BY league_id)
+                FROM ingest_load),
+    'loaded_at', (SELECT max(loaded_at)::text FROM ingest_load),
+    'hours', (SELECT count(*) FROM exchange_hour_loaded),
+    'latest_hour', (SELECT max(hour)::text FROM exchange_hour_loaded),
+    'prices', (SELECT count(*) FROM price_observation),
+    'loops', (SELECT count(*) FROM cross_market_hour),
+    'pages', (SELECT count(*) FROM exchange_page),
+    'items', (SELECT count(*) FROM item),
+    'history', (SELECT count(*) FROM launch_history))"""
+
+
+def backup_check() -> dict:
+    """The site's database against its backup, after the pipeline's last sync."""
+
+    def summary(service: str, database: str) -> dict:
+        out = sh(
+            [
+                *COMPOSE,
+                "exec",
+                "-T",
+                service,
+                "psql",
+                "-U",
+                "eb",
+                "-d",
+                database,
+                "-At",
+                "-c",
+                BACKUP_CHECK,
+            ],
+            capture_output=True,
+        )
+        return json.loads(out.stdout)
+
+    site, copy = summary("postgres", "railway"), summary("backup", "backup")
+    return {"same": site == copy, "site": site, "backup": copy}
 
 
 def diff(a: dict[str, meter.Usage], b: dict[str, meter.Usage]) -> dict[str, meter.Usage]:
@@ -316,7 +359,9 @@ def run(args) -> dict:
         {"counts": upstream["counts"]},
         load_seconds,
     )
+    r["backup"] = backup_check()
     show(r)
+    print(f"  backup matches the site: {r['backup']['same']}")
     return r
 
 
@@ -378,7 +423,7 @@ def switch(args) -> dict:
                 "at": iso(at),
                 "ok": p["ok"],
                 "seconds": p["seconds"],
-                "pipeline": p["out"].splitlines()[-1] if p["out"] else "",
+                "pipeline": p["result"],
                 "site_leagues": names,
                 "latest_hour": status["leagues"][0]["latest_hour"] if names else None,
                 "upcoming": (status.get("upcoming") or {}).get("name"),
@@ -387,7 +432,9 @@ def switch(args) -> dict:
         )
         print(json.dumps(steps[-1]))
     upstream = httpx.get(f"{UPSTREAM}/_sim/stats", timeout=10).json()["counts"]
-    out = {"label": "switch", "steps": steps, "upstream": upstream}
+    backed_up = backup_check()
+    print(f"backup matches the site: {backed_up['same']}")
+    out = {"label": "switch", "steps": steps, "upstream": upstream, "backup": backed_up}
     (DATA / "perf" / "railway-switch.json").write_text(json.dumps(out, indent=2))
     print(f"upstream requests: {upstream}")
     NEXT_ENV.write_text("")

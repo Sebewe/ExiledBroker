@@ -6,8 +6,10 @@ import os
 import tempfile
 
 os.environ["EB_DATA_DIR"] = tempfile.mkdtemp(prefix="eb-test-data-")
-# Nor the site's Postgres from a developer's .env: tests that need one say so.
+# Nor the site's Postgres or its off-site backup from a developer's .env: tests that
+# need one say so (a throwaway Postgres, never the hosted ones).
 os.environ["EB_DATABASE_URL"] = ""
+os.environ["EB_BACKUP_URL"] = ""
 
 
 import pytest

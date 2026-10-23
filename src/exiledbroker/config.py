@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     # The site's database (Railway's Postgres when hosted, the compose `db` service
     # locally). Unset: the site reads the local DuckDB file instead.
     database_url: str | None = None
+    # The off-site backup (Supabase, docs/supabase.md): each hosted pipeline pass syncs
+    # the site's database to it; read back only to restore. Unset: no backup.
+    backup_url: str | None = None
     # The built frontend the API serves (`npm run build` in web/). Not there: API only.
     web_dist: Path = Field(default_factory=_default_web_dist)
     # Where raw exchange pages are kept: files under data/raw (local, the whole history)

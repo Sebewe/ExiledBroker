@@ -1,7 +1,7 @@
 """The running league: its status and what the latest published hours offered (the
 Market recap). The hosted API serves only what the site's pages request, all of it
 precomputed once per hour (api/warm.py): no endpoint takes free-form arguments, so
-no visitor can make it read the database again (docs/supabase.md)."""
+no visitor can make it read the database again (docs/decisions.md)."""
 
 from datetime import UTC, timedelta
 

@@ -14,7 +14,9 @@ with Postgres attached (`db.site_writer`). Each pass:
    prunes pages that left the window);
 3. once the live league's launch fortnight is over, adds it to the Launch history and
    rebuilds the picks (`launch_picks.refresh`);
-4. once the live league has data, drops any other league's rows (a league switch).
+4. once the live league has data, drops any other league's rows (a league switch);
+5. with EB_BACKUP_URL set, syncs the site's database to the off-site backup
+   (`storage/backup.py`: uploads the changes, reads back tens of kB).
 
 The database must be seeded first (`eb site seed --hosted`, from the local copy), so
 the server never fetches from GGG what we already have: a pass then fetches only the
@@ -32,6 +34,7 @@ from exiledbroker.ingest.http import PoliteClient
 from exiledbroker.ingest.live import LiveStatus, sync_live
 from exiledbroker.services import launch_picks
 from exiledbroker.services.live import live_leagues
+from exiledbroker.storage import backup as backup_mod
 from exiledbroker.storage import db, site
 
 LEAGUES_MAX_AGE = timedelta(hours=1)  # a new league must be picked up within the hour
@@ -48,6 +51,8 @@ class PipelineResult:
     live: LiveStatus
     picks_from: list[str] | None = None  # the picks were rebuilt from these leagues
     dropped: list[str] = field(default_factory=list)
+    backup: backup_mod.SyncResult | None = None  # with EB_BACKUP_URL
+    backup_error: str | None = None  # the backup failed; the pass didn't
 
     def __str__(self) -> str:
         parts = [str(self.live)]
@@ -55,6 +60,10 @@ class PipelineResult:
             parts.append(f"Launch picks rebuilt from {', '.join(self.picks_from)}.")
         if self.dropped:
             parts.append(f"Dropped {', '.join(self.dropped)} from the site.")
+        if self.backup is not None:
+            parts.append(str(self.backup))
+        if self.backup_error:
+            parts.append(f"Backup failed ({self.backup_error}); the next pass catches up.")
         return " ".join(parts)
 
 
@@ -129,8 +138,27 @@ def run(
     now: datetime | None = None,
     lookback_hours: int = 14 * 24,
 ) -> PipelineResult:
-    """One hourly pass. `now` replays a moment (tests, the Railway simulation)."""
+    """One hourly pass. `now` replays a moment (tests, the Railway simulation). Then,
+    with EB_BACKUP_URL set, the site's database is synced to the off-site backup: a
+    failed backup is reported, never raised (the site is fine; the next pass catches
+    the backup up)."""
     settings = hosted(settings)
+    result = _pass(client, settings, league, now, lookback_hours)
+    if settings.backup_url:
+        try:
+            result.backup = backup_mod.back_up(settings)
+        except Exception as e:  # noqa: BLE001 (any failure: network, the backup's database)
+            result.backup_error = f"{type(e).__name__}: {e}"
+    return result
+
+
+def _pass(
+    client: PoliteClient,
+    settings: Settings,
+    league: str | None,
+    now: datetime | None,
+    lookback_hours: int,
+) -> PipelineResult:
     if not _seeded(settings):
         raise NotSeeded(
             "The site's database has no Launch history, so it hasn't been seeded. Seed it "

@@ -4,7 +4,7 @@ How the site is hosted, what would make it expensive, and how cost is measured. 
 
 ## Shape
 
-Everything on Railway (Hobby), three services in one project ([deploy/railway/](../deploy/railway/README.md)):
+Everything on Railway (Hobby), three services in one project ([deploy/railway/](../deploy/railway/README.md)), plus an off-site backup on Supabase's free tier ([supabase.md](supabase.md)):
 
 ```
 web (always on, no data of its own: uvicorn serving /api and the built frontend)
@@ -15,6 +15,9 @@ Postgres (always on: only what the site reads: the live league, its window's
    │ loads the new hours once an hour, in one transaction
    │
 pipeline (cron "6 * * * *": eb pipeline run, then exits; no volume, no disk)
+   │ then syncs the changes (storage/backup.py: uploads; reads back ~25 kB)
+   ▼
+Supabase (another provider, free tier): the off-site backup, read only to restore
 ```
 
 | Piece | Local | Railway |
@@ -22,6 +25,7 @@ pipeline (cron "6 * * * *": eb pipeline run, then exits; no volume, no disk)
 | Database | `db` service (Postgres 17) in `docker-compose.yml`, the same as CI | Railway's Postgres template (`EB_DATABASE_URL`, private URL) |
 | Web | `api` service: uvicorn serving `/api` and the built frontend | web service, same image (`deploy/railway/web.json`) |
 | Data | `eb live watch` (run by hand) or `eb pipeline run` | pipeline cron service, same image (`deploy/railway/pipeline.json`) |
+| Backup | the simulation's `backup` container | Supabase's free tier (`EB_BACKUP_URL`, on the pipeline only) |
 | Frontend dev | `npm run dev` in `web/`, proxying `/api` to `:8000` | built into the image |
 | All of it, metered | `deploy/railway-sim/` (below) | |
 
@@ -32,36 +36,50 @@ pipeline (cron "6 * * * *": eb pipeline run, then exits; no volume, no disk)
 - **`eb live watch` writes Postgres through DuckDB** (`EB_DATABASE_URL`, local use). `db.site_writer` attaches Postgres to an in-memory DuckDB, so the incremental loader runs unchanged and the transaction is Postgres's. On Mirage: 24 new hours in 1.0 s, identical rows, and a failed load rolls back. A worker container starting from an empty disk fetched only the 2 new hours (2 requests, 110 KB) and wrote them in 2 s.
 - **Serving.** Each table is a `View` (`api/deps.py`), computed once per data version, gzipped once, and sent with an ETag (`304` for a client that has it). The data version is trusted for 15 s, so a cached request makes no database query. Default views are precomputed when an hour loads (`api/warm.py`). The cache is a bounded LRU. Cached calls take 2–8 ms on real Allflame data; the heaviest cold call (arbitrage, 566 loops) about 0.3 s.
 
+- **The off-site backup.** After each pass, with `EB_BACKUP_URL` set, the pipeline syncs the site's database to Supabase (`storage/backup.py`): the hours the backup lacks, reference data only when its MD5 differs, the rebuilt Launch and backtest tables, the window's pages; it drops what the site dropped. It reads back only which hours and pages the backup has and a few checksums (~25 kB, ~18 MB a month), and a failed backup never fails the pass. `eb site restore` is the one bulk read, behind `--yes`. Details and measurements: [supabase.md](supabase.md).
+
 Not deployed yet.
 
-## Supabase for the database (tried 2026-10-23, fits after the pipeline fix)
+## The Railway bill
 
-The step-by-step for connecting Railway to it is [supabase.md](supabase.md).
+Simulated with `deploy/railway-sim/` (Railway's per-minute rates, read 2026-10-23: memory $10/GB-month, CPU $20/vCPU-month, volumes $0.15/GB-month, egress $0.05/GB; Hobby is $5 a month including $5 of usage). Visitors follow the real browser model (`web/src/lib/schedule.ts`, the 6 h saved cache, assets cached for a year after the first visit); a day is compressed to an hour of real time, with a pipeline pass each simulated hour against the GGG stand-in. Projected to a month, current layout (web + Railway's Postgres + the pipeline cron, no volume), measured 2026-10-23:
 
-The idea: Postgres on Supabase's free tier (500 MB database, 5 GB egress a month, 500 MB RAM, paused after a week without activity), web and the pipeline on Railway. The bill stays $5 either way at our traffic (Hobby includes $5 of usage); it would free about half of that usage as headroom. Project in AWS us-east-1 (Railway should run in US East), Postgres 17.11, 60 connections, Data API turned off (it would expose `public` to anyone with the publishable key). Reached through the session pooler (port 5432, IPv4); the direct connection is IPv6 only.
+| Daily visitors | Memory | CPU | Volume | Egress | **Usage** | Bill | Requests / visitor / day |
+|---|---|---|---|---|---|---|---|
+| 10 | $2.31 | $0.31 | $0.02 | $0.00 | **$2.64** | $5 | 18 |
+| 100 | $2.46 | $0.32 | $0.02 | $0.04 | **$2.83** | $5 | 21 |
+| 1000 | ~$2.5 | ~$0.3 | $0.02 | ~$0.4 | **~$3.2** (estimate) | $5 | — |
 
-Measured on the seeded project, from home (105 ms round trip), through a byte-counting relay:
+- **Memory is most of it:** the web service ~0.16–0.17 GB and Postgres ~0.07 GB, always on. Visitors barely move it: every response is cached and precomputed each hour.
+- **The pipeline costs almost nothing:** ~2.5 s and ~0.2 GB a pass, billed only while it runs: about $0.03 a month, nearly all CPU. Its backup sync adds ~0.3 s a pass.
+- **CPU is reported at Railway's rates for the measured use;** Apple Silicon is faster than Railway's vCPUs, so the "slow CPU" band doubles it: still $2.96 / $3.14 at 10 / 100 visitors.
+- **1000 visitors** wasn't rerun on this layout (the run was interrupted). The estimate scales the 100-visitor egress tenfold (assets are cached after a first visit) on the same always-on memory; the earlier layout measured $4.12 at 1000, almost all the difference being asset egress before assets were cached.
+- **What would push it over $5:** much more always-on memory (a second web replica, a larger cache), a Railway volume holding history again, or an endpoint that recomputes per visitor (the API now serves only the four precomputed responses, `docs/decisions.md`). The Supabase backup isn't on this bill.
+- **p95 latency** 33–75 ms at 10 and 100 visitors, no errors.
+
+## Supabase: tried as the database, now the off-site backup
+
+Tried on 2026-10-23 as the site's database (free tier: 500 MB, 5 GB egress a month, AWS us-east-1), with web and the pipeline on Railway. It fitted only after the pipeline fix below, at ~1.4 GB of egress a month, and needed rules around every read of it (reads cross from Railway's network, on Google Cloud, to AWS: billed egress), so it became the off-site backup instead (`docs/decisions.md`, [supabase.md](supabase.md)): written to every hour, read only to restore.
+
+Measured on the seeded project, from home (105 ms round trip), through a byte-counting relay, when it was the database:
 
 | What | Read from Supabase (egress) |
 |---|---|
-| Seed (`eb site seed --hosted`, Allflame, 672 hours) | uploads only (2 min 18 s); the database is then 282 MB: `cross_market_hour` 114 MB, `price_observation` 96 MB, `exchange_page` 57 MB |
-| Web: warm every default view for a new data version | 0.76 MB (6 views); 0.46 MB (4 views) after Arbitrage and Card turn-ins were folded into the Market recap (2026-10-23, measured on the local Postgres) |
-| Web: every other endpoint once, cold | 1.24 MB |
-| Web: a cached request | 0 |
-| Web: one data-version read | 173 B (every 30 s ≈ 15 MB a month) |
-| Pipeline: one pass loading 2 hours, before the fix | 98 MB, 121 s (2 requests to the GGG stand-in) |
-| **Pipeline: the same pass, after the fix** | **1.8 MB**, 72 s from home (many small round trips; a few seconds from Railway US East) |
-| Pipeline: a pass with nothing new | 1.5 MB (mostly reading RePoE's names once) |
+| Seed (`eb site seed --hosted`, Allflame, 672 hours) | uploads only (2 min 18 s); 282 MB: `cross_market_hour` 114 MB, `price_observation` 96 MB, `exchange_page` 57 MB |
+| Web: warm the default views for a new data version | 0.76 MB (6 views), 0.46 MB (4 views) |
+| Web: one data-version read | 173 B |
+| Pipeline: one pass loading 2 hours, before the fix | 98 MB, 121 s |
+| Pipeline: the same pass, after the fix | 1.8 MB |
 
-- **What the pipeline read, and the fix.** `db.site_writer` runs the loader on DuckDB with Postgres attached, and DuckDB's postgres scanner doesn't push down deletes, aggregates or correlated subqueries: it copies the columns it needs for the whole league (`pg_stat_statements`: ctid-range `COPY … TO STDOUT` of all 318k price rows and 439k loop rows). Free and quick on Railway's private network (2–3 s a pass in the simulation), ~70 GB a month across the internet. Fixed (profiled on a local Postgres, then confirmed on Supabase):
+- **What the pipeline read, and the fix (kept: it makes Railway's passes shorter too).** `db.site_writer` runs the loader on DuckDB with Postgres attached, and DuckDB's postgres scanner doesn't push down deletes, aggregates or correlated subqueries: it copies the columns it needs for the whole league (`pg_stat_statements`: ctid-range `COPY … TO STDOUT` of all 318k price rows and 439k loop rows). Fixed (profiled on a local Postgres, then confirmed on Supabase):
   - `db.pushdown(con)` runs a statement on Postgres itself, inside the same transaction (`postgres_query` / `postgres_execute`), so a failed pass still rolls back. Used for the loader's deletes (hours listed, not a DuckDB temp table) and its item count, `live_leagues` in `pick_league`, the picks' per-pass checks (`launch_picks.refresh`), the league drop and the seeded check.
   - The attach sees only `public` (`SCHEMA 'public'`): its catalog read was ~0.5 MB per connection, ×8 a pass.
   - Reference documents are read only when used (`Fetch.value` is lazy) and kept in memory by content MD5 (`reference.get`): RePoE's ~1 MB was read 5 times a pass, now once.
   - Pages a pass writes or reads are kept in memory by MD5 (`cx.read_page` asks the database for the stored page's MD5 first), so the loader doesn't read back what was just fetched.
   - `tests/test_pipeline.py::test_a_pass_never_copies_a_whole_table_out_of_postgres` logs every query DuckDB sends (`db.SHOW_PG_QUERIES`) and fails if one copies a big table without an hour or item filter.
-- **The month, estimated:** pipeline ~1.8 MB × 720 passes ≈ 1.3 GB; warming the default views 0.76 MB an hour ≈ 0.55 GB; other views at most ~1.24 MB an hour ≈ 0.9 GB; version checks ~15 MB. About 2–3 GB of the free 5 GB. Visitor traffic barely moves it (cached views read nothing).
-- **Size:** the window is the most the site holds (launch fortnight + latest 14 days; a switch drops the old league), so 282 MB is about the peak, 56% of the free 500 MB. Re-seeding is a DELETE then COPY, which leaves the old rows as dead space until reused: two re-seeds took it to 488 MB (VACUUM marks the space reusable but doesn't shrink the files). Empty the tables (TRUNCATE) before re-seeding a near-full free project; Supabase makes it read-only above 500 MB.
-- **Scheduled fetching on Supabase** (Edge Functions, TypeScript only, 2 s CPU and 256 MB per run, shared outbound IPs) doesn't fit the Python pipeline or the politeness rules; the pipeline stays a Railway cron.
+- **Re-seeding a free project:** a seed is a DELETE then COPY, which leaves the old rows as dead space (two re-seeds took it to 488 MB of 500; plain VACUUM doesn't shrink the files). Empty the tables first (TRUNCATE, in the dashboard's SQL editor). The backup's own rebuild path uses `VACUUM FULL` for the same reason.
+- **Scheduled fetching on Supabase** (Edge Functions, TypeScript only, 2 s CPU and 256 MB per run, shared outbound IPs) doesn't fit the Python pipeline or the politeness rules.
+- **A local publisher** (this computer loading the hours and uploading them, with a heartbeat the Railway pipeline deferred to) was built on the `local-publisher` branch to save the pipeline's egress while Supabase was the database. With the database on Railway it isn't needed; the incremental upload it introduced is what `storage/backup.py` does.
 
 ## Hosting cost issues
 
