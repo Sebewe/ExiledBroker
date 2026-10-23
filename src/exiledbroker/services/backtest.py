@@ -12,3 +12,9 @@ def report(con) -> list[dict]:
     """The stored report (a one-item list), or nothing before `eb backtest run`."""
     rows = db.rows(con, f"SELECT body FROM {REPORT} WHERE id = 'latest'")
     return [json.loads(rows[0][0])] if rows else []
+
+
+def built_at(con):
+    """When the report was built: the view's stamp (it changes only with `eb backtest
+    run` and a seed or publish, not every hour)."""
+    return db.scalar(con, f"SELECT max(built_at) FROM {REPORT}")

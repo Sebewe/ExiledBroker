@@ -33,18 +33,12 @@ def update(s, server, hours_in: int):
 
 
 def endpoints(league: str) -> list[str]:
+    """Everything the API serves: exactly what the site's pages request."""
     return [
         "/api/status",
-        f"/api/live/{league}/loops",
-        f"/api/live/{league}/card-flips?lookback=48",
         f"/api/missed/{league}",
-        "/api/market/leagues",
-        "/api/market/groups",
-        f"/api/market/{league}/summary?group=currency&group=divination",
-        f"/api/market/{league}/hourly?item_id=currency:divine-orb&unit=divine",
         "/api/launch/picks",
         "/api/backtest",
-        "/api/leagues",
     ]
 
 
@@ -82,13 +76,10 @@ def test_every_endpoint_as_a_league_arrives(client, settings):  # noqa: F811
         assert status["leagues"][0]["name"] == LEAGUE
         assert status["leagues"][0]["hours"] == hours_in
 
-    # After 30 hours there is something to trade.
-    loops = client.get(f"/api/live/{LEAGUE}/loops?lookback=48&min_price=0").json()
-    assert loops
-    # The site shows the latest hour's traded range; its average lies within it.
-    assert all(lp["price_low"] <= lp["price"] <= lp["price_high"] for lp in loops)
-    hourly = client.get(f"/api/market/{LEAGUE}/hourly?item_id=currency:divine-orb").json()
-    assert hourly[-1]["observed_at"].endswith("Z")  # UTC, explicitly
+    # After 30 hours there is something to recap, timed in UTC explicitly.
+    recap = client.get(f"/api/missed/{LEAGUE}").json()
+    assert recap and any(w["rising"] or w["falling"] or w["volatile"] for w in recap)
+    assert recap[0]["latest_hour"].endswith("Z")
 
 
 def test_tables_are_computed_once_per_data_version(client, settings, monkeypatch):  # noqa: F811
@@ -123,7 +114,7 @@ def test_a_deploy_invalidates_browser_caches(client, settings, monkeypatch):  # 
     """New code with the same data must not answer 304: the browser's cached body
     came from the old code and may lack fields the new pages read."""
     update(settings, FakeExchange(PAGES, now=LAUNCH), 6)
-    path = f"/api/live/{LEAGUE}/loops"
+    path = f"/api/missed/{LEAGUE}"
     before = client.get(path).headers["etag"]
     monkeypatch.setattr(deps, "CODE_VERSION", "a-new-deploy")
     deps.reset()  # the new process starts with an empty cache
@@ -161,13 +152,44 @@ def test_cache_is_bounded():
 
 def test_validation(client, settings):  # noqa: F811
     update(settings, FakeExchange(PAGES, now=LAUNCH), 3)
-    assert client.get("/api/live/Nowhere/loops").status_code == 404
-    assert client.get(f"/api/live/{LEAGUE}/loops?direction=sideways").status_code == 422
-    assert client.get(f"/api/live/{LEAGUE}/loops?buffer=5").status_code == 422
-    assert client.get(f"/api/live/{LEAGUE}/loops?weights=luck:3").status_code == 422
-    assert client.get(f"/api/live/{LEAGUE}/loops?weights=volume:x").status_code == 422
-    assert client.get(f"/api/live/{LEAGUE}/loops?weights=volume:0").status_code == 200
-    assert client.get(f"/api/market/{LEAGUE}/summary?group=gems").status_code == 404
+    assert client.get("/api/missed/Nowhere").status_code == 404
+
+
+def test_only_what_the_pages_request_is_served(client, settings):  # noqa: F811
+    """No endpoint takes free-form arguments: each would be computed from the
+    database for every new combination, and on Supabase that's billed egress any
+    visitor could run up. The API is exactly the site's four requests."""
+    from exiledbroker.api import app as app_module
+
+    paths = set(app_module.create_app().openapi()["paths"]) - {"/api/health"}
+    assert paths == {"/api/status", "/api/missed/{league}", "/api/launch/picks", "/api/backtest"}
+    update(settings, FakeExchange(PAGES, now=LAUNCH), 3)
+    for gone in (f"/api/live/{LEAGUE}/loops", f"/api/market/{LEAGUE}/hourly", "/api/leagues"):
+        assert client.get(gone).status_code == 404
+
+
+def test_an_unchanged_report_is_reused_across_data_versions(client, settings):  # noqa: F811
+    """The Backtest report changes only when it's rebuilt locally: a new hour reads its
+    build time, not the report, and browsers keep their copy (same ETag)."""
+    from exiledbroker.analysis import backtest
+
+    server = FakeExchange(PAGES, now=LAUNCH)
+    update(settings, server, 12)
+    with db.session(settings.db_path) as con:
+        backtest.store(con, backtest.build(con))
+    first = client.get("/api/backtest")
+    assert first.status_code == 200 and first.json()
+    update(settings, server, 13)  # a new data version
+    with db.metered() as meter:
+        again = client.get("/api/backtest")
+    assert again.headers["etag"] == first.headers["etag"] and again.content == first.content
+    read = [q for q in meter.queries if "backtest_report" in q.sql]
+    assert read and all("built_at" in q.sql for q in read), [q.sql for q in read]
+    with db.session(settings.db_path) as con:  # rebuilt: read again, a new ETag
+        backtest.store(con, backtest.build(con))
+    update(settings, server, 14)
+    rebuilt = client.get("/api/backtest")
+    assert rebuilt.headers["etag"] != first.headers["etag"]
 
 
 def test_serves_the_frontend(tmp_path, settings):  # noqa: F811

@@ -59,6 +59,7 @@ _version: dict[str, Any] = {"where": None, "at": 0.0, "value": None}
 def reset() -> None:
     """Forget everything cached (tests, `eb perf report`)."""
     results.clear()
+    _stamped.clear()
     _ready.clear()
     with _version_lock:
         _version.update(where=None, at=0.0, value=None)
@@ -136,6 +137,10 @@ class View:
     args: tuple
     compute: Callable[[Any], pl.DataFrame | list[dict]]  # given a connection
     model: Any  # the response model of one row
+    # For a view that changes less often than the data (e.g. a report rebuilt locally):
+    # a cheap query of what it depends on. While the stamp is unchanged, a new data
+    # version reuses the cached response (and its ETag) instead of reading it again.
+    stamp: Callable[[Any], Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -161,17 +166,29 @@ def payload(view: View) -> Payload:
 
     def build() -> Payload:
         for con in connection():
+            stamp = view.stamp(con) if view.stamp else None
+            kept = _stamped.get((view.name, view.args)) if view.stamp else None
+            if kept and kept[0] == stamp:
+                return kept[1]
             out = view.compute(con)
         rows = records(out) if isinstance(out, pl.DataFrame) else out
         adapter = _adapter(view.model)
         checked = adapter.validate_python(rows)
         body = adapter.dump_json(checked)
-        tag = hashlib.sha1(
-            repr((CODE_VERSION, view.name, view.args, version)).encode()
-        ).hexdigest()[:20]
-        return Payload(checked, body, gzip.compress(body, compresslevel=6), f'W/"{tag}"')
+        tagged = ("stamp", stamp) if view.stamp else version
+        tag = hashlib.sha1(repr((CODE_VERSION, view.name, view.args, tagged)).encode()).hexdigest()[
+            :20
+        ]
+        made = Payload(checked, body, gzip.compress(body, compresslevel=6), f'W/"{tag}"')
+        if view.stamp:
+            _stamped[(view.name, view.args)] = (stamp, made)
+        return made
 
     return results.get_or_compute((view.name, view.args, version), build)
+
+
+# Stamped views' latest responses, by view: (stamp, payload). One entry per view.
+_stamped: dict[tuple, tuple[Any, Payload]] = {}
 
 
 def respond(request: Request, view: View) -> Response:
@@ -202,25 +219,6 @@ def require_league(name: str) -> None:
     """404 for a league the site doesn't have (checked against a cached list)."""
     if name not in {row.name for row in payload(LEAGUE_NAMES).rows}:
         raise HTTPException(404, f"unknown league {name!r}")
-
-
-def parse_weights(text: str | None, defaults: dict[str, float]) -> dict[str, float]:
-    """`edge:4,volume:2` → a full weights dict (unnamed factors keep their default)."""
-    weights = dict(defaults)
-    if not text:
-        return weights
-    for part in text.split(","):
-        name, _, value = part.partition(":")
-        name = name.strip()
-        if name not in defaults:
-            raise HTTPException(422, f"unknown weight {name!r}; use {', '.join(defaults)}")
-        try:
-            weights[name] = float(value)
-        except ValueError:
-            raise HTTPException(422, f"weight {name!r} must be a number") from None
-        if not 0 <= weights[name] <= 10:
-            raise HTTPException(422, f"weight {name!r} must be between 0 and 10")
-    return weights
 
 
 def now_utc() -> datetime:

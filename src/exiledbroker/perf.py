@@ -23,10 +23,9 @@ from exiledbroker.storage import db
 # What each page of the site calls, with its default settings ({league}: the newest).
 ENDPOINTS = {
     "status": "/api/status",
-    "live: loops": "/api/live/{league}/loops",
-    "live: card flips": "/api/live/{league}/card-flips",
-    "launch: summary": "/api/market/{league}/summary?group=currency",
-    "launch: chart": "/api/market/{league}/hourly?item_id=currency:divine-orb",
+    "market recap": "/api/missed/{league}",
+    "launch picks": "/api/launch/picks",
+    "backtest": "/api/backtest",
 }
 TABLES = ["price_observation", "cross_market_hour", "exchange_hour_loaded", "item"]
 # Reads that grew more than this since the previous report are flagged.

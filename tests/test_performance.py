@@ -115,19 +115,13 @@ def test_a_failed_update_is_recorded(settings):  # noqa: F811
 # measurements in comments. Cached calls read only the data version.
 API_BUDGET = {
     "/api/status": (20, 2_000),  # 4 rows, 196 B
-    "/api/live/{league}/loops": (120, 4_000),  # 26 rows, 351 B
-    "/api/live/{league}/card-flips?lookback=48": (100, 8_000),  # 24 rows, 940 B
     "/api/missed/{league}": (500, 12_000),  # 121 rows, 7.4 KB (Allflame: ~3k rows, 10 KB)
-    "/api/market/{league}/summary?group=currency&group=divination": (150, 30_000),  # 32, 5.6 KB
-    "/api/market/{league}/hourly?item_id=currency:divine-orb": (150, 24_000),  # 30, 4.6 KB
     "/api/launch/picks": (60, 2_000),  # no picks in the replay; up to 30 picks hosted
 }
 # Endpoints about one league must not read more as other leagues' history accumulates,
 # except a row per league in league lists.
 ONE_LEAGUE_ENDPOINTS = [
     "/api/status",
-    "/api/live/{league}/loops",
-    "/api/live/{league}/card-flips?lookback=48",
     "/api/missed/{league}",
 ]
 PER_LEAGUE_ROWS = 2

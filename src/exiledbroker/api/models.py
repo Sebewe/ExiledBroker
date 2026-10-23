@@ -3,7 +3,7 @@ OpenAPI schema), so a renamed column fails here, in the tests, rather than in th
 browser. Prices are chaos unless the endpoint takes a `unit`. Nulls are real: at a
 league's launch most values are missing for a while."""
 
-from datetime import date, datetime
+from datetime import datetime
 
 from pydantic import BaseModel
 
@@ -29,104 +29,6 @@ class Status(BaseModel):
     data_version: str | None  # changes when new data is loaded; refetch then
     leagues: list[LiveLeague]  # newest data first
     upcoming: Upcoming | None = None
-
-
-class Ranks(BaseModel):
-    score: float | None  # 0–1, weighted mean of the factor ranks
-
-
-class Loop(Ranks):
-    item_id: str
-    name: str
-    hours: int
-    paying_share: float | None
-    overlap_chaos: float | None
-    last_edge: float | None
-    hour_volume: float | None  # Chaos value traded in both markets, latest hour
-    hour_items: float | None  # items traded in both markets, latest hour (not trade count)
-    last_gap: float | None
-    price: float | None  # volume-weighted Chaos price, latest hour
-    price_low: float | None  # lowest and highest Chaos price traded, latest hour
-    price_high: float | None
-    last_hour: datetime
-    hours_since: int
-    edge_now_rank: float | None
-    consistency_rank: float | None
-    volume_rank: float | None
-    freshness_rank: float | None
-
-
-class CardFlip(Ranks):
-    item_id: str
-    name: str
-    hours: int
-    profitable_share: float | None
-    sets_traded: float | None
-    set_cost: float | None
-    reward_value: float | None
-    last_margin: float | None
-    last_margin_pct: float | None
-    reward: str | None
-    stack_size: int | None
-    last_hour: datetime
-    hours_since: int
-    margin_now_rank: float | None
-    consistency_rank: float | None
-    volume_rank: float | None
-    freshness_rank: float | None
-
-
-class HourlyLeague(BaseModel):
-    name: str
-    start_at: datetime | None
-    launched_at: datetime | None
-    row_count: int
-    hours_covered: int
-
-
-class Group(BaseModel):
-    group_id: str
-    group_label: str
-    sort_order: int
-    items: int
-
-
-class MarketItem(BaseModel):
-    item_id: str
-    name: str
-    group_id: str
-    day_1: float | None
-    day_3: float | None
-    day_7: float | None
-    day_14: float | None
-    latest: float | None
-    average: float | None
-    peak: float | None
-    peak_day: int | None
-    volume: float | None
-    chaos_volume: float | None
-    days: int
-    trend: list[float | None]
-    change: float | None
-
-
-class MarketHour(BaseModel):
-    observed_at: datetime
-    day_offset: float | None
-    name: str
-    value: float | None
-    low: float | None
-    high: float | None
-    volume: float | None
-
-
-class CalendarLeague(BaseModel):
-    name: str
-    kind: str | None
-    start_date: date | None
-    end_date: date | None
-    length_days: int | None
-    price_rows: float | None
 
 
 class LeagueGrowth(BaseModel):
