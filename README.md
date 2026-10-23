@@ -17,7 +17,7 @@ A Path of Exile market tool for league starts. It turns historical and live exch
 | 4 | Baseline + backtest: first honest accuracy numbers | ⬜ |
 | 5 | Signals: "farm X", "buy Y on day 2, sell day 6" | ⬜ |
 | 6 | Live mode: hourly ingest of the running league, live arbitrage view, later drift alerts | 🟨 Live feed and Missed opportunities page built; poe.ninja poller and alerts not started |
-| 7 | Hosted site: React on the JSON API, Supabase Postgres + Railway | 🟨 Site database, worker, API, frontend and Railway image done; not deployed |
+| 7 | Hosted site: React on the JSON API, all on Railway (web, Postgres, hourly pipeline) | 🟨 Built and simulated locally with Railway's billing (about $4 a month of usage at 1000 daily visitors, inside the $5 Hobby fee); not deployed |
 
 Legend: ⬜ not started · 🟨 in progress · ✅ done. Phases 1–2 alone are useful: knowing which categories reliably spike in the first week is already an edge.
 
@@ -25,7 +25,7 @@ Legend: ⬜ not started · 🟨 in progress · ✅ done. Phases 1–2 alone are 
 
 The next league launches in about a month. Before then:
 
-- **Deploy** to Railway + Supabase ([hosting.md](docs/hosting.md)).
+- **Deploy** to Railway: seed the pipeline volume, then the three services in [deploy/railway/](deploy/railway/README.md) ([hosting.md](docs/hosting.md)).
 - **poe.ninja live poller** (phase 6). Uniques have no public sub-daily history, so it must be running at launch ([data.md](docs/data.md#sources)).
 - **Register the new league** once its name and date are announced (`eb exchange sync -l "<Name>" --start <date>`), so the site shows "waiting for the first trades" from launch.
 
@@ -59,7 +59,7 @@ cd web && npm install && npm run dev    # frontend at http://localhost:5173 (Nod
 .venv/bin/pytest                        # tests
 ```
 
-The hosted setup, locally (Postgres stands in for Supabase):
+The hosted setup, locally (Postgres in Docker stands in for Railway's):
 
 ```bash
 docker compose up -d db
@@ -81,7 +81,7 @@ RePoE, loot filter ──────┘                  │
                                       services/ ─► api/ (FastAPI, cached) ─► web/ (React)
 ```
 
-- **The pipeline writes, the site reads.** CLI jobs fetch and load; the API only reads, through `services/`. The live worker (`eb live watch`) is the only writer of the hosted database.
+- **The pipeline writes, the site reads.** CLI jobs fetch and load; the API only reads, through `services/`. The hourly pipeline (`eb pipeline run`) is the only writer of the hosted database.
 - **Everything is resumable and incremental.** Downloads resume, files are written atomically, and loads add new hours and remove only what left the window. Nothing finished is fetched or rewritten again.
 - **Every price has a `day_offset`** from its league's launch, so leagues compare directly.
 - **Store and send only what the site reads.** Summaries are computed in SQL, tables are cached per data version and served gzipped with an ETag. Cost is measured by budgets in the tests ([hosting.md](docs/hosting.md)).
@@ -119,14 +119,15 @@ ExiledBroker/
 ├── docs/                   # design docs (see above)
 ├── config/core_pool.toml   # manual core-pool overrides
 ├── scripts/ingest.sh       # unattended, resumable ingest
-├── Dockerfile, railway.json, docker-compose.yml, .env.example
+├── Dockerfile, docker-compose.yml, .env.example
+├── deploy/                 # railway/ (service configs), railway-sim/ (local Railway with billing)
 ├── .github/workflows/ci.yml
 └── data/                   # gitignored: raw downloads, Parquet, logs, exiledbroker.duckdb
 ```
 
 Planned modules are listed in [roadmap.md](docs/roadmap.md#planned-modules).
 
-**Stack:** Python (`httpx`, `polars`, DuckDB, `pydantic`, `typer`, FastAPI), Postgres (Supabase), React + Vite + TypeScript (TanStack Query/Table, ECharts, Tailwind); `scikit-learn`/LightGBM later.
+**Stack:** Python (`httpx`, `polars`, DuckDB, `pydantic`, `typer`, FastAPI), Postgres (Railway), React + Vite + TypeScript (TanStack Query/Table, ECharts, Tailwind); `scikit-learn`/LightGBM later.
 
 ## License
 

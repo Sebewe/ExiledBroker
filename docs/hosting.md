@@ -4,16 +4,31 @@ How the site is hosted, what would make it expensive, and how cost is measured. 
 
 ## Shape
 
-| Piece | Local | Railway / Supabase |
-|---|---|---|
-| Database | `db` service (Postgres 17) in `docker-compose.yml`, the same as CI | Supabase Postgres (`EB_DATABASE_URL`) |
-| Web | `api` service: uvicorn serving `/api` and the built frontend | web service, same image |
-| Worker | `worker` profile: `eb live watch` writing Postgres | worker service, same image |
-| Frontend dev | `npm run dev` in `web/`, proxying `/api` to `:8000` | built into the image |
+Everything on Railway (Hobby), three services in one project ([deploy/railway/](../deploy/railway/README.md)):
 
-- **One image, two start commands** (`Dockerfile`, `railway.json`): the frontend and API share one origin (no CORS, one service to pay for). The image bakes in DuckDB's postgres extension and runs as a non-root user.
-- **DuckDB is the research database** (all history, local). **Postgres is the site**: only the running league, a few hundred MB at most. `eb site seed` copies leagues from DuckDB into Postgres for development; production data comes from the worker.
-- **The worker writes Postgres through DuckDB.** `db.site_writer` attaches Postgres to an in-memory DuckDB, so the incremental loader runs unchanged and the transaction is Postgres's. On Mirage: 24 new hours in 1.0 s, identical rows, and a failed load rolls back. A worker container starting from an empty disk fetched only the 2 new hours (2 requests, 110 KB) and wrote them in 2 s.
+```
+web (always on, no data of its own: uvicorn serving /api and the built frontend)
+   │ reads (private network, free)
+   ▼
+Postgres (always on: only what the site reads, the live league)
+   ▲ publishes the new rows once an hour, in one transaction
+   │
+pipeline (cron "6 * * * *": eb pipeline run, then exits)
+   volume /data: the research DuckDB (all history) + raw GGG pages, ~1.7 GB of 5 GB
+```
+
+| Piece | Local | Railway |
+|---|---|---|
+| Database | `db` service (Postgres 17) in `docker-compose.yml`, the same as CI | Railway's Postgres template (`EB_DATABASE_URL`, private URL) |
+| Web | `api` service: uvicorn serving `/api` and the built frontend | web service, same image (`deploy/railway/web.json`) |
+| Data | `eb live watch` (run by hand) or `eb pipeline run` | pipeline cron service, same image (`deploy/railway/pipeline.json`) |
+| Frontend dev | `npm run dev` in `web/`, proxying `/api` to `:8000` | built into the image |
+| All of it, metered | `deploy/railway-sim/` (below) | |
+
+- **One image, two start commands** (`Dockerfile`): the frontend and API share one origin (no CORS, one service to pay for). The image bakes in DuckDB's postgres extension and runs as a non-root user.
+- **DuckDB is the research database** (all history), now also on the pipeline's volume. **Postgres is the site**: only the running league, about 0.1 GB. `eb site seed` copies leagues from DuckDB into Postgres for development.
+- **One data service: `eb pipeline run`** (`ingest/pipeline.py`), one pass an hour, then exit (Railway bills a cron service only while it runs). It picks the league (the announced one once started, else poe.ninja's list through `reference.fetch_if_changed`, at most hourly), loads new hours into the volume's DuckDB (`sync_live`), rebuilds the Launch picks when a league's fortnight has ended (the last 5 complete leagues differ from the stored ones), then `site.publish`es to Postgres: only the hours Postgres lacks, the hours that left the window deleted, the small shared tables upserted, the launch tables replaced when rebuilt, other leagues dropped, all in one transaction. A pass with nothing new writes nothing. It refuses to run on an empty volume rather than backfill (seed the volume from `data/` first). Tested hour by hour against a full `site.seed` on Postgres (`tests/test_pipeline.py`).
+- **`eb live watch` writes Postgres through DuckDB** (`EB_DATABASE_URL`, local use). `db.site_writer` attaches Postgres to an in-memory DuckDB, so the incremental loader runs unchanged and the transaction is Postgres's. On Mirage: 24 new hours in 1.0 s, identical rows, and a failed load rolls back. A worker container starting from an empty disk fetched only the 2 new hours (2 requests, 110 KB) and wrote them in 2 s.
 - **Serving.** Each table is a `View` (`api/deps.py`), computed once per data version, gzipped once, and sent with an ETag (`304` for a client that has it). The data version is trusted for 15 s, so a cached request makes no database query. Default views are precomputed when an hour loads (`api/warm.py`). The cache is a bounded LRU. Cached calls take 2–8 ms on real Allflame data; the heaviest cold call (arbitrage, 566 loops) about 0.3 s.
 
 Not deployed yet.
