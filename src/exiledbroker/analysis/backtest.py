@@ -251,8 +251,19 @@ def card_trades(con, prices: pl.DataFrame, rate: pl.DataFrame, rule: str, scenar
     ).select("observed_at", "item_id", filled=pl.col("k") >= 1, pnl="pnl")
 
 
+def _level(lo: str, hi: str, at: float) -> pl.Expr:
+    """A price `at` of the way from the hour's lowest (0) to its highest (1) trade."""
+    return pl.col(lo) + at * (pl.col(hi) - pl.col(lo))
+
+
 def card_limit_trades(
-    con, prices: pl.DataFrame, rate: pl.DataFrame, method: str, fill: str
+    con,
+    prices: pl.DataFrame,
+    rate: pl.DataFrame,
+    method: str,
+    fill: str,
+    bid_at: float = 0.0,
+    ask_at: float | None = None,
 ) -> pl.DataFrame:
     """The recap's top card turn-ins, bought and sold with prices set from its hour:
     - market: buy at the next hour's highest card price, sell at the worst (harsh);
@@ -261,7 +272,9 @@ def card_limit_trades(
     - limit_both: the same, with a sell order at the recap hour's average reward price,
       sold at the worst instead if it doesn't fill.
     Every order placed is a signal; one the next hour doesn't reach buys nothing (it's
-    cancelled), so `filled` over signals is the share of orders that filled."""
+    cancelled), so `filled` over signals is the share of orders that filled.
+    `bid_at` / `ask_at` move the orders within the recap hour's range (0 its lowest
+    trade, 1 its highest; `ask_at` None asks the average)."""
     cards = db.frame(
         con,
         """
@@ -270,7 +283,7 @@ def card_limit_trades(
         """,
     )
     c = prices.join(cards, on="item_id")
-    r = prices.select("observed_at", reward_id="item_id", rp="p", rlo="lo")
+    r = prices.select("observed_at", reward_id="item_id", rp="p", rlo="lo", rhi="hi")
     paid = (
         c.join(r, on=["observed_at", "reward_id"])
         .with_columns(
@@ -284,8 +297,15 @@ def card_limit_trades(
     sig = (
         _signals(paid, ["item_id"], 1, "item_id")
         .join(cards, on="item_id")
-        .join(c.select("observed_at", "item_id", card_lo="lo"), on=["observed_at", "item_id"])
-        .join(r.rename({"rp": "ask", "rlo": "reward_lo"}), on=["observed_at", "reward_id"])
+        .join(
+            c.select("observed_at", "item_id", card_lo="lo", card_hi="hi"),
+            on=["observed_at", "item_id"],
+        )
+        .join(r.rename({"rlo": "reward_lo"}), on=["observed_at", "reward_id"])
+        .with_columns(
+            bid=_level("card_lo", "card_hi", bid_at),
+            ask=pl.col("rp") if ask_at is None else _level("reward_lo", "rhi", ask_at),
+        )
     )
     nxt = c.select(
         "item_id",
@@ -302,8 +322,8 @@ def card_limit_trades(
         t = t.with_columns(buy=pl.col("next_hi"), placed=True, hit=pl.col("next_p").is_not_null())
     else:
         crossed = pl.col("next_p") if fill == "strict" else pl.col("next_lo")
-        guard = pl.col("q") * pl.col("reward_lo") > pl.col("n") * pl.col("card_lo")
-        t = t.with_columns(buy=pl.col("card_lo"), placed=guard, hit=crossed < pl.col("card_lo"))
+        guard = pl.col("q") * pl.col("reward_lo") > pl.col("n") * pl.col("bid")
+        t = t.with_columns(buy=pl.col("bid"), placed=guard, hit=crossed < pl.col("bid"))
     t = t.filter(pl.col("placed").fill_null(False))
     sells = prices.select(
         sell_at="observed_at",
@@ -368,7 +388,13 @@ def _cross_hours(con, league: str) -> pl.DataFrame:
 
 
 def loop_limit_trades(
-    loops: pl.DataFrame, cross: pl.DataFrame, rate: pl.DataFrame, method: str, fill: str
+    loops: pl.DataFrame,
+    cross: pl.DataFrame,
+    rate: pl.DataFrame,
+    method: str,
+    fill: str,
+    bid_at: float = 0.0,
+    ask_at: float | None = None,
 ) -> pl.DataFrame:
     """The recap's top loops, the item bought in the next hour and sold the hour after
     (the first hour within SELL_WITHIN it traded in both markets), Divines converted at
@@ -378,7 +404,8 @@ def loop_limit_trades(
       placed only if the loop still beats BUFFER from it at the recap hour's worst sale;
     - limit_both: the same, with a sell order at the recap hour's average price in the
       other currency, sold at the lowest instead if it doesn't fill.
-    Chaos first buys with Chaos and sells for Divines; Divines first the other way."""
+    Chaos first buys with Chaos and sells for Divines; Divines first the other way.
+    `bid_at` / `ask_at` move the orders within the recap hour's range, as for cards."""
     sig = (
         _signals(missed.paying_loops(loops), ["item_id", "direction"], 1, "item_id")
         .select("observed_at", "item_id", "direction")
@@ -396,12 +423,14 @@ def loop_limit_trades(
         for k, (a, b) in buy_cols.items()
     }
     sig = sig.with_columns(
-        bid=pick["lo"],
-        ask=other["p"],
+        bid=pick["lo"] + bid_at * (pick["hi"] - pick["lo"]),
+        ask=other["p"] if ask_at is None else other["lo"] + ask_at * (other["hi"] - other["lo"]),
+    )
+    sig = sig.with_columns(
         # The loop from the bid, at the recap hour's worst sale and conversion.
         guard_ret=pl.when(chaos_first)
-        .then(pl.col("dlo") * pl.col("rlo") / pl.col("clo"))
-        .otherwise(pl.col("clo") / (pl.col("dlo") * pl.col("rhi")))
+        .then(pl.col("dlo") * pl.col("rlo") / pl.col("bid"))
+        .otherwise(pl.col("clo") / (pl.col("bid") * pl.col("rhi")))
         - 1,
     ).select("observed_at", "item_id", "direction", "bid", "ask", "guard_ret")
     # The next hour's prices, renamed so the buy leg can be picked per direction.
