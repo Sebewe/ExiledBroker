@@ -1,6 +1,7 @@
 import { ArrowLeftRight, BookOpen, CandlestickChart, Hourglass, Layers, Network } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { NavLink } from 'react-router'
+import { useRememberedSettings } from '../lib/rememberSettings'
 import { FreshnessBadge } from './Freshness'
 
 const NAV = [
@@ -13,6 +14,7 @@ const NAV = [
 ]
 
 export function Layout({ children }: { children: ReactNode }) {
+  const linkTo = useRememberedSettings()
   return (
     <div className="min-h-dvh">
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:rounded focus:bg-surface focus:px-3 focus:py-2">
@@ -27,7 +29,7 @@ export function Layout({ children }: { children: ReactNode }) {
             {NAV.map(({ to, label, icon: Icon, end }) => (
               <NavLink
                 key={to}
-                to={to}
+                to={linkTo(to)}
                 end={end}
                 className={({ isActive }) =>
                   `flex min-h-9 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-sm transition-colors duration-150 ${

@@ -6,6 +6,8 @@ import { defineConfig } from 'vitest/config'
 // In production the API serves the built files itself, so there is one origin.
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  // Identifies a build, so a browser's saved cache from an older deploy isn't reused.
+  define: { __BUILD_ID__: JSON.stringify(Date.now().toString(36)) },
   server: {
     proxy: { '/api': 'http://127.0.0.1:8000' },
   },

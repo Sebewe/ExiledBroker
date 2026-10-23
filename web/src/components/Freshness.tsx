@@ -1,4 +1,4 @@
-import { useStatus } from '../api/queries'
+import { useServerNow, useStatus } from '../api/queries'
 import type { LiveLeague } from '../api/client'
 import { freshness } from '../lib/freshness'
 import { duration, utcHour } from '../lib/format'
@@ -7,9 +7,10 @@ import { Notice } from './Notice'
 /** Header badge: how old the newest data is. */
 export function FreshnessBadge() {
   const { data } = useStatus()
+  const now = useServerNow()
   const league = data?.leagues[0]
   if (!data || !league) return null
-  const f = freshness(league, new Date(data.now).getTime())
+  const f = freshness(league, now)
   if (!f) return <span className="text-xs text-muted">{league.name}: waiting for trades</span>
   return (
     <span className="inline-flex items-center gap-2 text-xs text-muted" title={`Latest hour ${utcHour(league.latest_hour)}`}>
@@ -20,7 +21,7 @@ export function FreshnessBadge() {
 }
 
 /** The landing page's banner: the latest hour, and whether the feed looks stopped. */
-export function FreshnessBanner({ league, now }: { league: LiveLeague; now: string }) {
+export function FreshnessBanner({ league, now }: { league: LiveLeague; now: number }) {
   if (!league.latest_hour) {
     return (
       <Notice kind="waiting" title={league.launched_at ? 'Waiting for the first trades' : 'Waiting for launch'}>
@@ -30,7 +31,7 @@ export function FreshnessBanner({ league, now }: { league: LiveLeague; now: stri
       </Notice>
     )
   }
-  const f = freshness(league, new Date(now).getTime())!
+  const f = freshness(league, now)!
   const text = `Latest published hour: ${utcHour(league.latest_hour)} (ended ${duration(f.age)} ago).`
   return f.stale ? (
     <Notice kind="warning" title="Data may be out of date">

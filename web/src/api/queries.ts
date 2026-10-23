@@ -1,13 +1,19 @@
 import { useQuery } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
+import { JITTER, nextCheckIn } from '../lib/schedule'
 import { api, unwrap } from './client'
 
-/** Polled every minute: cheap, and its `data_version` changes when a new hour is loaded. */
+/** Checked only when a new hour is due (lib/schedule): its `data_version` changes when a
+ *  new hour is loaded, and every data query below is keyed on it. Between checks,
+ *  switching pages or reloading asks the server nothing. */
 export function useStatus() {
   return useQuery({
     queryKey: ['status'],
     queryFn: () => unwrap(api.GET('/api/status')),
-    refetchInterval: 60_000,
-    staleTime: 30_000,
+    staleTime: (q) => (q.state.data ? nextCheckIn(q.state.data, q.state.dataUpdatedAt, Date.now(), JITTER) : 0),
+    refetchInterval: (q) => (q.state.data ? Math.max(1000, nextCheckIn(q.state.data, q.state.dataUpdatedAt, Date.now(), JITTER)) : false),
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true, // only if a check is due (staleTime)
   })
 }
 
@@ -65,4 +71,16 @@ export function useCards(league: string | undefined, unit: 'chaos' | 'divine', p
 /** Ranked from past leagues; the live prices in it change with each loaded hour. */
 export function useLaunchPicks() {
   return useVersioned(['launch-picks'], () => unwrap(api.GET('/api/launch/picks')))
+}
+
+/** The server's clock, from ours: the status is fetched about once an hour now, so its
+ *  `now` is corrected by the time since, re-read every 30 seconds. */
+export function useServerNow() {
+  const { data, dataUpdatedAt } = useStatus()
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000)
+    return () => clearInterval(id)
+  }, [])
+  return data ? now + (Date.parse(data.now) - dataUpdatedAt) : now
 }

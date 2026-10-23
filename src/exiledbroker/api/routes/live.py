@@ -73,12 +73,18 @@ def upcoming(leagues: list) -> dict | None:
     return {"name": name, "start_at": start, "first_data_at": first_hour_end + FIRST_DATA_DELAY}
 
 
+# Browsers check the status only when a new hour is due (web/src/lib/schedule.ts); this
+# is the backstop if one asks more often: it gets its own copy for a minute.
+STATUS_CACHE = "public, max-age=60"
+
+
 @router.get("/status", response_model=Status)
-def status() -> dict:
+def status(response: Response) -> dict:
     """Leagues on the exchange, newest data first, the data version, and the announced
     next league until it has trades. Cheap: poll this, and refetch everything else when
     `data_version` changes."""
     leagues = deps.payload(leagues_view()).rows
+    response.headers["Cache-Control"] = STATUS_CACHE
     return {
         "now": deps.now_utc(),
         "data_version": deps.data_version(),

@@ -56,6 +56,12 @@ def test_health(client):
     assert r.status_code == 200 and r.json()["game"] == "poe1"
 
 
+def test_status_is_cached_by_browsers_for_a_minute(client, settings):  # noqa: F811
+    update(settings, FakeExchange(PAGES, now=LAUNCH), 2)
+    r = client.get("/api/status")
+    assert r.status_code == 200 and r.headers["cache-control"] == "public, max-age=60"
+
+
 def test_no_data_yet(client, settings):  # noqa: F811
     """Before anything is loaded every data endpoint says so, rather than erroring."""
     settings.db_path.unlink()

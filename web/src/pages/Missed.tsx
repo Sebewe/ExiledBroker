@@ -2,7 +2,7 @@ import { ArrowDownRight, ArrowUpRight, Layers, Repeat, Timer, Waves } from 'luci
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import type { LiveLeague, MissedCard, MissedWindow, Mover, Upcoming, Volatile } from '../api/client'
-import { useMissed, useStatus } from '../api/queries'
+import { useMissed, useServerNow, useStatus } from '../api/queries'
 import { Select } from '../components/Controls'
 import { FreshnessBanner } from '../components/Freshness'
 import { Notice } from '../components/Notice'
@@ -88,6 +88,7 @@ function Countdown({ upcoming, compact = false }: { upcoming: Upcoming; compact?
 
 export default function Missed() {
   const status = useStatus()
+  const serverNow = useServerNow()
   const names = status.data?.leagues.map((l) => l.name) ?? []
   const [league, setLeague] = useLeague(names)
   const info = status.data?.leagues.find((l) => l.name === league)
@@ -114,7 +115,7 @@ export default function Missed() {
   // The announced league once it has started (or with nothing else to show): its
   // countdown is the page until its first hour is loaded.
   const upcoming = status.data!.upcoming
-  const started = upcoming && Date.parse(upcoming.start_at) <= Date.parse(status.data!.now)
+  const started = upcoming && Date.parse(upcoming.start_at) <= serverNow
   if (upcoming && (started || !info)) {
     return (
       <>
@@ -144,7 +145,7 @@ export default function Missed() {
         </div>
       )}
       {upcoming && <Countdown upcoming={upcoming} compact />}
-      <FreshnessBanner league={info} now={status.data!.now} />
+      <FreshnessBanner league={info} now={serverNow} />
       {info.latest_hour && early && (
         <Notice kind="info" title="Looks like it's early in the league">
           Waiting for more data to flow in before we can make our predictions. The exchange fills up over the first hours, so these lists stay thin for now and
