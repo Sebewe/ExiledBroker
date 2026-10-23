@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { MissedWindow } from '../api/client'
+import type { MissedLoop, MissedWindow } from '../api/client'
 import Missed from './Missed'
 
 // The landing page against a fake API: no data, a league waiting for its first trades,
@@ -114,6 +114,41 @@ describe('Market recap', () => {
     expect(within(ticker).getAllByText('▼ −10%')).toHaveLength(2)
     expect(screen.getByText('10× Divine Orb')).toBeInTheDocument()
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
+  })
+
+  it('lists every paying loop on request, each with this hour’s orders and its 24h range', async () => {
+    const loop = (i: number, extra: Partial<MissedLoop> = {}): MissedLoop => ({
+      item_id: `currency:l${i}`,
+      name: `Loop item ${i}`,
+      direction: 'chaos_first',
+      missed: 100 - i,
+      best_edge: 0.05,
+      hours_paid: 1,
+      price: 10,
+      volume: 4000,
+      bid: 10.5,
+      ask: 0.06,
+      bid_in: 'chaos',
+      order_ok: true,
+      range_low: 9,
+      range_avg: 10,
+      range_high: 12,
+      range_hours: 24,
+      ...extra,
+    })
+    const loops = [loop(1), loop(2, { order_ok: false }), loop(3, { bid: null, ask: null, bid_in: null }), loop(4)]
+    const body = RECAP.map((w) => ({ ...w, loops, loops_paid: 4 }))
+    serve({ '/api/status': status('2026-10-22T08:00:00Z'), '/api/missed/Allflame': { body } })
+    renderPage()
+    const section = (await screen.findByRole('heading', { name: 'Loops that paid' })).closest('section')!
+    expect(within(section).getAllByRole('heading', { level: 3 })).toHaveLength(3) // the top 3
+    expect(within(section).getAllByText('10.5c').length).toBeGreaterThan(0) // the bid, in Chaos
+    expect(within(section).getAllByText('0.0600 div')).toHaveLength(2) // the asks, in Divines (not the one with no order)
+    expect(within(section).getByText(/skip it this hour/)).toBeInTheDocument() // order_ok false
+    expect(within(section).getByText(/no price to order from/)).toBeInTheDocument() // didn't trade
+    expect(within(section).getAllByText('24h low 9.00c')).toHaveLength(3)
+    fireEvent.click(within(section).getByRole('button', { name: 'Show all 4' }))
+    expect(within(section).getByRole('heading', { name: 'Loop item 4' })).toBeInTheDocument()
   })
 
   it('switches look-back without asking the server again', async () => {

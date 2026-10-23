@@ -1,9 +1,7 @@
-import { Route, Routes } from 'react-router'
+import { Navigate, Route, Routes } from 'react-router'
 import { Layout } from './components/Layout'
 import About from './pages/About'
-import Arbitrage from './pages/Arbitrage'
 import Backtest from './pages/Backtest'
-import Cards from './pages/Cards'
 import Conversions from './pages/Conversions'
 import Launch from './pages/Launch'
 import Missed from './pages/Missed'
@@ -15,8 +13,9 @@ export default function App() {
       <Routes>
         <Route index element={<Missed />} />
         <Route path="backtest" element={<Backtest />} />
-        <Route path="arbitrage" element={<Arbitrage />} />
-        <Route path="cards" element={<Cards />} />
+        {/* Retired: their loops and cards are on the Market recap now. */}
+        <Route path="arbitrage" element={<Navigate to="/#loops" replace />} />
+        <Route path="cards" element={<Navigate to="/#cards" replace />} />
         <Route path="launch" element={<Launch />} />
         <Route path="conversions" element={<Conversions />} />
         <Route path="about" element={<About />} />

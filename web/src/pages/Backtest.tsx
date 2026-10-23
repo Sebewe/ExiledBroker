@@ -33,10 +33,6 @@ function range(xs: number[], fmt: (x: number) => string) {
   return lo === hi ? fmt(lo) : `${fmt(lo)} to ${fmt(hi)}`
 }
 
-function rows(r: BacktestReport, strategy: Strategy, rule: Rule, scenario: 'fair' | 'harsh') {
-  return r.hourly.filter((h) => h.strategy === strategy && h.rule === rule && h.scenario === scenario)
-}
-
 const perHour = (hs: { per_hour: number }[]) => hs.map((h) => h.per_hour)
 
 export default function Backtest() {
@@ -65,36 +61,53 @@ export default function Backtest() {
 
 function Report({ r }: { r: BacktestReport }) {
   const day1 = r.launch.filter((l) => l.window_id === 'day1')
-  const steady = rows(r, 'loops', 'steady', 'harsh')
-  const top = rows(r, 'loops', 'top', 'harsh')
-  const cards = [...rows(r, 'cards', 'top', 'harsh'), ...rows(r, 'cards', 'steady', 'harsh')]
-  const rising = [...rows(r, 'rising', 'top', 'fair'), ...rows(r, 'rising', 'steady', 'fair')]
-  const limits = r.limits.filter((c) => c.strategy === 'cards' && c.method === 'limit' && c.fill === 'touch' && c.segment === 'launch')
-  const loopOrders = r.limits.filter((c) => c.strategy === 'loops' && c.method === 'limit_mid' && c.fill === 'touch' && c.segment === 'launch')
+  // The best option tested for each strategy, over each league's first 14 days.
+  const best = (strategy: string, method: string, fill: string) =>
+    perHour(r.limits.filter((c) => c.strategy === strategy && c.method === method && c.fill === fill && c.segment === 'launch'))
   const a = r.assumptions
   return (
     <>
-      <section aria-label="Verdict" className="grid gap-3 md:grid-cols-3">
-        <Verdict
-          kind="pays"
-          title="Launch picks pay"
-          figure={range(
-            day1.map((l) => l.harsh ?? 0),
-            times,
-          )}
-          figureNote="what day-1 picks came back as, harsh, by days 12–14"
-        >
-          The typical affordable item fell to {range(day1.map((l) => l.typical_harsh ?? 0), times)} over the same days. Picks ranked only from earlier leagues beat it in
-          every league we tested.
-        </Verdict>
-        <Verdict kind="even" title="Steady loops about break even" figure={`${range(perHour(steady), signed)} div/h`} figureNote="harsh, loops that paid every hour of the last 3">
-          Pocket change, not a few Divines an hour. Acting on every loop the recap shows makes {range(perHour(top), signed)} div/h harsh; limit orders priced
-          mid-range made {range(perHour(loopOrders), signed)}, if they fill (below).
-        </Verdict>
-        <Verdict kind="loses" title="Cards and risers lose" figure={`${range(perHour(cards), signed)} div/h`} figureNote="card turn-ins at market prices, harsh">
-          With limit orders priced from the recap's hour, cards made {range(perHour(limits), signed)} div/h, if the orders fill (below). Buying the Rising list
-          loses even at fair prices ({range(perHour(rising), signed)} div/h): by the time an hour is published, the rise is over.
-        </Verdict>
+      <section aria-label="Verdict" className="flex flex-col gap-2">
+        <h2 className="text-sm font-medium text-muted">The best option we tested for each strategy</h2>
+        <div className="grid gap-3 md:grid-cols-3">
+          <Verdict
+            kind="pays"
+            strategy="Hold for days · Launch picks"
+            title="Buy the day-1 picks, sell in days 12–14"
+            figure={range(
+              day1.map((l) => l.harsh ?? 0),
+              times,
+            )}
+            figureNote="what the basket came back as, in Divines, at harsh prices"
+          >
+            Spread your Divines across the day-1 list on Launch market. The typical affordable item fell to{' '}
+            {range(
+              day1.map((l) => l.typical_harsh ?? 0),
+              times,
+            )}{' '}
+            over the same days; the picks, ranked only from earlier leagues, beat it in every league we tested.
+          </Verdict>
+          <Verdict
+            kind="pays"
+            strategy="Trade every hour · Loops"
+            title="Limit orders, mid-range"
+            figure={`${range(best('loops', 'limit_mid', 'touch'), signed)} div/h`}
+            figureNote={`if a trade past the order fills it; ${range(best('loops', 'limit_mid', 'strict'), signed)} if the hour's average has to cross it`}
+          >
+            Bid halfway up the latest hour's price range for the item, and ask three quarters up its range in the other currency. The worst case, caught at the
+            worst price both hours, made {range(best('loops', 'market', 'touch'), signed)} div/h.
+          </Verdict>
+          <Verdict
+            kind="even"
+            strategy="Trade every hour · Card turn-ins"
+            title="Limit orders at the low"
+            figure={`${range(best('cards', 'limit', 'touch'), signed)} div/h`}
+            figureNote={`if a trade past the order fills it; ${range(best('cards', 'limit', 'strict'), signed)} if the hour's average has to cross it`}
+          >
+            Bid the card's lowest price from the latest hour, only if a set still pays at the reward's lowest, and ask the reward's average. Few orders fill, so
+            the true figure is uncertain. The worst case made {range(best('cards', 'market', 'touch'), signed)} div/h.
+          </Verdict>
+        </div>
       </section>
 
       <Section title="How we tested">
@@ -151,7 +164,7 @@ function Report({ r }: { r: BacktestReport }) {
           <li>
             <span className="text-text">For card turn-ins, use limit orders, not market buys.</span> Bid for cards at the last hour's lowest price, only if a set
             still pays at the reward's lowest price, and ask the last hour's average for the reward. Many orders won't fill, and the ones that do are the
-            whole edge; buying at whatever the market asked lost money in every launch fortnight.
+            whole edge; the worst case, caught at the worst price both hours, lost money in every launch fortnight.
           </li>
           <li>
             <span className="text-text">Don't chase the Rising list.</span> It tells you what already happened.
@@ -184,12 +197,14 @@ const VERDICT = {
 
 function Verdict({
   kind,
+  strategy,
   title,
   figure,
   figureNote,
   children,
 }: {
   kind: keyof typeof VERDICT
+  strategy: string
   title: string
   figure: string
   figureNote: string
@@ -199,12 +214,13 @@ function Verdict({
   const Icon = v.icon
   return (
     <div className={`flex flex-col gap-2 rounded-xl border p-4 ${v.cls}`}>
-      <h2 className="flex items-center gap-2 font-semibold">
+      <p className="text-[11px] font-semibold tracking-wide text-faint uppercase">{strategy}</p>
+      <h3 className="flex items-center gap-2 font-semibold">
         <span className={`grid size-6 place-items-center rounded-full ${v.iconCls}`}>
           <Icon aria-hidden className="size-3.5" />
         </span>
         {title}
-      </h2>
+      </h3>
       <div>
         <p className={`num text-2xl font-semibold tracking-tight ${v.fig}`}>{figure}</p>
         <p className="text-xs text-faint">{figureNote}</p>
@@ -376,14 +392,14 @@ function Finding({ icon, title, children }: { icon: ReactNode; title: string; ch
 
 // The orders compared, one row each (analysis/backtest.LIMIT_ORDERS).
 const ORDERS: { strategy: string; method: string; name: string; what: string }[] = [
-  { strategy: 'cards', method: 'market', name: 'Cards, market orders', what: 'buy sets at the next hour’s highest price, sell the reward at its lowest' },
+  { strategy: 'cards', method: 'market', name: 'Cards, worst case', what: 'caught at the worst price both hours: sets bought at the next hour’s highest, the reward sold at its lowest' },
   {
     strategy: 'cards',
     method: 'limit',
     name: 'Cards, limit orders',
     what: 'bid the recap hour’s lowest card price if the set still pays at the reward’s lowest; ask the reward’s average',
   },
-  { strategy: 'loops', method: 'market', name: 'Loops, market orders', what: 'buy the item at the next hour’s highest price, sell it the hour after at the lowest' },
+  { strategy: 'loops', method: 'market', name: 'Loops, worst case', what: 'caught at the worst price both hours: bought at the next hour’s highest, sold the hour after at the lowest' },
   { strategy: 'loops', method: 'limit', name: 'Loops, limit orders at the low', what: 'bid the recap hour’s lowest price; ask its average in the other currency' },
   {
     strategy: 'loops',
@@ -475,7 +491,7 @@ function LimitSection({ limits }: { limits: BacktestLimit[] }) {
       </div>
       <div className="grid gap-3 md:grid-cols-2">
         <Finding icon={<FlaskConical aria-hidden className="size-4 text-accent" />} title="Price from the last hour's range, not the market">
-          Market orders lost for both in every launch fortnight ({range(launchHours(limits, cardsMarket, 'touch'), signed)} div/h for cards,{' '}
+          The worst case lost for both in every launch fortnight ({range(launchHours(limits, cardsMarket, 'touch'), signed)} div/h for cards,{' '}
           {range(launchHours(limits, loopsMarket, 'touch'), signed)} for loops). Cards did best bidding at the hour's low and asking the reward's average (
           {range(launchHours(limits, cardsLimit, 'touch'), signed)}). Loops did best bidding mid-range ({range(launchHours(limits, loopsMid, 'touch'), signed)}
           ), and were the only orders that still made money when the hour's average had to cross them ({range(launchHours(limits, loopsMid, 'strict'), signed)}).

@@ -124,13 +124,17 @@ describe('Backtest', () => {
   it('leads with the verdicts, from the report’s numbers', async () => {
     serve({ '/api/status': { body: STATUS }, '/api/backtest': { body: [REPORT] } })
     renderBacktest()
-    expect(await screen.findByText('Launch picks pay')).toBeTruthy()
+    // The best option for each strategy, with the strategy named.
+    const verdict = await screen.findByRole('region', { name: 'Verdict' })
+    expect(within(verdict).getByText('Hold for days · Launch picks')).toBeTruthy()
+    expect(within(verdict).getByText('Buy the day-1 picks, sell in days 12–14')).toBeTruthy()
     expect(screen.getAllByText('×3.49').length).toBeGreaterThan(0) // the day-1 picks, harsh
-    expect(screen.getByText('+0.27 div/h')).toBeTruthy() // steady loops, harsh
-    expect(screen.getByText('−0.94 to −0.89 div/h')).toBeTruthy() // card turn-ins, harsh
+    expect(within(verdict).getByText('+0.78 div/h')).toBeTruthy() // loops, mid-range orders
+    expect(within(verdict).getByText(/\+0\.32 if the hour's average has to cross it/)).toBeTruthy()
+    expect(within(verdict).getByText('+0.66 div/h')).toBeTruthy() // cards, limit orders at the low
     expect(screen.getByText(/63% of the time, against 9%/)).toBeTruthy()
     expect(screen.getByText("Mirage's day-1 picks")).toBeTruthy()
-    expect(screen.getByText(/cards made \+0\.66 div\/h, if the orders fill/)).toBeTruthy()
+    expect(screen.getByText('Loops, worst case')).toBeTruthy()
     // One table for both strategies, each limit cell with both fill models.
     const table = screen.getByRole('table', { name: 'Card turn-ins and loops with limit orders' })
     expect(within(table).getByText('Loops, limit orders mid-range')).toBeTruthy()

@@ -39,35 +39,6 @@ export function useMissed(league: string | undefined) {
   )
 }
 
-export interface ArbitrageParams {
-  league: string[]
-  direction: 'chaos_first' | 'divine_first'
-  buffer: number
-  min_hours: number
-  min_price: number
-}
-
-export function useArbitrage(p: ArbitrageParams) {
-  return useVersioned(
-    ['arbitrage', p],
-    () => unwrap(api.GET('/api/arbitrage', { params: { query: p } })),
-    p.league.length > 0,
-  )
-}
-
-export function useCards(league: string | undefined, unit: 'chaos' | 'divine', preferCheaper: boolean) {
-  return useVersioned(
-    ['cards', league, unit, preferCheaper],
-    () =>
-      unwrap(
-        api.GET('/api/cards/{league}', {
-          params: { path: { league: league! }, query: { unit, prefer_cheaper_sets: preferCheaper } },
-        }),
-      ),
-    !!league,
-  )
-}
-
 /** Ranked from past leagues; the live prices in it change with each loaded hour. */
 export function useLaunchPicks() {
   return useVersioned(['launch-picks'], () => unwrap(api.GET('/api/launch/picks')))

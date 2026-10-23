@@ -69,7 +69,7 @@ LIMIT_ORDERS = {
     "loops": {
         "market": ("market", 0.0, None),
         "limit": ("limit_both", 0.0, None),
-        "limit_mid": ("limit_both", 0.5, 0.75),
+        "limit_mid": ("limit_both", *missed.LOOP_ORDER),  # the Market recap's orders
     },
 }
 FILLS = ("touch", "strict")
@@ -96,16 +96,30 @@ def segments(con, league: str) -> list[tuple[str, float, float]]:
     return out
 
 
-def _rate(con, league: str) -> pl.DataFrame:
+def _window(column: str, item_ids: list[str] | None, since) -> tuple[str, list]:
+    """Extra SQL conditions (and params) limiting a read to some items and hours, so
+    the site's per-item history reads one item's window, not the league."""
+    sql, params = "", []
+    if item_ids is not None:
+        sql += f" AND item_id IN ({', '.join('?' for _ in item_ids)})"
+        params += item_ids
+    if since is not None:
+        sql += f" AND {column} > ?"
+        params.append(since)
+    return sql, params
+
+
+def _rate(con, league: str, since=None) -> pl.DataFrame:
     """The Divine's Chaos price per hour."""
+    where, params = _window("observed_at", None, since)
     return db.frame(
         con,
-        """
+        f"""
         SELECT observed_at, chaos_value AS rate FROM price_observation
         WHERE league_id = (SELECT id FROM league WHERE name = ?) AND source = ?
-          AND item_id = ?
+          AND item_id = ? {where}
         """,
-        [league, HOURLY, DIVINE],
+        [league, HOURLY, DIVINE, *params],
     )
 
 
@@ -183,17 +197,18 @@ def loop_trades(loops: pl.DataFrame, rate: pl.DataFrame, rule: str, scenario: st
 # --- Cards ------------------------------------------------------------------------
 
 
-def _prices(con, league: str) -> pl.DataFrame:
+def _prices(con, league: str, item_ids: list[str] | None = None, since=None) -> pl.DataFrame:
+    where, params = _window("observed_at", item_ids, since)
     return db.frame(
         con,
-        """
+        f"""
         SELECT item_id, observed_at, day_offset, chaos_value AS p, chaos_low AS lo,
                chaos_high AS hi, volume AS units, chaos_volume AS cv
         FROM price_observation
         WHERE league_id = (SELECT id FROM league WHERE name = ?) AND source = ?
-          AND chaos_value > 0
+          AND chaos_value > 0 {where}
         """,
-        [league, HOURLY],
+        [league, HOURLY, *params],
     ).sort("observed_at")
 
 
@@ -381,20 +396,23 @@ def card_limit_trades(
     ).select("observed_at", "item_id", filled=pl.col("k") >= 1, pnl="pnl")
 
 
-def _cross_hours(con, league: str) -> pl.DataFrame:
+def _cross_hours(con, league: str, item_ids: list[str] | None = None, since=None) -> pl.DataFrame:
     """Every item-hour traded in both markets, with both markets' ranges and the hour's
-    Divine rate range (what the loop's limit orders are priced from)."""
+    Divine rate and its range (what the loop's limit orders are priced from)."""
+    where, params = _window("x.observed_at", item_ids, since)
+    where = where.replace(" item_id IN", " x.item_id IN")
     return db.frame(
         con,
         f"""
         SELECT x.item_id, x.observed_at, x.chaos_price AS cp, x.chaos_low AS clo,
                x.chaos_high AS chi, x.chaos_volume AS cu, x.divine_price AS dp,
                x.divine_low AS dlo, x.divine_high AS dhi, x.divine_volume AS du,
-               x.divine_rate_low AS rlo, x.divine_rate_high AS rhi
+               x.divine_rate AS rate, x.divine_rate_low AS rlo, x.divine_rate_high AS rhi
         FROM cross_market_hour x
         WHERE x.league_id = (SELECT id FROM league WHERE name = ?) AND {cross_market.BOTH_LEGS}
+          {where}
         """,
-        [league],
+        [league, *params],
     ).sort("observed_at")
 
 

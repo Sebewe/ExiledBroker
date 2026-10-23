@@ -8,11 +8,13 @@ together, so the page's slider never asks the server again. Each look-back has:
   how many hours running they've moved that way (what already happened: the backtest
   found buying the risers loses);
 - **volatile**: liquid items with the widest traded range (high vs low) in it;
-- **loops** and **cards**: the Chaos/Divine loops and card turn-ins that paid, ranked
+- **loops** and **cards**: every Chaos/Divine loop and card turn-in that paid, ranked
   by edge × volume traded in both markets, or margin × sets traded, summed over the
   hours that paid, with how many of them paid. Only markets with enough traded to act
   on count (MIN_LOOP_CHAOS / MIN_LOOP_ITEMS, a full set for cards): a thin market's
-  one odd trade shows a huge edge nobody can repeat.
+  one odd trade shows a huge edge nobody can repeat. Each comes with the orders the
+  backtest's best option would place from the latest hour (LOOP_ORDER, CARD_ORDER) and
+  its last 24 hours' price range (one grouped query for the listed items).
 
 `analysis/backtest.py` replays these picks an hour late; the page words them as
 options to check, not promises, to match what it found.
@@ -41,6 +43,13 @@ DIRECTIONS = ("chaos_first", "divine_first")
 MIN_LOOP_CHAOS = 500.0  # Chaos traded through both markets in the hour
 MIN_LOOP_ITEMS = 10.0  # items traded through both markets in the hour
 MIN_CARD_SETS = 1.0  # full sets traded in the hour
+# Where in the latest hour's range (0 its lowest trade, 1 its highest) the orders go:
+# the backtest's best options (analysis/backtest.LIMIT_ORDERS). Loops bid halfway up the
+# paying currency's range and ask three quarters up the other's; cards bid the card's
+# low (only if a set still pays at the reward's low) and ask the reward's average.
+LOOP_ORDER = (0.5, 0.75)
+CARD_ORDER = (0.0, None)
+RANGE_HOURS = 24  # the price range shown with each loop and card
 
 
 def paying_loops(loops: pl.DataFrame) -> pl.DataFrame:
@@ -142,7 +151,76 @@ def _movement(prices: pl.DataFrame, latest, hours: int) -> tuple[list, list, lis
     )
 
 
-def _loops(loops: pl.DataFrame, latest, hours: int) -> tuple[list, int]:
+def _at(lo: str, hi: str, at: float) -> pl.Expr:
+    return pl.col(lo) + at * (pl.col(hi) - pl.col(lo))
+
+
+def _loop_orders(loops: pl.DataFrame, latest) -> pl.DataFrame:
+    """Per item and direction traded in both markets in the latest hour: the bid for
+    the item (in the currency it's bought with) and the ask (in the other), and whether
+    the loop still beats BUFFER from the bid at that hour's worst sale and rate."""
+    bid_at, ask_at = LOOP_ORDER
+    chaos_first = pl.col("direction") == "chaos_first"
+    return (
+        loops.filter(pl.col("observed_at") == latest, pl.col("divine_low").is_not_null())
+        .with_columns(
+            bid=pl.when(chaos_first)
+            .then(_at("chaos_low", "chaos_high", bid_at))
+            .otherwise(_at("divine_low", "divine_high", bid_at)),
+            ask=pl.when(chaos_first)
+            .then(_at("divine_low", "divine_high", ask_at))
+            .otherwise(_at("chaos_low", "chaos_high", ask_at)),
+            bid_in=pl.when(chaos_first).then(pl.lit("chaos")).otherwise(pl.lit("divine")),
+        )
+        .with_columns(
+            order_ok=pl.when(chaos_first)
+            .then(pl.col("divine_low") * pl.col("divine_rate_low") / pl.col("bid"))
+            .otherwise(pl.col("chaos_low") / (pl.col("bid") * pl.col("divine_rate_high")))
+            - 1
+            > BUFFER
+        )
+        .select("item_id", "direction", "bid", "ask", "bid_in", "order_ok")
+    )
+
+
+def _ranges(con, league: str, latest, table: str, item_ids: list[str]) -> pl.DataFrame:
+    """Each item's Chaos price range over the last RANGE_HOURS: lowest and highest
+    trade, volume-weighted average and hours traded. One grouped row per item."""
+    if not item_ids:
+        return pl.DataFrame(
+            schema={
+                "item_id": pl.String,
+                "range_low": pl.Float64,
+                "range_avg": pl.Float64,
+                "range_high": pl.Float64,
+                "range_hours": pl.Int64,
+            }
+        )
+    # Chaos value traded over items traded: cross_market_hour counts items, the price
+    # table both.
+    value, units = (
+        ("chaos_price * chaos_volume", "chaos_volume")
+        if table == "cross_market_hour"
+        else ("chaos_volume", "volume")
+    )
+    source = "" if table == "cross_market_hour" else " AND source = ?"
+    out = db.frame(
+        con,
+        f"""
+        SELECT item_id, min(chaos_low) AS range_low,
+               sum({value}) / nullif(sum({units}), 0) AS range_avg,
+               max(chaos_high) AS range_high, count(*) AS range_hours
+        FROM {table}
+        WHERE league_id = (SELECT id FROM league WHERE name = ?){source}
+          AND observed_at > ? AND item_id IN ({", ".join("?" for _ in item_ids)})
+        GROUP BY item_id
+        """,
+        [league, *([HOURLY] if source else []), latest - timedelta(hours=RANGE_HOURS), *item_ids],
+    )
+    return out.cast({"range_hours": pl.Int64})
+
+
+def _loops(loops: pl.DataFrame, latest, hours: int) -> tuple[pl.DataFrame | list, int]:
     paid = paying_loops(loops.filter(pl.col("observed_at") > latest - timedelta(hours=hours)))
     if paid.is_empty():
         return [], 0
@@ -159,7 +237,7 @@ def _loops(loops: pl.DataFrame, latest, hours: int) -> tuple[list, int]:
         .sort(["hours_paid", "missed", "item_id"], descending=[True, True, False])
         .unique("item_id", keep="first", maintain_order=True)  # its better direction
     )
-    return per.head(TOP).to_dicts(), per.height
+    return per, per.height
 
 
 def paying_cards(turn_ins: pl.DataFrame) -> pl.DataFrame:
@@ -172,7 +250,27 @@ def paying_cards(turn_ins: pl.DataFrame) -> pl.DataFrame:
     )
 
 
-def _cards(turn_ins: pl.DataFrame, latest, hours: int) -> tuple[list, int]:
+def _card_orders(turn_ins: pl.DataFrame, latest) -> pl.DataFrame:
+    """Per card traded with its reward in the latest hour: the bid for each card (its
+    low that hour), the ask for each reward (its average) and whether a set still pays
+    from the bid at the reward's low."""
+    bid_at, ask_at = CARD_ORDER
+    return (
+        turn_ins.filter(pl.col("observed_at") == latest)
+        .with_columns(
+            bid=_at("card_low", "card_high", bid_at),
+            ask=pl.col("reward_price") if ask_at is None else None,
+        )
+        .with_columns(
+            bid_in=pl.lit("chaos"),
+            order_ok=pl.col("reward_quantity") * pl.col("reward_low")
+            > pl.col("stack_size") * pl.col("bid"),
+        )
+        .select("item_id", "bid", "ask", "bid_in", "order_ok")
+    )
+
+
+def _cards(turn_ins: pl.DataFrame, latest, hours: int) -> tuple[pl.DataFrame | list, int]:
     paid = paying_cards(turn_ins.filter(pl.col("observed_at") > latest - timedelta(hours=hours)))
     if paid.is_empty():
         return [], 0
@@ -188,7 +286,7 @@ def _cards(turn_ins: pl.DataFrame, latest, hours: int) -> tuple[list, int]:
         .rename({"card": "name"})
         .sort(["hours_paid", "missed", "item_id"], descending=[True, True, False])
     )
-    return per.head(TOP).to_dicts(), per.height
+    return per, per.height
 
 
 def missed(con: duckdb.DuckDBPyConnection, league: str) -> list[dict]:
@@ -212,14 +310,40 @@ def missed(con: duckdb.DuckDBPyConnection, league: str) -> list[dict]:
         "name",
         "item_id",
         "stack_size",
+        "reward_quantity",
         reward=pl.format("{}× {}", pl.col("reward_quantity"), pl.col("reward_name")),
     )
     turn_ins = turn_ins.join(cards, left_on="card", right_on="name")
+    windows = {h: (_loops(loops, latest, h), _cards(turn_ins, latest, h)) for h in LOOKBACKS}
+    # The orders and 24-hour ranges, once for every item any look-back lists.
+    listed = {
+        kind: sorted(
+            {i for w in windows.values() if len(w[k][0]) for i in w[k][0]["item_id"].to_list()}
+        )
+        for k, kind in enumerate(("loops", "cards"))
+    }
+    loop_orders = _loop_orders(loops, latest)
+    card_orders = _card_orders(turn_ins, latest)
+    loop_ranges = _ranges(con, league, latest, "cross_market_hour", listed["loops"])
+    card_ranges = _ranges(con, league, latest, "price_observation", listed["cards"])
     out = []
     for hours in LOOKBACKS:
         up, down, volatile, ticker = _movement(prices, latest, hours)
-        top_loops, loops_paid = _loops(loops, latest, hours)
-        top_cards, cards_paid = _cards(turn_ins, latest, hours)
+        (loop_rows, loops_paid), (card_rows, cards_paid) = windows[hours]
+        all_loops = (
+            loop_rows.join(loop_orders, on=["item_id", "direction"], how="left")
+            .join(loop_ranges, on="item_id", how="left")
+            .to_dicts()
+            if len(loop_rows)
+            else []
+        )
+        all_cards = (
+            card_rows.join(card_orders, on="item_id", how="left")
+            .join(card_ranges, on="item_id", how="left")
+            .to_dicts()
+            if len(card_rows)
+            else []
+        )
         out.append(
             {
                 "hours": hours,
@@ -228,8 +352,8 @@ def missed(con: duckdb.DuckDBPyConnection, league: str) -> list[dict]:
                 "falling": down,
                 "volatile": volatile,
                 "ticker": ticker,
-                "loops": top_loops,
-                "cards": top_cards,
+                "loops": all_loops,
+                "cards": all_cards,
                 "loops_paid": loops_paid,
                 "cards_paid": cards_paid,
             }

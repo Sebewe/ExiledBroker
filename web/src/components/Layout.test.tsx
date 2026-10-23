@@ -35,16 +35,16 @@ afterEach(() => {
 
 describe('remembered settings', () => {
   it('keeps each page’s settings when switching pages from the menu', () => {
-    renderAt('/arbitrage?capital=20&sort=margin')
-    fireEvent.click(screen.getByRole('link', { name: /Card turn-ins/ }))
-    expect(screen.getByTestId('where').textContent).toBe('/cards')
-    fireEvent.click(screen.getByRole('link', { name: /Arbitrage/ }))
-    expect(screen.getByTestId('where').textContent).toBe('/arbitrage?capital=20&sort=margin')
+    renderAt('/launch?window=days2_4')
+    fireEvent.click(screen.getByRole('link', { name: /Backtest/ }))
+    expect(screen.getByTestId('where').textContent).toBe('/backtest')
+    fireEvent.click(screen.getByRole('link', { name: /Launch market/ }))
+    expect(screen.getByTestId('where').textContent).toBe('/launch?window=days2_4')
   })
 
   it('brings them back on a later visit to the bare address', () => {
-    localStorage.setItem('eb-settings', JSON.stringify({ '/arbitrage': '?capital=5' }))
-    renderAt('/arbitrage')
-    expect(screen.getByTestId('where').textContent).toBe('/arbitrage?capital=5')
+    localStorage.setItem('eb-settings', JSON.stringify({ '/launch': '?window=days5_10' }))
+    renderAt('/launch')
+    expect(screen.getByTestId('where').textContent).toBe('/launch?window=days5_10')
   })
 })

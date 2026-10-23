@@ -45,7 +45,7 @@ Measured on the seeded project, from home (105 ms round trip), through a byte-co
 | What | Read from Supabase (egress) |
 |---|---|
 | Seed (`eb site seed --hosted`, Allflame, 672 hours) | uploads only (2 min 18 s); the database is then 282 MB: `cross_market_hour` 114 MB, `price_observation` 96 MB, `exchange_page` 57 MB |
-| Web: warm every default view for a new data version | 0.76 MB (6 views) |
+| Web: warm every default view for a new data version | 0.76 MB (6 views); 0.46 MB (4 views) after Arbitrage and Card turn-ins were folded into the Market recap (2026-10-23, measured on the local Postgres) |
 | Web: every other endpoint once, cold | 1.24 MB |
 | Web: a cached request | 0 |
 | Web: one data-version read | 173 B (every 30 s ≈ 15 MB a month) |

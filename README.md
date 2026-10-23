@@ -12,7 +12,7 @@ A Path of Exile market tool for league starts. It turns historical and live exch
 |---|---|---|
 | 0 | Scaffolding: package, CLI, schema, config, service layer | ✅ Done |
 | 1 | Historical ingest: daily poe.ninja dumps + hourly GGG exchange, league calendar, price mappings, core pool, divination cards | ✅ All 32 challenge leagues daily; hourly for the four exchange-era leagues and the current league (Allflame) |
-| 2 | Exploration: recurring launch-week patterns (`analysis/`), Card turn-ins and Arbitrage pages | 🟨 Tools built; [findings](docs/findings.md) |
+| 2 | Exploration: recurring launch-week patterns (`analysis/`), loops and card turn-ins (now on the Market recap) | 🟨 Tools built; [findings](docs/findings.md) |
 | 3 | Patch corpus: scraper, extractor, review tool | ⬜ |
 | 4 | Baseline + backtest: first honest accuracy numbers | 🟨 The site's tools backtested at fair and harsh prices: Launch picks pay, hourly tools at best break even ([finding 4](docs/findings.md#4-backtest-the-launch-picks-pay-the-hourly-tools-at-best-break-even), the Backtest page) |
 | 5 | Signals: "farm X", "buy Y on day 2, sell day 6" | ⬜ |
@@ -38,9 +38,7 @@ After that:
 
 | Page | What it shows | API |
 |---|---|---|
-| **Market recap** (landing) | What traded in the last 1–3 published hours: loops and card turn-ins that paid (liquid markets only, steadiest first), what moved, and options to look into, worded to match the backtest | `/api/status`, `/api/missed/{league}` |
-| **Arbitrage** | Every Chaos↔Divine loop as a card, filtered by your capital, volume and margin | `/api/arbitrage` |
-| **Card turn-ins** | Every profitable card set as a card, filtered by your capital, volume and margin | `/api/cards/{league}` |
+| **Market recap** (landing) | What traded in the last 1–3 published hours: every loop and card turn-in that paid (liquid markets only, steadiest first) with the orders the backtest's best option would place this hour and its 24-hour price range, what moved, and options to look into | `/api/status`, `/api/missed/{league}` |
 | **Backtest** | Would following the site have paid? The site's tools replayed an hour late at fair and harsh prices (`eb backtest run`) | `/api/backtest` |
 | **Launch market** | What to buy on day 1, days 2–4 and days 5–10 with a couple of Divines, ranked from the last five leagues | `/api/launch/picks` |
 | **About** | Sources and credits | |

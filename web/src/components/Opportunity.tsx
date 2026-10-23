@@ -1,7 +1,7 @@
 import { ArrowRight } from 'lucide-react'
 import type { ReactNode } from 'react'
 
-// The trading cards shared by the landing page, Arbitrage and Card turn-ins: the key
+// The trading cards on the Market recap: the key
 // item top left, one headline amount top right, a route, and a few facts below.
 
 export function Pill({ children, accent = false }: { children: ReactNode; accent?: boolean }) {

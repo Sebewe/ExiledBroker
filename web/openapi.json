@@ -1,178 +1,6 @@
 {
   "components": {
     "schemas": {
-      "ArbitrageItem": {
-        "properties": {
-          "capacity_chaos": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Capacity Chaos"
-          },
-          "chaos_price": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Chaos Price"
-          },
-          "consistency_rank": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Consistency Rank"
-          },
-          "edge_rank": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Edge Rank"
-          },
-          "hours": {
-            "title": "Hours",
-            "type": "integer"
-          },
-          "item_id": {
-            "title": "Item Id",
-            "type": "string"
-          },
-          "leagues": {
-            "title": "Leagues",
-            "type": "integer"
-          },
-          "median_gap": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Median Gap"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "overlap_chaos": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Overlap Chaos"
-          },
-          "score": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Score"
-          },
-          "volume_rank": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Volume Rank"
-          },
-          "weighted_edge": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Weighted Edge"
-          },
-          "weighted_share": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Weighted Share"
-          },
-          "worst_league_rank": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Worst League Rank"
-          },
-          "worst_league_share": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Worst League Share"
-          }
-        },
-        "required": [
-          "score",
-          "item_id",
-          "name",
-          "leagues",
-          "weighted_share",
-          "weighted_edge",
-          "median_gap",
-          "chaos_price",
-          "overlap_chaos",
-          "capacity_chaos",
-          "hours",
-          "worst_league_share",
-          "edge_rank",
-          "consistency_rank",
-          "worst_league_rank",
-          "volume_rank"
-        ],
-        "title": "ArbitrageItem",
-        "type": "object"
-      },
       "BacktestAssumptions": {
         "properties": {
           "bank_divines": {
@@ -879,107 +707,6 @@
           "freshness_rank"
         ],
         "title": "CardFlip",
-        "type": "object"
-      },
-      "CrossMarketHour": {
-        "properties": {
-          "chaos_price": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Chaos Price"
-          },
-          "day_offset": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Day Offset"
-          },
-          "edge": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Edge"
-          },
-          "gap": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Gap"
-          },
-          "item_id": {
-            "title": "Item Id",
-            "type": "string"
-          },
-          "league": {
-            "title": "League",
-            "type": "string"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "observed_at": {
-            "format": "date-time",
-            "title": "Observed At",
-            "type": "string"
-          },
-          "overlap_chaos": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Overlap Chaos"
-          },
-          "via_divines": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Via Divines"
-          }
-        },
-        "required": [
-          "league",
-          "item_id",
-          "name",
-          "observed_at",
-          "day_offset",
-          "chaos_price",
-          "via_divines",
-          "gap",
-          "edge",
-          "overlap_chaos"
-        ],
-        "title": "CrossMarketHour",
         "type": "object"
       },
       "Group": {
@@ -1790,6 +1517,39 @@
       },
       "MissedCard": {
         "properties": {
+          "ask": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ask"
+          },
+          "bid": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bid"
+          },
+          "bid_in": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bid In"
+          },
           "hours_paid": {
             "title": "Hours Paid",
             "type": "integer"
@@ -1809,6 +1569,61 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "order_ok": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order Ok"
+          },
+          "range_avg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Range Avg"
+          },
+          "range_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Range High"
+          },
+          "range_hours": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Range Hours"
+          },
+          "range_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Range Low"
           },
           "reward": {
             "title": "Reward",
@@ -1838,9 +1653,42 @@
       },
       "MissedLoop": {
         "properties": {
+          "ask": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ask"
+          },
           "best_edge": {
             "title": "Best Edge",
             "type": "number"
+          },
+          "bid": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bid"
+          },
+          "bid_in": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bid In"
           },
           "direction": {
             "title": "Direction",
@@ -1862,6 +1710,17 @@
             "title": "Name",
             "type": "string"
           },
+          "order_ok": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order Ok"
+          },
           "price": {
             "anyOf": [
               {
@@ -1872,6 +1731,50 @@
               }
             ],
             "title": "Price"
+          },
+          "range_avg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Range Avg"
+          },
+          "range_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Range High"
+          },
+          "range_hours": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Range Hours"
+          },
+          "range_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Range Low"
           },
           "volume": {
             "title": "Volume",
@@ -2062,372 +1965,6 @@
         "title": "Status",
         "type": "object"
       },
-      "TurnIn": {
-        "properties": {
-          "cards_traded": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cards Traded"
-          },
-          "filter_tier": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Filter Tier"
-          },
-          "hours": {
-            "title": "Hours",
-            "type": "integer"
-          },
-          "investment_rank": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Investment Rank"
-          },
-          "item_id": {
-            "title": "Item Id",
-            "type": "string"
-          },
-          "margin": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Margin"
-          },
-          "margin_pct": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Margin Pct"
-          },
-          "margin_rank": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Margin Rank"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "profitable_hours_rank": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Profitable Hours Rank"
-          },
-          "profitable_share": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Profitable Share"
-          },
-          "reward_fixed": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reward Fixed"
-          },
-          "reward_item_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reward Item Id"
-          },
-          "reward_kind": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reward Kind"
-          },
-          "reward_name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reward Name"
-          },
-          "reward_quantity": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reward Quantity"
-          },
-          "reward_text": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reward Text"
-          },
-          "reward_value": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reward Value"
-          },
-          "score": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Score"
-          },
-          "set_cost": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Set Cost"
-          },
-          "sets_traded": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Sets Traded"
-          },
-          "stack_size": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Stack Size"
-          },
-          "volume_rank": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Volume Rank"
-          }
-        },
-        "required": [
-          "score",
-          "item_id",
-          "name",
-          "filter_tier",
-          "stack_size",
-          "reward_kind",
-          "reward_name",
-          "reward_quantity",
-          "reward_item_id",
-          "reward_fixed",
-          "reward_text",
-          "hours",
-          "profitable_share",
-          "margin",
-          "margin_pct",
-          "set_cost",
-          "reward_value",
-          "cards_traded",
-          "sets_traded",
-          "margin_rank",
-          "investment_rank",
-          "profitable_hours_rank",
-          "volume_rank"
-        ],
-        "title": "TurnIn",
-        "type": "object"
-      },
-      "TurnInHour": {
-        "properties": {
-          "card": {
-            "title": "Card",
-            "type": "string"
-          },
-          "card_price": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Card Price"
-          },
-          "card_volume": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Card Volume"
-          },
-          "day_offset": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Day Offset"
-          },
-          "margin": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Margin"
-          },
-          "observed_at": {
-            "format": "date-time",
-            "title": "Observed At",
-            "type": "string"
-          },
-          "reward_price": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reward Price"
-          },
-          "reward_value": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reward Value"
-          },
-          "set_cost": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Set Cost"
-          }
-        },
-        "required": [
-          "observed_at",
-          "day_offset",
-          "card",
-          "card_price",
-          "reward_price",
-          "set_cost",
-          "reward_value",
-          "margin",
-          "card_volume"
-        ],
-        "title": "TurnInHour",
-        "type": "object"
-      },
       "Upcoming": {
         "description": "The announced next league, until its first trades are loaded.",
         "properties": {
@@ -2545,225 +2082,6 @@
   },
   "openapi": "3.1.0",
   "paths": {
-    "/api/arbitrage": {
-      "get": {
-        "description": "Loops scored across leagues (default: every league with hourly data), newest\nleague weighted most. Repeat `league` to choose.",
-        "operationId": "arbitrage_api_arbitrage_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "league",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "items": {
-                    "type": "string"
-                  },
-                  "type": "array"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "League"
-            }
-          },
-          {
-            "in": "query",
-            "name": "direction",
-            "required": false,
-            "schema": {
-              "default": "chaos_first",
-              "enum": [
-                "chaos_first",
-                "divine_first"
-              ],
-              "title": "Direction",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "buffer",
-            "required": false,
-            "schema": {
-              "default": 0.02,
-              "maximum": 0.5,
-              "minimum": 0,
-              "title": "Buffer",
-              "type": "number"
-            }
-          },
-          {
-            "in": "query",
-            "name": "min_hours",
-            "required": false,
-            "schema": {
-              "default": 24,
-              "maximum": 1000,
-              "minimum": 1,
-              "title": "Min Hours",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "min_price",
-            "required": false,
-            "schema": {
-              "default": 1.0,
-              "minimum": 0,
-              "title": "Min Price",
-              "type": "number"
-            }
-          },
-          {
-            "in": "query",
-            "name": "half_life",
-            "required": false,
-            "schema": {
-              "default": 2.0,
-              "exclusiveMinimum": 0,
-              "maximum": 20,
-              "title": "Half Life",
-              "type": "number"
-            }
-          },
-          {
-            "in": "query",
-            "name": "weights",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Weights"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/ArbitrageItem"
-                  },
-                  "title": "Response Arbitrage Api Arbitrage Get",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Arbitrage",
-        "tags": [
-          "trading"
-        ]
-      }
-    },
-    "/api/arbitrage/hourly": {
-      "get": {
-        "description": "One item's latest `hours` hours, for its chart: every hour it traded against\nChaos, with the Divine side null in hours it didn't also trade against Divine.",
-        "operationId": "arbitrage_hourly_api_arbitrage_hourly_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "item_id",
-            "required": true,
-            "schema": {
-              "title": "Item Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "league",
-            "required": true,
-            "schema": {
-              "items": {
-                "type": "string"
-              },
-              "title": "League",
-              "type": "array"
-            }
-          },
-          {
-            "in": "query",
-            "name": "direction",
-            "required": false,
-            "schema": {
-              "default": "chaos_first",
-              "enum": [
-                "chaos_first",
-                "divine_first"
-              ],
-              "title": "Direction",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "hours",
-            "required": false,
-            "schema": {
-              "default": 72,
-              "maximum": 672,
-              "minimum": 1,
-              "title": "Hours",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/CrossMarketHour"
-                  },
-                  "title": "Response Arbitrage Hourly Api Arbitrage Hourly Get",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Arbitrage Hourly",
-        "tags": [
-          "trading"
-        ]
-      }
-    },
     "/api/backtest": {
       "get": {
         "description": "Would following the site's tools have paid? The backtest's report (one item; empty\nuntil `eb backtest run` has been run on the research database and seeded).",
@@ -2787,175 +2105,6 @@
         "summary": "Backtest Report",
         "tags": [
           "market"
-        ]
-      }
-    },
-    "/api/cards/{league}": {
-      "get": {
-        "description": "Every followed card with a priced reward and at least one traded hour, scored.",
-        "operationId": "cards_api_cards__league__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "league",
-            "required": true,
-            "schema": {
-              "title": "League",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "unit",
-            "required": false,
-            "schema": {
-              "default": "chaos",
-              "enum": [
-                "chaos",
-                "divine"
-              ],
-              "title": "Unit",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "prefer_cheaper_sets",
-            "required": false,
-            "schema": {
-              "default": true,
-              "title": "Prefer Cheaper Sets",
-              "type": "boolean"
-            }
-          },
-          {
-            "in": "query",
-            "name": "weights",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Weights"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/TurnIn"
-                  },
-                  "title": "Response Cards Api Cards  League  Get",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Cards",
-        "tags": [
-          "trading"
-        ]
-      }
-    },
-    "/api/cards/{league}/{card_id}/hourly": {
-      "get": {
-        "description": "One card's set cost against its reward over its latest `hours` hours.",
-        "operationId": "card_hourly_api_cards__league___card_id__hourly_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "league",
-            "required": true,
-            "schema": {
-              "title": "League",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "card_id",
-            "required": true,
-            "schema": {
-              "title": "Card Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "unit",
-            "required": false,
-            "schema": {
-              "default": "chaos",
-              "enum": [
-                "chaos",
-                "divine"
-              ],
-              "title": "Unit",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "hours",
-            "required": false,
-            "schema": {
-              "default": 72,
-              "maximum": 672,
-              "minimum": 1,
-              "title": "Hours",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/TurnInHour"
-                  },
-                  "title": "Response Card Hourly Api Cards  League   Card Id  Hourly Get",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Card Hourly",
-        "tags": [
-          "trading"
         ]
       }
     },

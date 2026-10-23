@@ -13,7 +13,6 @@ from exiledbroker.api import deps
 from exiledbroker.api.deps import View
 from exiledbroker.api.routes.live import leagues_view, missed_view
 from exiledbroker.api.routes.market import backtest_view, launch_picks_view
-from exiledbroker.api.routes.trading import arbitrage_view, cards_view
 
 log = logging.getLogger("uvicorn.error")  # shown in the server log (Railway's logs)
 CHECK_EVERY = 30.0  # seconds between data-version checks
@@ -23,10 +22,7 @@ def default_views() -> list[View]:
     leagues = deps.payload(leagues_view()).rows  # newest first, as the pages list them
     trading = [lg.name for lg in leagues if lg.latest_hour]
     views = [deps.LEAGUE_NAMES, launch_picks_view(), backtest_view()]
-    for league in trading:
-        views += [missed_view(league), cards_view(league)]
-    if trading:
-        views.append(arbitrage_view(trading))
+    views += [missed_view(league) for league in trading]
     return views
 
 

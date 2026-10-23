@@ -25,8 +25,6 @@ ENDPOINTS = {
     "status": "/api/status",
     "live: loops": "/api/live/{league}/loops",
     "live: card flips": "/api/live/{league}/card-flips",
-    "arbitrage": "/api/arbitrage?league={league}",
-    "cards": "/api/cards/{league}",
     "launch: summary": "/api/market/{league}/summary?group=currency",
     "launch: chart": "/api/market/{league}/hourly?item_id=currency:divine-orb",
 }

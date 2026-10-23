@@ -34,6 +34,9 @@ HOURLY_SCHEMA = {
     "reward_value": pl.Float64,
     "margin": pl.Float64,
     "card_volume": pl.Float64,
+    "card_low": pl.Float64,  # the hour's lowest and highest trades, in Chaos
+    "card_high": pl.Float64,
+    "reward_low": pl.Float64,
 }
 
 
@@ -94,7 +97,8 @@ def hourly_turn_ins(
                d.stack_size * c.{col} AS set_cost,
                d.reward_quantity * r.{col} AS reward_value,
                d.reward_quantity * r.{col} - d.stack_size * c.{col} AS margin,
-               c.volume AS card_volume
+               c.volume AS card_volume, c.chaos_low AS card_low, c.chaos_high AS card_high,
+               r.chaos_low AS reward_low
         FROM divination_card d
         JOIN price_observation c ON c.item_id = d.item_id
         JOIN price_observation r ON r.item_id = d.reward_item_id

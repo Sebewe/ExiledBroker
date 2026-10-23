@@ -4,48 +4,6 @@
  */
 
 export interface paths {
-    "/api/arbitrage": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Arbitrage
-         * @description Loops scored across leagues (default: every league with hourly data), newest
-         *     league weighted most. Repeat `league` to choose.
-         */
-        get: operations["arbitrage_api_arbitrage_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/arbitrage/hourly": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Arbitrage Hourly
-         * @description One item's latest `hours` hours, for its chart: every hour it traded against
-         *     Chaos, with the Divine side null in hours it didn't also trade against Divine.
-         */
-        get: operations["arbitrage_hourly_api_arbitrage_hourly_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/backtest": {
         parameters: {
             query?: never;
@@ -59,46 +17,6 @@ export interface paths {
          *     until `eb backtest run` has been run on the research database and seeded).
          */
         get: operations["backtest_report_api_backtest_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/cards/{league}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Cards
-         * @description Every followed card with a priced reward and at least one traded hour, scored.
-         */
-        get: operations["cards_api_cards__league__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/cards/{league}/{card_id}/hourly": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Card Hourly
-         * @description One card's set cost against its reward over its latest `hours` hours.
-         */
-        get: operations["card_hourly_api_cards__league___card_id__hourly_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -333,41 +251,6 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /** ArbitrageItem */
-        ArbitrageItem: {
-            /** Capacity Chaos */
-            capacity_chaos: number | null;
-            /** Chaos Price */
-            chaos_price: number | null;
-            /** Consistency Rank */
-            consistency_rank: number | null;
-            /** Edge Rank */
-            edge_rank: number | null;
-            /** Hours */
-            hours: number;
-            /** Item Id */
-            item_id: string;
-            /** Leagues */
-            leagues: number;
-            /** Median Gap */
-            median_gap: number | null;
-            /** Name */
-            name: string;
-            /** Overlap Chaos */
-            overlap_chaos: number | null;
-            /** Score */
-            score: number | null;
-            /** Volume Rank */
-            volume_rank: number | null;
-            /** Weighted Edge */
-            weighted_edge: number | null;
-            /** Weighted Share */
-            weighted_share: number | null;
-            /** Worst League Rank */
-            worst_league_rank: number | null;
-            /** Worst League Share */
-            worst_league_share: number | null;
-        };
         /** BacktestAssumptions */
         BacktestAssumptions: {
             /** Bank Divines */
@@ -585,32 +468,6 @@ export interface components {
             /** Volume Rank */
             volume_rank: number | null;
         };
-        /** CrossMarketHour */
-        CrossMarketHour: {
-            /** Chaos Price */
-            chaos_price: number | null;
-            /** Day Offset */
-            day_offset: number | null;
-            /** Edge */
-            edge: number | null;
-            /** Gap */
-            gap: number | null;
-            /** Item Id */
-            item_id: string;
-            /** League */
-            league: string;
-            /** Name */
-            name: string;
-            /**
-             * Observed At
-             * Format: date-time
-             */
-            observed_at: string;
-            /** Overlap Chaos */
-            overlap_chaos: number | null;
-            /** Via Divines */
-            via_divines: number | null;
-        };
         /** Group */
         Group: {
             /** Group Id */
@@ -820,6 +677,12 @@ export interface components {
         };
         /** MissedCard */
         MissedCard: {
+            /** Ask */
+            ask?: number | null;
+            /** Bid */
+            bid?: number | null;
+            /** Bid In */
+            bid_in?: string | null;
             /** Hours Paid */
             hours_paid: number;
             /** Item Id */
@@ -830,6 +693,16 @@ export interface components {
             missed: number;
             /** Name */
             name: string;
+            /** Order Ok */
+            order_ok?: boolean | null;
+            /** Range Avg */
+            range_avg?: number | null;
+            /** Range High */
+            range_high?: number | null;
+            /** Range Hours */
+            range_hours?: number | null;
+            /** Range Low */
+            range_low?: number | null;
             /** Reward */
             reward: string;
             /** Set Cost */
@@ -839,8 +712,14 @@ export interface components {
         };
         /** MissedLoop */
         MissedLoop: {
+            /** Ask */
+            ask?: number | null;
             /** Best Edge */
             best_edge: number;
+            /** Bid */
+            bid?: number | null;
+            /** Bid In */
+            bid_in?: string | null;
             /** Direction */
             direction: string;
             /** Hours Paid */
@@ -851,8 +730,18 @@ export interface components {
             missed: number;
             /** Name */
             name: string;
+            /** Order Ok */
+            order_ok?: boolean | null;
             /** Price */
             price: number | null;
+            /** Range Avg */
+            range_avg?: number | null;
+            /** Range High */
+            range_high?: number | null;
+            /** Range Hours */
+            range_hours?: number | null;
+            /** Range Low */
+            range_low?: number | null;
             /** Volume */
             volume: number;
         };
@@ -912,79 +801,6 @@ export interface components {
             now: string;
             upcoming?: components["schemas"]["Upcoming"] | null;
         };
-        /** TurnIn */
-        TurnIn: {
-            /** Cards Traded */
-            cards_traded: number | null;
-            /** Filter Tier */
-            filter_tier: string | null;
-            /** Hours */
-            hours: number;
-            /** Investment Rank */
-            investment_rank: number | null;
-            /** Item Id */
-            item_id: string;
-            /** Margin */
-            margin: number | null;
-            /** Margin Pct */
-            margin_pct: number | null;
-            /** Margin Rank */
-            margin_rank: number | null;
-            /** Name */
-            name: string;
-            /** Profitable Hours Rank */
-            profitable_hours_rank: number | null;
-            /** Profitable Share */
-            profitable_share: number | null;
-            /** Reward Fixed */
-            reward_fixed: boolean | null;
-            /** Reward Item Id */
-            reward_item_id: string | null;
-            /** Reward Kind */
-            reward_kind: string | null;
-            /** Reward Name */
-            reward_name: string | null;
-            /** Reward Quantity */
-            reward_quantity: number | null;
-            /** Reward Text */
-            reward_text: string | null;
-            /** Reward Value */
-            reward_value: number | null;
-            /** Score */
-            score: number | null;
-            /** Set Cost */
-            set_cost: number | null;
-            /** Sets Traded */
-            sets_traded: number | null;
-            /** Stack Size */
-            stack_size: number | null;
-            /** Volume Rank */
-            volume_rank: number | null;
-        };
-        /** TurnInHour */
-        TurnInHour: {
-            /** Card */
-            card: string;
-            /** Card Price */
-            card_price: number | null;
-            /** Card Volume */
-            card_volume: number | null;
-            /** Day Offset */
-            day_offset: number | null;
-            /** Margin */
-            margin: number | null;
-            /**
-             * Observed At
-             * Format: date-time
-             */
-            observed_at: string;
-            /** Reward Price */
-            reward_price: number | null;
-            /** Reward Value */
-            reward_value: number | null;
-            /** Set Cost */
-            set_cost: number | null;
-        };
         /**
          * Upcoming
          * @description The announced next league, until its first trades are loaded.
@@ -1042,77 +858,6 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    arbitrage_api_arbitrage_get: {
-        parameters: {
-            query?: {
-                league?: string[] | null;
-                direction?: "chaos_first" | "divine_first";
-                buffer?: number;
-                min_hours?: number;
-                min_price?: number;
-                half_life?: number;
-                weights?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ArbitrageItem"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    arbitrage_hourly_api_arbitrage_hourly_get: {
-        parameters: {
-            query: {
-                item_id: string;
-                league: string[];
-                direction?: "chaos_first" | "divine_first";
-                hours?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CrossMarketHour"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     backtest_report_api_backtest_get: {
         parameters: {
             query?: never;
@@ -1129,76 +874,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BacktestReport"][];
-                };
-            };
-        };
-    };
-    cards_api_cards__league__get: {
-        parameters: {
-            query?: {
-                unit?: "chaos" | "divine";
-                prefer_cheaper_sets?: boolean;
-                weights?: string | null;
-            };
-            header?: never;
-            path: {
-                league: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TurnIn"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    card_hourly_api_cards__league___card_id__hourly_get: {
-        parameters: {
-            query?: {
-                unit?: "chaos" | "divine";
-                hours?: number;
-            };
-            header?: never;
-            path: {
-                league: string;
-                card_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TurnInHour"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

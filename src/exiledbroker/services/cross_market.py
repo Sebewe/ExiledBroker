@@ -55,6 +55,12 @@ HOURLY_SCHEMA = {
     "gap": pl.Float64,
     "edge": pl.Float64,
     "overlap_chaos": pl.Float64,
+    # The Divine side's range and that hour's Divine rate range (null in Chaos-only
+    # hours): what the Market recap prices its loop orders from.
+    "divine_low": pl.Float64,
+    "divine_high": pl.Float64,
+    "divine_rate_low": pl.Float64,
+    "divine_rate_high": pl.Float64,
 }
 
 

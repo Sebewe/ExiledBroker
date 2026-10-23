@@ -17,7 +17,6 @@ from test_currency_exchange import FakeExchange, client_for
 from test_live_pipeline import LAUNCH, PAGES, settings  # noqa: F401
 
 LEAGUE = "Mirage"
-CARD = "currency:the-doctor"
 
 
 @pytest.fixture
@@ -39,10 +38,6 @@ def endpoints(league: str) -> list[str]:
         f"/api/live/{league}/loops",
         f"/api/live/{league}/card-flips?lookback=48",
         f"/api/missed/{league}",
-        f"/api/arbitrage?league={league}&min_hours=1",
-        f"/api/arbitrage/hourly?league={league}&item_id=currency:exalted-orb",
-        f"/api/cards/{league}",
-        f"/api/cards/{league}/{CARD}/hourly",
         "/api/market/leagues",
         "/api/market/groups",
         f"/api/market/{league}/summary?group=currency&group=divination",
@@ -92,8 +87,6 @@ def test_every_endpoint_as_a_league_arrives(client, settings):  # noqa: F811
     assert loops
     # The site shows the latest hour's traded range; its average lies within it.
     assert all(lp["price_low"] <= lp["price"] <= lp["price_high"] for lp in loops)
-    arbitrage = client.get(f"/api/arbitrage?league={LEAGUE}&min_hours=1&min_price=0").json()
-    assert arbitrage and arbitrage[0]["score"] >= arbitrage[-1]["score"]
     hourly = client.get(f"/api/market/{LEAGUE}/hourly?item_id=currency:divine-orb").json()
     assert hourly[-1]["observed_at"].endswith("Z")  # UTC, explicitly
 
@@ -102,7 +95,7 @@ def test_tables_are_computed_once_per_data_version(client, settings, monkeypatch
     server = FakeExchange(PAGES, now=LAUNCH)
     update(settings, server, 6)
     monkeypatch.setattr(deps, "VERSION_TTL", 60.0)  # as in production
-    path = f"/api/cards/{LEAGUE}"
+    path = f"/api/missed/{LEAGUE}"
     with db.metered() as first:
         r1 = client.get(path)
     with db.metered() as again:
@@ -143,14 +136,12 @@ def test_default_pages_are_precomputed(client, settings, monkeypatch):  # noqa: 
     from exiledbroker.api import warm
 
     update(settings, FakeExchange(PAGES, now=LAUNCH), 30)
-    assert warm.warm() >= 5
+    assert warm.warm() >= 4  # league names, launch picks, backtest, the recap
     monkeypatch.setattr(deps, "VERSION_TTL", 60.0)
     # Exactly the requests the frontend makes on first load (web/src/api/queries.ts).
     page_loads = [
         "/api/status",
         f"/api/missed/{LEAGUE}",
-        f"/api/arbitrage?league={LEAGUE}&direction=chaos_first&buffer=0.02&min_hours=24&min_price=1",
-        f"/api/cards/{LEAGUE}?unit=chaos&prefer_cheaper_sets=true",
         "/api/launch/picks",
         "/api/backtest",
     ]
@@ -158,16 +149,6 @@ def test_default_pages_are_precomputed(client, settings, monkeypatch):  # noqa: 
         with db.metered() as meter:
             assert client.get(path).status_code == 200
         assert not meter.queries, (path, [q.sql for q in meter.queries])
-
-
-def test_charts_send_only_the_latest_hours(client, settings):  # noqa: F811
-    update(settings, FakeExchange(PAGES, now=LAUNCH), 30)
-    path = f"/api/arbitrage/hourly?league={LEAGUE}&item_id=currency:exalted-orb"
-    every = client.get(f"{path}&hours=672").json()
-    latest = client.get(f"{path}&hours=6").json()
-    assert len({r["observed_at"] for r in latest}) <= 6 < len({r["observed_at"] for r in every})
-    assert latest[-1]["observed_at"] == every[-1]["observed_at"]
-    assert client.get(f"{path}&hours=10000").status_code == 422
 
 
 def test_cache_is_bounded():
@@ -196,7 +177,7 @@ def test_serves_the_frontend(tmp_path, settings):  # noqa: F811
     (dist / "assets" / "app.js").write_text("console.log(1)")
     c = TestClient(app_module.create_app(web_dist=dist))
     assert c.get("/").text == "<div id=root></div>"
-    assert c.get("/arbitrage").text == "<div id=root></div>"  # client-side route
+    assert c.get("/launch").text == "<div id=root></div>"  # client-side route
     assert c.get("/assets/app.js").text == "console.log(1)"
     assert c.get("/../pyproject.toml").text == "<div id=root></div>"  # no escaping dist
     assert c.get("/api/health").json()["status"] == "ok"
@@ -220,7 +201,7 @@ def test_frontend_caching(tmp_path, settings):  # noqa: F811
     assert r.text == js  # decoded by the client: gzipped once, not twice
     raw = c.get("/assets/app-abc123.js", headers={"Accept-Encoding": "identity"})
     assert "content-encoding" not in raw.headers and raw.text == js
-    for path in ("/", "/arbitrage"):
+    for path in ("/", "/launch"):
         assert c.get(path).headers["cache-control"] == "no-cache"
 
 

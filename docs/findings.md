@@ -22,7 +22,7 @@ Recent leagues are the best reference: the economy changes every league, and the
 
 ## 2. Items sold for Divines fetch more than the same items sold for Chaos (preliminary)
 
-*`cross_market.summarize` / `across_leagues` (the Arbitrage page). All four exchange-era leagues.*
+*`cross_market.summarize` / `across_leagues` (the former Arbitrage page). All four exchange-era leagues.*
 
 - **How common:** 63k–86k item-hours per league traded in both the Chaos and the Divine market.
 - **The gap:** the median price via Divines (X/Divine price × the hour's rate) was **13–19% above** the direct Chaos price.

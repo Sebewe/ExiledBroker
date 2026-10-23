@@ -21,6 +21,8 @@ import { useNumberParam } from '../lib/useParam'
 // the slider switches between them here without another request.
 
 const LOOKBACKS = [1, 2, 3]
+// Loops and cards shown before "Show all" (the server sends every one that paid).
+const TOP = 3
 // An edge this big is usually one trade at an odd ratio, not a price anyone can repeat.
 const ODD_EDGE = 0.5
 // Hours of trades before the recap has much to say: the exchange is nearly empty at launch.
@@ -478,42 +480,144 @@ function Steady({ paid, hours }: { paid: number; hours: number }) {
   )
 }
 
+/** A price in the currency it's quoted in: Chaos as money (Divines once it's worth one),
+ *  Divines to three significant figures. */
+function quoted(x: number | null | undefined, currency: string | null | undefined, money: Money) {
+  if (x == null) return '–'
+  return currency === 'divine' ? `${x >= 10 ? x.toFixed(1) : x.toPrecision(3)} div` : money(x)
+}
+
+/** The orders the backtest's best option would place this hour, worded as an option. */
+function Orders({ steps, ok, skip, missing }: { steps: ReactNode[]; ok: boolean | null | undefined; skip: string; missing: boolean }) {
+  return (
+    <div className="flex flex-col gap-1 rounded-md border border-border bg-bg/40 px-2.5 py-2 text-xs">
+      <span className="text-[11px] font-medium tracking-wide text-faint uppercase">Orders for this hour</span>
+      {missing ? (
+        <span className="text-muted">Didn't trade in the latest hour, so there's no price to order from.</span>
+      ) : (
+        <>
+          <ol className="flex flex-col gap-0.5 text-muted">
+            {steps.map((s, i) => (
+              <li key={i}>{s}</li>
+            ))}
+          </ol>
+          {ok === false && <span className="text-warning">{skip}</span>}
+        </>
+      )}
+    </div>
+  )
+}
+
+/** The last 24 hours' range: lowest to highest trade, the average, and where the order sits. */
+function RangeBar({
+  low,
+  avg,
+  high,
+  hours,
+  mark,
+  markLabel,
+  money,
+}: {
+  low: number | null | undefined
+  avg: number | null | undefined
+  high: number | null | undefined
+  hours: number | null | undefined
+  mark?: number | null
+  markLabel?: string
+  money: Money
+}) {
+  if (low == null || high == null || !hours) return null
+  const at = (x: number) => (high > low ? Math.min(100, Math.max(0, ((x - low) / (high - low)) * 100)) : 50)
+  return (
+    <div className="flex flex-col gap-1" title={`Last 24 hours (${hours} traded): low ${money(low, high)}, average ${money(avg, high)}, high ${money(high, high)}`}>
+      <div className="relative h-2 rounded-full bg-surface-2">
+        {avg != null && <span className="absolute top-0 h-2 w-0.5 -translate-x-1/2 bg-muted" style={{ left: `${at(avg)}%` }} />}
+        {mark != null && (
+          <span
+            aria-label={markLabel}
+            className="absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-bg bg-accent"
+            style={{ left: `${at(mark)}%` }}
+          />
+        )}
+      </div>
+      <div className="num flex justify-between text-[11px] text-faint">
+        <span>24h low {money(low, high)}</span>
+        <span>avg {money(avg, high)}</span>
+        <span>high {money(high, high)}</span>
+      </div>
+    </div>
+  )
+}
+
+function ShowAll({ all, total, onToggle }: { all: boolean; total: number; onToggle: () => void }) {
+  if (total <= TOP) return null
+  return (
+    <button type="button" onClick={onToggle} className="cursor-pointer text-sm text-accent hover:text-accent-strong">
+      {all ? 'Show the top 3' : `Show all ${total}`}
+    </button>
+  )
+}
+
 function Loops({ w, money }: { w: MissedWindow; money: Money }) {
+  const [all, setAll] = useState(false)
+  const shown = all ? w.loops : w.loops.slice(0, TOP)
   return (
     <Block
       id="loops"
       title="Loops that paid"
       icon={Repeat}
-      note="Chaos → item → Divine → Chaos (or the other way round), priced at the hour's worst prices, in markets where enough traded to act on. Steadiest first."
-      more={
-        <Link to="/arbitrage" className="text-sm text-accent hover:text-accent-strong">
-          All loops →
-        </Link>
-      }
+      note="Chaos → item → Divine → Chaos (or the other way round), priced at the hour's worst prices, in markets where enough traded to act on. Steadiest first. Each lists the orders that did best in the backtest: a bid halfway up the latest hour's range, an ask three quarters up the other currency's."
+      more={<ShowAll all={all} total={w.loops.length} onToggle={() => setAll(!all)} />}
     >
       {w.loops.length === 0 ? (
         <Empty>No loop with enough volume beat a 2% edge in {lastHours(w.hours)}.</Empty>
       ) : (
         <ol className="grid gap-3 md:grid-cols-3">
-          {w.loops.map((l) => (
-            <Opportunity
-              key={l.item_id}
-              title={l.name}
-              amount={signedPct(l.best_edge, 0)}
-              label="best edge, worst prices"
-              footer={
-                <>
-                  <Steady paid={l.hours_paid} hours={w.hours} />
-                  <span>
-                    <span className="num text-text">{money(l.volume)}</span> traded through both markets an hour
-                  </span>
-                  {l.best_edge > ODD_EDGE && <span className="text-warning">unusually large: likely one odd trade</span>}
-                </>
-              }
-            >
-              <Route steps={loopRoute(l.name, l.direction)} item={l.name} />
-            </Opportunity>
-          ))}
+          {shown.map((l) => {
+            const chaosFirst = l.direction === 'chaos_first'
+            const other = l.bid_in === 'divine' ? 'chaos' : 'divine'
+            return (
+              <Opportunity
+                key={l.item_id}
+                title={l.name}
+                amount={signedPct(l.best_edge, 0)}
+                label="best edge, worst prices"
+                footer={
+                  <>
+                    <Steady paid={l.hours_paid} hours={w.hours} />
+                    <span>
+                      <span className="num text-text">{money(l.volume)}</span> traded through both markets an hour
+                    </span>
+                    {l.best_edge > ODD_EDGE && <span className="text-warning">unusually large: likely one odd trade</span>}
+                  </>
+                }
+              >
+                <Route steps={loopRoute(l.name, l.direction)} item={l.name} />
+                <Orders
+                  missing={l.bid == null}
+                  ok={l.order_ok}
+                  skip="From this bid it wouldn't pay at the hour's worst sale: skip it this hour."
+                  steps={[
+                    <>
+                      Bid <span className="num text-text">{quoted(l.bid, l.bid_in, money)}</span> each, in {l.bid_in === 'divine' ? 'Divines' : 'Chaos'}
+                    </>,
+                    <>
+                      Ask <span className="num text-text">{quoted(l.ask, other, money)}</span> each, in {other === 'divine' ? 'Divines' : 'Chaos'}
+                    </>,
+                  ]}
+                />
+                <RangeBar
+                  low={l.range_low}
+                  avg={l.range_avg}
+                  high={l.range_high}
+                  hours={l.range_hours}
+                  mark={chaosFirst ? l.bid : l.ask}
+                  markLabel={chaosFirst ? 'your bid' : 'your ask'}
+                  money={money}
+                />
+              </Opportunity>
+            )
+          })}
         </ol>
       )}
     </Block>
@@ -521,23 +625,21 @@ function Loops({ w, money }: { w: MissedWindow; money: Money }) {
 }
 
 function Cards({ w, money }: { w: MissedWindow; money: Money }) {
+  const [all, setAll] = useState(false)
+  const shown = all ? w.cards : w.cards.slice(0, TOP)
   return (
     <Block
       id="cards"
       title="Card turn-ins that paid"
       icon={Layers}
-      note="A full set cost less than its reward at the hour's average prices, with at least a full set traded. Steadiest first."
-      more={
-        <Link to="/cards" className="text-sm text-accent hover:text-accent-strong">
-          All cards →
-        </Link>
-      }
+      note="A full set cost less than its reward at the hour's average prices, with at least a full set traded. Steadiest first. Each lists the orders that did best in the backtest: bid the card's lowest price from the latest hour, ask the reward's average."
+      more={<ShowAll all={all} total={w.cards.length} onToggle={() => setAll(!all)} />}
     >
       {w.cards.length === 0 ? (
         <Empty>No card turn-in paid in {lastHours(w.hours)}.</Empty>
       ) : (
         <ol className="grid gap-3 md:grid-cols-3">
-          {w.cards.map((c: MissedCard) => (
+          {shown.map((c: MissedCard) => (
             <Opportunity
               key={c.item_id}
               title={c.name}
@@ -556,6 +658,21 @@ function Cards({ w, money }: { w: MissedWindow; money: Money }) {
               <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted">
                 a full set turns into <Pill accent>{c.reward}</Pill>
               </div>
+              <Orders
+                missing={c.bid == null}
+                ok={c.order_ok}
+                skip="A set wouldn't pay from this bid at the reward's lowest price: skip it this hour."
+                steps={[
+                  <>
+                    Bid <span className="num text-text">{money(c.bid, c.range_high ?? c.bid)}</span> a card
+                  </>,
+                  <>
+                    {/* In Chaos: a reward is often a Divine Orb itself. */}
+                    Ask <span className="num text-text">{money(c.ask, 0)}</span> for each reward
+                  </>,
+                ]}
+              />
+              <RangeBar low={c.range_low} avg={c.range_avg} high={c.range_high} hours={c.range_hours} mark={c.bid} markLabel="your bid" money={money} />
             </Opportunity>
           ))}
         </ol>

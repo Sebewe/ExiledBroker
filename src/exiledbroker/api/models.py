@@ -76,74 +76,6 @@ class CardFlip(Ranks):
     freshness_rank: float | None
 
 
-class ArbitrageItem(Ranks):
-    item_id: str
-    name: str
-    leagues: int
-    weighted_share: float | None
-    weighted_edge: float | None
-    median_gap: float | None
-    chaos_price: float | None
-    overlap_chaos: float | None
-    capacity_chaos: float | None
-    hours: int
-    worst_league_share: float | None
-    edge_rank: float | None
-    consistency_rank: float | None
-    worst_league_rank: float | None
-    volume_rank: float | None
-
-
-class CrossMarketHour(BaseModel):
-    league: str
-    item_id: str
-    name: str
-    observed_at: datetime
-    day_offset: float | None
-    chaos_price: float | None
-    via_divines: float | None
-    gap: float | None
-    edge: float | None
-    overlap_chaos: float | None
-
-
-class TurnIn(Ranks):
-    item_id: str
-    name: str
-    filter_tier: str | None
-    stack_size: int | None
-    reward_kind: str | None
-    reward_name: str | None
-    reward_quantity: int | None
-    reward_item_id: str | None
-    reward_fixed: bool | None
-    reward_text: str | None
-    hours: int
-    profitable_share: float | None
-    margin: float | None
-    margin_pct: float | None
-    set_cost: float | None
-    reward_value: float | None
-    cards_traded: float | None
-    sets_traded: float | None
-    margin_rank: float | None
-    investment_rank: float | None
-    profitable_hours_rank: float | None
-    volume_rank: float | None
-
-
-class TurnInHour(BaseModel):
-    observed_at: datetime
-    day_offset: float | None
-    card: str
-    card_price: float | None
-    reward_price: float | None
-    set_cost: float | None
-    reward_value: float | None
-    margin: float | None
-    card_volume: float | None
-
-
 class HourlyLeague(BaseModel):
     name: str
     start_at: datetime | None
@@ -262,6 +194,18 @@ class MissedLoop(BaseModel):
     hours_paid: int
     price: float | None
     volume: float  # Chaos traded through both markets, per paying hour
+    # The order the backtest's best option would place from the latest hour (null if it
+    # didn't trade then): bid for the item in `bid_in`, ask in the other currency (for
+    # cards: bid a card, ask a reward, both in Chaos); order_ok: it still pays from the bid.
+    bid: float | None = None
+    ask: float | None = None
+    bid_in: str | None = None
+    order_ok: bool | None = None
+    # Its last 24 hours, in Chaos (for cards: one card): lowest trade, average, highest.
+    range_low: float | None = None
+    range_avg: float | None = None
+    range_high: float | None = None
+    range_hours: int | None = None
 
 
 class MissedCard(BaseModel):
@@ -273,6 +217,18 @@ class MissedCard(BaseModel):
     set_cost: float
     sets: float
     hours_paid: int
+    # The order the backtest's best option would place from the latest hour (null if it
+    # didn't trade then): bid for the item in `bid_in`, ask in the other currency (for
+    # cards: bid a card, ask a reward, both in Chaos); order_ok: it still pays from the bid.
+    bid: float | None = None
+    ask: float | None = None
+    bid_in: str | None = None
+    order_ok: bool | None = None
+    # Its last 24 hours, in Chaos (for cards: one card): lowest trade, average, highest.
+    range_low: float | None = None
+    range_avg: float | None = None
+    range_high: float | None = None
+    range_hours: int | None = None
 
 
 class MissedWindow(BaseModel):
