@@ -210,12 +210,15 @@ describe('Market recap', () => {
     expect(within(section).getAllByRole('heading', { level: 3 })).toHaveLength(3) // the top 3
     expect(within(section).getAllByText('15 of 20 tries in the last 3 days, by the optimistic fill rule')).toHaveLength(3)
     // The rates stay hidden until asked for.
-    expect(within(section).queryByText('10.5c each')).not.toBeInTheDocument()
+    expect(within(section).queryByText('21c for 2')).not.toBeInTheDocument()
     const [first, second] = within(section).getAllByRole('button', { name: 'Show rates' })
     fireEvent.mouseEnter(first!.parentElement!)
     const rates = screen.getByRole('dialog', { name: 'Rates for Loop item 1' })
-    expect(within(rates).getByText('10.5c each')).toBeInTheDocument() // the bid, in Chaos
-    expect(within(rates).getByText('0.0600 div each')).toBeInTheDocument() // the ask, in Divines
+    // Whole numbers on both sides, as the exchange takes them: 10.5c each is 21c for 2.
+    expect(within(rates).getByText('21c for 2')).toBeInTheDocument() // the bid, in Chaos
+    expect(within(rates).getByText('3 div for 50')).toBeInTheDocument() // the ask: 0.06 div each, in Divines
+    expect(within(rates).getByText(/One sale takes 50: buy 25 lots first/)).toBeInTheDocument()
+    expect(within(rates).getByText('+14%')).toBeInTheDocument() // 0.06 div at 200c over 10.5c
     expect(within(rates).getByText('low 9.00c')).toBeInTheDocument() // the last 24 hours' range
     expect(within(rates).getByText('Last 24 hours')).toBeInTheDocument()
     fireEvent.mouseLeave(first!.parentElement!)

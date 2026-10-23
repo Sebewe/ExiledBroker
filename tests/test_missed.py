@@ -143,10 +143,12 @@ def test_volatile_flips_are_liquid_wide_but_not_wild(con):
 def test_orders_are_whole_chaos_for_whole_lots():
     """The smallest lot whose whole-Chaos total is within 1% of the target: a bid never
     pays more than the target, an ask never asks less."""
-    target = pl.DataFrame({"x": [16.8, 5.5, 662.4, 4.27]})
+    target = pl.DataFrame({"x": [16.8, 5.5, 662.4, 4.27, 0.0783, 0.000519]})
     want = {
-        "buy": [(3, 50), (2, 11), (1, 662), (4, 17)],  # 16.67c, 5.5c, 662c, 4.25c each
-        "sell": [(5, 84), (2, 11), (1, 663), (7, 30)],  # 16.8c, 5.5c, 663c, 4.29c each
+        # 16.67c, 5.5c, 662c, 4.25c each; 5c for 64 (0.0781c); 1 Divine for 1927.
+        "buy": [(3, 50), (2, 11), (1, 662), (4, 17), (64, 5), (1927, 1)],
+        # 16.8c, 5.5c, 663c, 4.29c each; 3c for 38 (0.0789c); 1 Divine for 1926.
+        "sell": [(5, 84), (2, 11), (1, 663), (7, 30), (38, 3), (1926, 1)],
     }
     for side, rows in want.items():
         lot, total = missed.whole(pl.col("x"), side)

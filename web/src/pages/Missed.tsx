@@ -1,7 +1,7 @@
 import { Activity, AlertTriangle, ArrowDownRight, ArrowUpRight, CandlestickChart, FlaskConical, Layers, Repeat, Tag, Timer, Waves, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Link } from 'react-router'
-import type { LiveLeague, MissedCard, MissedFlip, MissedWindow, Mover, Upcoming } from '../api/client'
+import type { LiveLeague, MissedCard, MissedFlip, MissedLoop, MissedWindow, Mover, Upcoming } from '../api/client'
 import { useMissed, useServerNow, useStatus } from '../api/queries'
 import { Select } from '../components/Controls'
 import { FreshnessBanner } from '../components/Freshness'
@@ -10,6 +10,7 @@ import { PageHeader } from '../components/Section'
 import { Empty, Meter, Opportunity, Pill, Route, loopRoute } from '../components/Opportunity'
 import { signedPct, utcHour } from '../lib/format'
 import { makeMoney, type Money } from '../lib/money'
+import { eachText, lotText, whole, type Currency } from '../lib/lots'
 import { queryFallback } from '../lib/queryFallback'
 import { useLeague } from '../lib/useLeague'
 import { useNumberParam } from '../lib/useParam'
@@ -168,7 +169,7 @@ export default function Missed() {
               <Hero w={w} flips={lastHour?.flips ?? []} onHours={setHours} />
               <Options w={w} flips={lastHour?.flips ?? []} />
               <Flips flips={lastHour?.flips ?? []} money={money} />
-              <Loops w={w} money={money} />
+              <Loops w={w} money={money} rate={info.divine_chaos} />
               <Cards w={w} money={money} />
               <KeyMovement w={w} money={money} />
             </>
@@ -462,13 +463,6 @@ function Steady({ paid, hours }: { paid: number; hours: number }) {
   )
 }
 
-/** A price in the currency it's quoted in: Chaos as money (Divines once it's worth one),
- *  Divines to three significant figures. */
-function quoted(x: number | null | undefined, currency: string | null | undefined, money: Money) {
-  if (x == null) return '–'
-  return currency === 'divine' ? `${x >= 10 ? x.toFixed(1) : x.toPrecision(3)} div` : money(x)
-}
-
 /** The orders the backtest's best option would place this hour, worded as an option. */
 interface Step {
   verb: 'Buy' | 'Sell'
@@ -680,7 +674,7 @@ function Chance({
   )
 }
 
-function Loops({ w, money }: { w: MissedWindow; money: Money }) {
+function Loops({ w, money, rate }: { w: MissedWindow; money: Money; rate: number | null | undefined }) {
   const [all, setAll] = useState(false)
   const shown = all ? w.loops : w.loops.slice(0, TOP)
   return (
@@ -697,7 +691,6 @@ function Loops({ w, money }: { w: MissedWindow; money: Money }) {
         <ol className="grid gap-3 md:grid-cols-3">
           {shown.map((l) => {
             const chaosFirst = l.direction === 'chaos_first'
-            const other = l.bid_in === 'divine' ? 'chaos' : 'divine'
             return (
               <Opportunity
                 key={l.item_id}
@@ -721,20 +714,8 @@ function Loops({ w, money }: { w: MissedWindow; money: Money }) {
                     missing={l.bid == null}
                     ok={l.order_ok}
                     skip="From this bid it wouldn't pay at the hour's worst sale: skip it this hour."
-                    steps={[
-                      {
-                        verb: 'Buy',
-                        value: `${quoted(l.bid, l.bid_in, money)} each`,
-                        note: `Bid for the item in ${chaosFirst ? 'Chaos' : 'Divines'}, halfway up the latest hour's range.`,
-                      },
-                      {
-                        verb: 'Sell',
-                        value: `${quoted(l.ask, other, money)} each`,
-                        note: chaosFirst
-                          ? 'Ask in Divines, three quarters up its range there; then sell the Divines for Chaos.'
-                          : 'Ask in Chaos, three quarters up its range there; then buy your Divines back.',
-                      },
-                    ]}
+                    margin={loopMargin(l, rate)}
+                    steps={loopSteps(l)}
                   />
                   <RangeBar
                     low={l.range_low}
@@ -795,21 +776,10 @@ function Cards({ w, money }: { w: MissedWindow; money: Money }) {
                   missing={c.bid == null}
                   ok={c.order_ok}
                   skip="A set wouldn't pay from this bid at the reward's lowest price: skip it this hour."
-                  steps={[
-                    {
-                      verb: 'Buy',
-                      value: `${money(c.bid, c.range_high ?? c.bid)} a card`,
-                      note: "Bid the card's lowest price from the latest hour, then turn in each full set.",
-                    },
-                    {
-                      // In Chaos: a reward is often a Divine Orb itself.
-                      verb: 'Sell',
-                      value: `${money(c.ask, 0)} each`,
-                      note: `Ask the reward's average from the latest hour for each ${c.reward.replace(/^\d+× /, '')}.`,
-                    },
-                  ]}
+                  steps={cardSteps(c)}
                 />
-                <RangeBar low={c.range_low} avg={c.range_avg} high={c.range_high} hours={c.range_hours} mark={c.bid} markLabel="your bid" money={money} />
+                {/* In Chaos, like the orders above it. */}
+                <RangeBar low={c.range_low} avg={c.range_avg} high={c.range_high} hours={c.range_hours} mark={c.bid} markLabel="your bid" money={inChaos} />
               </Rates>
             </Opportunity>
           ))}
@@ -822,9 +792,96 @@ function Cards({ w, money }: { w: MissedWindow; money: Money }) {
 /** The listing's whole-Chaos total after `hours` hourly cuts, for the rates popup. */
 const cutTotal = (f: MissedFlip, hours: number) => Math.ceil(f.ask_total * (1 - f.cut) ** hours)
 
-/** An order as placed on the exchange: whole Chaos for a whole number of items. */
-const lot = (total: number, n: number) => `${Math.round(total)}c ${n === 1 ? 'each' : `for ${n}`}`
-const each = (total: number, n: number) => (n > 1 ? `${(total / n).toFixed(2)}c each. ` : '')
+/** Always in Chaos (a card's range, next to orders in Chaos). */
+const inChaos = makeMoney(null)
+
+/** "0.0781c each. In Chaos." from optional parts. */
+const sentence = (...parts: string[]) =>
+  parts
+    .filter(Boolean)
+    .map((s) => (/[.:]$/.test(s) ? s : `${s}.`))
+    .join(' ')
+
+const currencyName = (c: Currency) => (c === 'chaos' ? 'Chaos' : 'Divines')
+
+/** A loop's two orders, in whole units of each currency for whole lots (lib/lots). */
+function loopSteps(l: MissedLoop): Step[] {
+  if (l.bid == null || l.ask == null) return []
+  const pay: Currency = l.bid_in === 'divine' ? 'divine' : 'chaos'
+  const get: Currency = pay === 'chaos' ? 'divine' : 'chaos'
+  const buy = whole(l.bid, 'buy')
+  const sell = whole(l.ask, 'sell')
+  const more = sell.items > buy.items ? `One sale takes ${sell.items}: buy ${Math.ceil(sell.items / buy.items)} lots first.` : ''
+  return [
+    {
+      verb: 'Buy',
+      value: lotText(buy, pay),
+      note: sentence(eachText(buy, pay), `Bid in ${currencyName(pay)}, halfway up the latest hour's range`, more),
+    },
+    {
+      verb: 'Sell',
+      value: lotText(sell, get),
+      note: sentence(
+        eachText(sell, get),
+        get === 'divine'
+          ? 'Ask in Divines, three quarters up their range; then sell the Divines for Chaos'
+          : 'Ask in Chaos, three quarters up its range; then buy your Divines back',
+      ),
+    },
+  ]
+}
+
+/** What one round of a loop's orders makes, at the latest Divine price (before the
+ *  Divines are converted, so a little less in practice). */
+function loopMargin(l: MissedLoop, rate: number | null | undefined) {
+  if (l.bid == null || l.ask == null || !rate) return null
+  const buy = whole(l.bid, 'buy')
+  const sell = whole(l.ask, 'sell')
+  const paid = buy.units / buy.items
+  const got = sell.units / sell.items
+  return l.bid_in === 'divine' ? got / (paid * rate) - 1 : (got * rate) / paid - 1
+}
+
+/** A card turn-in's two orders: cards bought in whole-Chaos lots, the reward sold the same way. */
+function cardSteps(c: MissedCard): Step[] {
+  if (c.bid == null || c.ask == null) return []
+  const buy = whole(c.bid, 'buy')
+  const sell = whole(c.ask, 'sell')
+  const reward = c.reward.replace(/^\d+× /, '')
+  return [
+    {
+      verb: 'Buy',
+      value: lotText(buy, 'chaos'),
+      note: sentence(eachText(buy, 'chaos'), "Bid the card's lowest price from the latest hour, then turn in each full set"),
+    },
+    {
+      verb: 'Sell',
+      value: lotText(sell, 'chaos'),
+      note: sentence(eachText(sell, 'chaos'), `Ask the latest hour's average for each ${reward}`),
+    },
+  ]
+}
+
+/** A flip's two orders, as the server priced them (whole Chaos for whole lots). */
+function flipSteps(f: MissedFlip): Step[] {
+  const buy = { items: f.bid_lot, units: f.bid_total }
+  const sell = { items: f.ask_lot, units: f.ask_total }
+  return [
+    {
+      verb: 'Buy',
+      value: lotText(buy, 'chaos'),
+      note: sentence(eachText(buy, 'chaos'), "In Chaos. Cancel it if it hasn't filled by the end of the hour: an unfilled bid costs nothing"),
+    },
+    {
+      verb: 'Sell',
+      value: lotText(sell, 'chaos'),
+      note: sentence(
+        eachText(sell, 'chaos'),
+        `${Math.round(f.cut * 100)}% lower each hour it doesn't sell: ${cutTotal(f, 6)}c after 6 hours, ${cutTotal(f, 24)}c after a day`,
+      ),
+    },
+  ]
+}
 
 /** The latest hour's flips: the same whatever the look-back (sent with the 1-hour one). */
 function Flips({ flips, money }: { flips: MissedFlip[]; money: Money }) {
@@ -867,18 +924,7 @@ function Flips({ flips, money }: { flips: MissedFlip[]; money: Money }) {
                   ok={true}
                   skip=""
                   margin={f.ask / f.bid - 1}
-                  steps={[
-                    {
-                      verb: 'Buy',
-                      value: lot(f.bid_total, f.bid_lot),
-                      note: `${each(f.bid_total, f.bid_lot)}In Chaos. Cancel it if it hasn't filled by the end of the hour: an unfilled bid costs nothing.`,
-                    },
-                    {
-                      verb: 'Sell',
-                      value: lot(f.ask_total, f.ask_lot),
-                      note: `${each(f.ask_total, f.ask_lot)}${Math.round(f.cut * 100)}% lower each hour it doesn't sell: ${cutTotal(f, 6)}c after 6 hours, ${cutTotal(f, 24)}c after a day.`,
-                    },
-                  ]}
+                  steps={flipSteps(f)}
                 />
                 <RangeBar low={f.low} avg={f.price} high={f.high} hours={1} mark={f.bid} markLabel="your bid" money={money} heading="Latest hour" />
               </Rates>
