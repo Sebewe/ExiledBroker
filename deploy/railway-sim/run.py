@@ -328,14 +328,14 @@ def spike(args) -> dict:
     m.stop()
     d = diff(s0, s1)
     out = {
-        "label": f"spike-{args.users}u",
+        "label": args.label or f"spike-{args.users}u",
         "users": args.users,
         "minutes": args.minutes,
         "traffic": traffic,
         "web": d["web"].as_dict(),
         "postgres": d["postgres"].as_dict(),
     }
-    (ROOT / "data" / "perf" / f"railway-spike-{args.users}u.json").write_text(
+    (ROOT / "data" / "perf" / f"railway-{args.label or f'spike-{args.users}u'}.json").write_text(
         json.dumps(out, indent=2)
     )
     t = traffic
@@ -369,6 +369,7 @@ def main() -> None:
     s = sub.add_parser("spike", help="all users at once, cold caches")
     s.add_argument("--users", type=int, default=1000)
     s.add_argument("--minutes", type=float, default=5)
+    s.add_argument("--label")
     sub.add_parser("down", help="remove the simulation's containers and volumes")
     args = ap.parse_args()
     if args.cmd == "run":
