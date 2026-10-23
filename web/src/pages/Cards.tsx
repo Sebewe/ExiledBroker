@@ -1,101 +1,129 @@
-import { createColumnHelper } from '@tanstack/react-table'
 import { useMemo, useState } from 'react'
 import type { TurnIn } from '../api/client'
-import { useCardHourly, useCards, useStatus } from '../api/queries'
-import { LazyChart as Chart } from '../components/LazyChart'
-import { baseOptions, line } from '../lib/chartOptions'
-import { Segmented, Select, Toolbar } from '../components/Controls'
-import { DataTable, ScoreBar } from '../components/DataTable'
+import { useCards, useStatus } from '../api/queries'
+import { Segmented, Select } from '../components/Controls'
 import { Notice } from '../components/Notice'
+import { Empty, Meter, Opportunity, Pill } from '../components/Opportunity'
+import { PageHeader } from '../components/Section'
+import { MaxMarginField, PAGE, ShowMore, TradeFilterBar, marginOk, useTradeFilters } from '../components/TradeFilters'
+import { count, signedPct } from '../lib/format'
+import { makeMoney } from '../lib/money'
 import { queryFallback } from '../lib/queryFallback'
-import { PageHeader, Section } from '../components/Section'
-import { Stat } from '../components/Stat'
-import { count, pct, price, signedPct, tone, type Unit } from '../lib/format'
 import { useLeague } from '../lib/useLeague'
 import { useParam } from '../lib/useParam'
 
-const col = createColumnHelper<TurnIn>()
+/** A turn-in at the viewer's settings: what a typical hour is worth with their capital. */
+interface Flip {
+  card: TurnIn
+  setsPerHour: number // full sets' worth of cards traded in a typical hour
+  yours: number // Chaos: profitable share × min(sets you can afford, sets traded) × margin
+}
 
 export default function Cards() {
   const status = useStatus()
-  const names = status.data?.leagues.filter((l) => l.latest_hour).map((l) => l.name) ?? []
+  const live = status.data?.leagues.filter((l) => l.latest_hour) ?? []
+  const names = live.map((l) => l.name)
   const [league, setLeague] = useLeague(names)
-  const [unit, setUnit] = useParam<Unit>('unit', 'chaos')
   const [sets, setSets] = useParam<'cheaper' | 'bigger'>('sets', 'cheaper')
-  const [picked, setPicked] = useState<string>()
-  const cards = useCards(league, unit, sets === 'cheaper')
-  const selected = picked ?? cards.data?.[0]?.item_id
-  const hourly = useCardHourly(league, selected, unit)
+  const f = useTradeFilters(0)
+  const [shown, setShown] = useState(PAGE)
+  // Always in Chaos: amounts are converted here (and it's the cached default view).
+  const cards = useCards(league, 'chaos', sets === 'cheaper')
+  const rate = live.find((l) => l.name === league)?.divine_chaos
+  const money = makeMoney(rate)
 
-  const columns = useMemo(
-    () => [
-      col.accessor('name', { header: 'Card' }),
-      col.accessor('score', { header: 'Score', cell: (c) => <ScoreBar value={c.getValue()} />, meta: { numeric: true } }),
-      col.accessor('set_cost', { header: 'Set cost (median)', cell: (c) => price(c.getValue(), unit), meta: { numeric: true, hint: 'Median over the hours both traded, at each hour\'s average price' } }),
-      col.accessor('reward_value', { header: 'Reward (median)', cell: (c) => price(c.getValue(), unit), meta: { numeric: true, hint: 'Median over the hours both traded, at each hour\'s average price' } }),
-      col.accessor('margin', {
-        header: 'Margin',
-        cell: (c) => <span className={tone(c.getValue())}>{price(c.getValue(), unit)}</span>,
-        meta: { numeric: true, hint: 'Typical (median) hour: reward value minus set cost' },
-      }),
-      col.accessor('margin_pct', {
-        header: 'Margin %',
-        cell: (c) => <span className={tone(c.getValue())}>{signedPct(c.getValue())}</span>,
-        meta: { numeric: true },
-      }),
-      col.accessor('profitable_share', { header: 'Profitable hours', cell: (c) => pct(c.getValue(), 0), meta: { numeric: true } }),
-      col.accessor('sets_traded', { header: 'Sets traded', cell: (c) => count(c.getValue(), 1), meta: { numeric: true, hint: "Full sets' worth of cards traded" } }),
-      col.accessor('stack_size', { header: 'Set size', meta: { numeric: true } }),
-      col.accessor((r) => `${r.reward_quantity ?? ''}× ${r.reward_name ?? ''}`, { id: 'reward', header: 'Gives' }),
-    ],
-    [unit],
-  )
+  const { flips, tooDear } = useMemo(() => {
+    const capital = f.capital * (rate ?? 0)
+    const all: Flip[] = (cards.data ?? []).map((card) => {
+      const setsPerHour = card.hours ? (card.sets_traded ?? 0) / card.hours : 0
+      const cost = card.set_cost ?? 0
+      const affordable = cost > 0 ? Math.floor(capital / cost) : 0
+      const yours = (card.profitable_share ?? 0) * Math.min(affordable, setsPerHour) * (card.margin ?? 0)
+      return { card, setsPerHour, yours }
+    })
+    const affordable = all.filter((x) => !rate || (x.card.set_cost ?? 0) <= capital)
+    const kept = affordable.filter(
+      (x) => (x.card.margin ?? 0) > 0 && marginOk(f, x.card.margin_pct ?? 0) && (!rate || (x.setsPerHour * (x.card.set_cost ?? 0)) / rate >= f.minVolume),
+    )
+    const key = {
+      yours: (x: Flip) => x.yours,
+      margin: (x: Flip) => x.card.margin_pct ?? 0,
+      volume: (x: Flip) => x.setsPerHour * (x.card.set_cost ?? 0),
+    }[f.sort]
+    kept.sort((a, b) => key(b) - key(a) || a.card.item_id.localeCompare(b.card.item_id))
+    return { flips: kept, tooDear: all.filter((x) => (x.card.margin ?? 0) > 0).length - affordable.filter((x) => (x.card.margin ?? 0) > 0).length }
+  }, [cards.data, rate, f])
 
-  const chartOption = useMemo(() => {
-    const rows = hourly.data ?? []
-    return {
-      ...baseOptions(unit === 'chaos' ? 'Chaos' : 'Divines'),
-      series: [
-        line('Set cost', rows.map((r) => [r.observed_at, r.set_cost])),
-        line('Reward value', rows.map((r) => [r.observed_at, r.reward_value])),
-      ],
-    }
-  }, [hourly.data, unit])
-
-  const profitable = cards.data?.filter((c) => (c.margin ?? 0) > 0).length
   return (
     <>
       <PageHeader title="Card turn-ins">
-        Divination cards whose full set is worth less than its reward. Figures are the typical (median) hour over the
-        league's loaded hours, because thin card markets have junk hours. Only cards NeverSink's filter shows, with
-        a fixed currency or card reward, are followed.
+        Divination cards whose full set is worth less than its reward. Figures are a typical (median) hour over the league's loaded hours, since thin card
+        markets have junk hours. Set what you can invest and each card shows what a typical hour of turning it in is worth to you.
       </PageHeader>
       {queryFallback(status) ??
         (!league ? (
-          <Notice kind="waiting" title="Nothing has traded yet">Card prices appear once a league has published trading hours.</Notice>
+          <Notice kind="waiting" title="Nothing has traded yet">
+            Card prices appear once a league has published trading hours.
+          </Notice>
         ) : (
           <>
-            <Toolbar>
+            <TradeFilterBar f={f} volumeHint="Value of full sets traded in a typical hour, at the set's cost">
               {names.length > 1 && <Select label="League" value={league} options={names} onChange={setLeague} />}
-              <Segmented label="Priced in" value={unit} options={['chaos', 'divine'] as const} onChange={setUnit} format={(u) => (u === 'chaos' ? 'Chaos' : 'Divine')} />
-              <Segmented label="Better sets are" value={sets} options={['cheaper', 'bigger'] as const} onChange={setSets} format={(s) => (s === 'cheaper' ? 'Cheaper' : 'Bigger')} />
-            </Toolbar>
-            <div className="grid grid-cols-3 gap-2 sm:gap-3">
-              <Stat label="Cards priced" value={cards.data ? count(cards.data.length) : '–'} />
-              <Stat label="Profitable in a typical hour" value={profitable === undefined ? '–' : count(profitable)} />
-              <Stat label="Best margin" value={cards.data?.length ? signedPct(Math.max(...cards.data.map((c) => c.margin_pct ?? -Infinity))) : '–'} />
-            </div>
-            <Section title="Ranked turn-ins" description="Select a row for its set cost against its reward over the last 3 days.">
-              {queryFallback(cards) ??
-                (cards.data!.length ? (
-                  <>
-                    <DataTable data={cards.data!} columns={columns} rowId={(r) => r.item_id} selected={selected} onSelect={setPicked} caption="Card turn-ins ranked by score" />
-                    {hourly.data && hourly.data.length > 0 && <Chart option={chartOption} label={`Set cost and reward value for ${hourly.data[0]!.card}`} />}
-                  </>
+            </TradeFilterBar>
+            <details className="-mt-4 text-sm text-muted">
+              <summary className="cursor-pointer py-1 text-xs">More settings</summary>
+              <div className="mt-2 flex flex-wrap items-end gap-x-5 gap-y-3">
+                <MaxMarginField f={f} />
+                <Segmented
+                  label="When scoring, better sets are"
+                  value={sets}
+                  options={['cheaper', 'bigger'] as const}
+                  onChange={setSets}
+                  format={(s) => (s === 'cheaper' ? 'Cheaper' : 'Bigger')}
+                />
+              </div>
+            </details>
+            {queryFallback(cards) ?? (
+              <section className="flex flex-col gap-3" aria-label="Turn-ins">
+                <p className="text-sm text-muted">
+                  {count(flips.length)} profitable turn-in{flips.length === 1 ? '' : 's'} match{flips.length === 1 ? 'es' : ''}
+                  {tooDear > 0 && ` · ${count(tooDear)} more need over ${f.capital} div for a set`}
+                </p>
+                {flips.length === 0 ? (
+                  <Empty>No turn-in matches. Try a lower minimum margin or volume, or more capital.</Empty>
                 ) : (
-                  <Notice kind="info">No followed card and its reward have traded in the same hour yet.</Notice>
-                ))}
-            </Section>
+                  <ol className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    {flips.slice(0, shown).map(({ card, setsPerHour, yours }) => (
+                      <Opportunity
+                        key={card.item_id}
+                        title={card.name}
+                        amount={money(yours)}
+                        label={`a typical hour with ${f.capital} div`}
+                        muted={yours <= 0}
+                        footer={
+                          <>
+                            <span>
+                              <span className="num text-positive">+{money(card.margin)}</span> a set ({signedPct(card.margin_pct, 0)})
+                            </span>
+                            <span>set costs {money(card.set_cost)}</span>
+                            <span>≈{count(setsPerHour, setsPerHour < 10 ? 1 : 0)} sets traded / h</span>
+                          </>
+                        }
+                      >
+                        <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted">
+                          {card.stack_size === 1 ? '1 card turns into' : card.stack_size ? `${card.stack_size} cards turn into` : 'a full set turns into'}
+                          <Pill accent>
+                            {card.reward_quantity}× {card.reward_name}
+                          </Pill>
+                        </div>
+                        <Meter label="Profitable hours" value={card.profitable_share} hint="Share of hours both traded where the reward beat the set's cost" />
+                      </Opportunity>
+                    ))}
+                  </ol>
+                )}
+                <ShowMore shown={Math.min(shown, flips.length)} total={flips.length} onMore={() => setShown((n) => n + PAGE)} />
+              </section>
+            )}
           </>
         ))}
     </>

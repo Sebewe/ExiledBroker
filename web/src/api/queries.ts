@@ -49,27 +49,6 @@ export function useArbitrage(p: ArbitrageParams) {
   )
 }
 
-/** Charts load the latest few days only (the API's default window is 72 hours). */
-export const CHART_HOURS = 72
-
-export function useArbitrageHourly(
-  itemId: string | undefined,
-  league: string[],
-  direction: 'chaos_first' | 'divine_first',
-  hours = CHART_HOURS,
-) {
-  return useVersioned(
-    ['arbitrage-hourly', itemId, league, direction, hours],
-    () =>
-      unwrap(
-        api.GET('/api/arbitrage/hourly', {
-          params: { query: { item_id: itemId!, league, direction, hours } },
-        }),
-      ),
-    !!itemId && league.length > 0,
-  )
-}
-
 export function useCards(league: string | undefined, unit: 'chaos' | 'divine', preferCheaper: boolean) {
   return useVersioned(
     ['cards', league, unit, preferCheaper],
@@ -80,24 +59,6 @@ export function useCards(league: string | undefined, unit: 'chaos' | 'divine', p
         }),
       ),
     !!league,
-  )
-}
-
-export function useCardHourly(
-  league: string | undefined,
-  cardId: string | undefined,
-  unit: 'chaos' | 'divine',
-  hours = CHART_HOURS,
-) {
-  return useVersioned(
-    ['card-hourly', league, cardId, unit, hours],
-    () =>
-      unwrap(
-        api.GET('/api/cards/{league}/{card_id}/hourly', {
-          params: { path: { league: league!, card_id: cardId! }, query: { unit, hours } },
-        }),
-      ),
-    !!league && !!cardId,
   )
 }
 

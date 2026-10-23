@@ -39,8 +39,8 @@ After that:
 | Page | What it shows | API |
 |---|---|---|
 | **Missed opportunities** (landing) | A recap of the last 1–3 published hours: key movers, volatile items, and the loops and card turn-ins that left the most on the table | `/api/status`, `/api/missed/{league}` |
-| **Arbitrage** | Cross-market loops scored across leagues, with hourly charts | `/api/arbitrage`, `/api/arbitrage/hourly` |
-| **Card turn-ins** | Card sets whose fixed reward is worth more than the set, scored | `/api/cards/{league}`, `/api/cards/{league}/{card}/hourly` |
+| **Arbitrage** | Every Chaos↔Divine loop as a card, filtered by your capital, volume and margin | `/api/arbitrage` |
+| **Card turn-ins** | Every profitable card set as a card, filtered by your capital, volume and margin | `/api/cards/{league}` |
 | **Launch market** | What to buy on day 1, days 2–4 and days 5–10 with a couple of Divines, ranked from the last five leagues | `/api/launch/picks` |
 | **About** | Sources and credits | |
 

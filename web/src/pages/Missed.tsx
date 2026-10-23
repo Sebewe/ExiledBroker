@@ -1,13 +1,15 @@
-import { ArrowDownRight, ArrowRight, ArrowUpRight, Layers, Repeat, Timer, Waves } from 'lucide-react'
+import { ArrowDownRight, ArrowUpRight, Layers, Repeat, Timer, Waves } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
-import type { LiveLeague, MissedCard, MissedLoop, MissedWindow, Mover, Upcoming, Volatile } from '../api/client'
+import type { LiveLeague, MissedCard, MissedWindow, Mover, Upcoming, Volatile } from '../api/client'
 import { useMissed, useStatus } from '../api/queries'
 import { Select } from '../components/Controls'
 import { FreshnessBanner } from '../components/Freshness'
 import { Notice } from '../components/Notice'
 import { PageHeader } from '../components/Section'
-import { inUnit, price, signedPct, utcHour } from '../lib/format'
+import { Empty, Opportunity, Pill, Route, loopRoute } from '../components/Opportunity'
+import { signedPct, utcHour } from '../lib/format'
+import { makeMoney, type Money } from '../lib/money'
 import { queryFallback } from '../lib/queryFallback'
 import { useLeague } from '../lib/useLeague'
 import { useNumberParam } from '../lib/useParam'
@@ -93,10 +95,7 @@ export default function Missed() {
   const [hoursParam, setHours] = useNumberParam('hours', 1)
   const hours = LOOKBACKS.includes(hoursParam) ? hoursParam : 1
   const w = summary.data?.find((x) => x.hours === hours)
-  const rate = info?.divine_chaos
-  // Amounts arrive in Chaos. Anything worth a Divine or more (judged by `ref`, so a pair
-  // of prices shares a unit) is shown in Divines at the league's latest rate.
-  const money: Money = (chaos, ref = chaos) => (rate && Math.abs(ref ?? 0) >= rate ? price(inUnit(chaos, 'divine', rate), 'divine') : price(chaos, 'chaos'))
+  const money = makeMoney(info?.divine_chaos)
 
   const header = (
     <PageHeader title="Missed opportunities">
@@ -168,8 +167,6 @@ export default function Missed() {
   )
 }
 
-type Money = (chaos: number | null | undefined, ref?: number | null) => string
-
 function span(w: MissedWindow) {
   const end = new Date(Date.parse(w.latest_hour) + 3_600_000).toISOString()
   const start = new Date(Date.parse(w.latest_hour) - (w.hours - 1) * 3_600_000).toISOString()
@@ -239,10 +236,6 @@ function Block({ title, icon: Icon, children, more }: { title: string; icon: typ
       {children}
     </section>
   )
-}
-
-function Empty({ children }: { children: ReactNode }) {
-  return <p className="rounded-lg border border-dashed border-border px-3 py-4 text-center text-sm text-faint">{children}</p>
 }
 
 function KeyMovement({ w, money }: { w: MissedWindow; money: Money }) {
@@ -329,37 +322,6 @@ function VolatileRow({ v, money }: { v: Volatile; money: Money }) {
   )
 }
 
-function Pill({ children, accent = false }: { children: ReactNode; accent?: boolean }) {
-  return (
-    <span
-      className={`max-w-[10rem] truncate rounded-full border px-2 py-0.5 text-xs ${accent ? 'border-accent/50 text-accent-strong' : 'border-border text-text'}`}
-    >
-      {children}
-    </span>
-  )
-}
-
-const Arrow = () => <ArrowRight aria-hidden className="size-3 shrink-0 text-faint" />
-
-/** One opportunity: the key item top left, what it left on the table top right. */
-function Opportunity({ title, missed, children, footer }: { title: string; missed: string; children: ReactNode; footer: ReactNode }) {
-  return (
-    <li className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-4">
-      <div className="flex items-start justify-between gap-3">
-        <h3 className="min-w-0 truncate pt-1 font-semibold" title={title}>
-          {title}
-        </h3>
-        <div className="shrink-0 text-right">
-          <div className="num text-2xl font-semibold text-positive">{missed}</div>
-          <div className="text-[11px] text-faint">left on the table</div>
-        </div>
-      </div>
-      {children}
-      <div className="mt-auto flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted">{footer}</div>
-    </li>
-  )
-}
-
 function Steady({ paid, hours }: { paid: number; hours: number }) {
   if (hours === 1) return null
   return paid === hours ? (
@@ -372,7 +334,6 @@ function Steady({ paid, hours }: { paid: number; hours: number }) {
 }
 
 function Loops({ w, money }: { w: MissedWindow; money: Money }) {
-  const route = (l: MissedLoop) => (l.direction === 'chaos_first' ? ['Chaos', l.name, 'Divine', 'Chaos'] : ['Chaos', 'Divine', l.name, 'Chaos'])
   return (
     <Block
       title="Best loops"
@@ -391,7 +352,8 @@ function Loops({ w, money }: { w: MissedWindow; money: Money }) {
             <Opportunity
               key={l.item_id}
               title={l.name}
-              missed={money(l.missed)}
+              amount={money(l.missed)}
+              label="left on the table"
               footer={
                 <>
                   <span>
@@ -401,14 +363,7 @@ function Loops({ w, money }: { w: MissedWindow; money: Money }) {
                 </>
               }
             >
-              <div className="flex flex-wrap items-center gap-1">
-                {route(l).map((step, j) => (
-                  <span key={j} className="flex items-center gap-1">
-                    {j > 0 && <Arrow />}
-                    <Pill accent={step !== l.name}>{step}</Pill>
-                  </span>
-                ))}
-              </div>
+              <Route steps={loopRoute(l.name, l.direction)} item={l.name} />
             </Opportunity>
           ))}
         </ol>
@@ -436,7 +391,8 @@ function Cards({ w, money }: { w: MissedWindow; money: Money }) {
             <Opportunity
               key={c.item_id}
               title={c.name}
-              missed={money(c.missed)}
+              amount={money(c.missed)}
+              label="left on the table"
               footer={
                 <>
                   <span>

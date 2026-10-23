@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest'
-import { line } from './chartOptions'
 import { duration, pct, price, signedPct, utcHour } from './format'
 
 describe('format', () => {
@@ -20,18 +19,5 @@ describe('format', () => {
   it('times are UTC', () => {
     expect(utcHour('2026-10-22T08:00:00Z')).toBe('Oct 22, 08:00 UTC')
     expect(duration(2 * 3_600_000 + 5 * 60_000)).toBe('2h 05m')
-  })
-})
-
-describe('line', () => {
-  it('breaks at missing hours and marks lone points', () => {
-    const s = line('x', [
-      ['2026-07-25T00:00:00Z', 1],
-      ['2026-07-25T01:00:00Z', 2],
-      ['2026-10-01T00:00:00Z', 3], // weeks later, alone
-    ])
-    const values = s.data.map((d) => (Array.isArray(d) ? d[1] : d.value[1]))
-    expect(values).toEqual([1, 2, null, 3])
-    expect(Array.isArray(s.data[3])).toBe(false) // the lone point gets a dot
   })
 })
