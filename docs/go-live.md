@@ -51,7 +51,8 @@ What the last four switches on disk show (Settlers → Mercenaries → Keepers �
   - pipeline: `EB_DATABASE_URL` (both set to Postgres's private URL);
   - **both** services: `EB_NEXT_LEAGUE` / `EB_NEXT_LEAGUE_START` before a launch (the web service shows the countdown, the pipeline switches leagues).
 - [ ] Custom domain on the web service (CNAME), HTTPS from Railway.
-- [ ] Decide whether Railway deploys on every push to `main` or waits for CI (Railway's "wait for CI" setting).
+- [ ] Railway waits for CI before deploying a push to `main` (decided 2026-10-23: turn on "Wait for CI" on both app services).
+- Go live first on the current league (Allflame) as a demo people can try; the next league launches around 2026-11-13, not announced in detail yet. Set `EB_NEXT_LEAGUE` / `_START` on both services once its name and start time are out.
 
 ### 4. Seed, then catch up (first run)
 
