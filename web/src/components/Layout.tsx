@@ -1,4 +1,4 @@
-import { ArrowLeftRight, BookOpen, CandlestickChart, Layers, Zap } from 'lucide-react'
+import { ArrowLeftRight, BookOpen, CandlestickChart, Layers, Network, Zap } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { NavLink } from 'react-router'
 import { FreshnessBadge } from './Freshness'
@@ -8,6 +8,7 @@ const NAV = [
   { to: '/arbitrage', label: 'Arbitrage', icon: ArrowLeftRight },
   { to: '/cards', label: 'Card turn-ins', icon: Layers },
   { to: '/launch', label: 'Launch market', icon: CandlestickChart },
+  { to: '/conversions', label: 'Multi-layered conversions', icon: Network },
   { to: '/about', label: 'About', icon: BookOpen },
 ]
 

@@ -3,6 +3,7 @@ import { Layout } from './components/Layout'
 import About from './pages/About'
 import Arbitrage from './pages/Arbitrage'
 import Cards from './pages/Cards'
+import Conversions from './pages/Conversions'
 import Launch from './pages/Launch'
 import Live from './pages/Live'
 import NotFound from './pages/NotFound'
@@ -15,6 +16,7 @@ export default function App() {
         <Route path="arbitrage" element={<Arbitrage />} />
         <Route path="cards" element={<Cards />} />
         <Route path="launch" element={<Launch />} />
+        <Route path="conversions" element={<Conversions />} />
         <Route path="about" element={<About />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
