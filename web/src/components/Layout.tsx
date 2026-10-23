@@ -5,9 +5,9 @@ import { FreshnessBadge } from './Freshness'
 
 const NAV = [
   { to: '/', label: 'Missed opportunities', icon: Hourglass, end: true },
+  { to: '/launch', label: 'Launch market', icon: CandlestickChart },
   { to: '/arbitrage', label: 'Arbitrage', icon: ArrowLeftRight },
   { to: '/cards', label: 'Card turn-ins', icon: Layers },
-  { to: '/launch', label: 'Launch market', icon: CandlestickChart },
   { to: '/conversions', label: 'Multi-layered conversions', icon: Network },
   { to: '/about', label: 'About', icon: BookOpen },
 ]
