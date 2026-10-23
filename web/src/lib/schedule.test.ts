@@ -36,7 +36,7 @@ describe('nextCheckIn', () => {
     expect(nextCheckIn(status('2026-10-22T08:00:00Z', '2026-10-22T12:00:00Z'), at('12:00'), at('12:00'))).toBe(10 * MIN)
     expect(
       nextCheckIn(status('2026-10-22T08:00:00Z', '2026-10-23T08:00:00Z'), at('10:00') + 86_400_000 - 2 * 3_600_000, at('10:00') + 86_400_000 - 2 * 3_600_000),
-    ).toBe(30 * MIN)
+    ).toBe(10 * MIN) // a stopped feed: capped at 10 minutes
   })
 
   it('never asks more often than every 2 minutes', () => {
