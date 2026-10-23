@@ -13,6 +13,15 @@ GGG's and poe.ninja's public endpoints are a courtesy, and both blacklist client
 - **Tests and development never hit the real servers.** Use `FakeExchange` / `client_for()` and the recorded fixtures. Don't run ad-hoc probes or loops against the live endpoints to explore. Use pages already on disk, and ask the user before any one-off request batch.
 - **Count the cost.** Any new fetching code reports its requests (`ingest_run`, `tests/test_performance.py`), and a change that adds requests says how many and why.
 
+## Conserve Supabase egress (non-negotiable)
+
+The site's database is on Supabase's free tier (`docs/supabase.md`): 5 GB of egress a month, and the hosted site needs about 2–3 GB of it. Everything read out of Supabase counts, so **nothing talks to Supabase except the Railway services doing their hourly work**: the pipeline loading the new hour, and the web service rebuilding its cache for it (plus its small data-version checks).
+- **Development and tests use local resources only:** the local DuckDB, the compose `db` Postgres, the Railway simulation's Postgres, a throwaway Postgres container for `EB_TEST_POSTGRES_URL`. Never point `EB_DATABASE_URL`, `EB_TEST_POSTGRES_URL`, `eb serve`, the simulation or a load test at Supabase. `tests/conftest.py` blanks `EB_DATABASE_URL`; keep it that way. The connection string lives outside the repo (`../.env.supabase`) and is never loaded automatically.
+- **Profile and measure locally**, on a local Postgres seeded with the same data (that's how the pipeline's 98 MB → 1.8 MB fix was found). Touch Supabase only for a deliberate, small check the user has asked for, and say what it will cost first.
+- **Seeding** (`eb site seed --hosted`) is upload, which is free, but only seed when the user asks, and empty the tables first (`docs/supabase.md`).
+- **Supabase MCP queries** read from it too: keep them to small metadata queries (sizes, counts, advisors), never row dumps.
+- **Code that reads the site's database must stay incremental:** a pass reads the new hour, not the league (`db.pushdown`; `tests/test_pipeline.py` fails on a whole-table copy). A change that adds reads per pass or per cache rebuild says how many bytes and why.
+
 ## Commands
 
 ```bash
