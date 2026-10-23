@@ -248,3 +248,41 @@ class BacktestReport(BaseModel):
     persistence: list[BacktestPersistence]
     limits: list[BacktestLimit]
     launch: list[BacktestLaunch]
+    # Patient flips on volatile items (absent from reports built before them).
+    flip_settings: "BacktestFlipSettings | None" = None
+    flips: "list[BacktestFlip]" = []
+
+
+class BacktestFlipSettings(BaseModel):
+    """How the patient flips were placed (analysis/flips.py): bid and ask as a share of
+    the entry hour's range (0 its lowest trade, 1 its highest), the hourly ask cut."""
+
+    bid_at: float
+    ask_at: float
+    cut: float
+    max_hold: int  # hours listed before what's left is dumped at the low
+    entries: int  # random entry hours per league
+    top: int  # items bought per entry hour
+    max_range: float
+    min_volume: float  # Chaos traded in the entry hour
+    trade_divines: float
+    capture: float
+
+
+class BacktestFlip(BaseModel):
+    """One league's patient flips under one fill model. Money in Divines."""
+
+    league: str
+    model: str  # 'touch' | 'even' | 'peaked' | 'strict' (analysis/flips.share_past)
+    tried: int  # bids placed
+    bought: int  # bids that filled
+    won: float | None  # share of bought positions that made money
+    median_return: float | None
+    overall_return: float | None  # profit over capital put in
+    profit: float
+    invested: float
+    median_hours: float | None  # hours from the entry hour to selling out
+    dumped: float | None  # share left unsold after the hold, dumped at the low
+
+
+BacktestReport.model_rebuild()

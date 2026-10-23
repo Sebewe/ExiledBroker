@@ -17,6 +17,7 @@ export type BacktestReport = Schemas['BacktestReport']
 export type BacktestHourly = Schemas['BacktestHourly']
 export type BacktestLaunch = Schemas['BacktestLaunch']
 export type BacktestLimit = Schemas['BacktestLimit']
+export type BacktestFlip = Schemas['BacktestFlip']
 
 // Same origin: the API serves this app in production, and Vite proxies /api in development.
 export const api = createClient<paths>({

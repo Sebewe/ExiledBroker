@@ -131,6 +131,61 @@ export interface components {
             trade_divines: number;
         };
         /**
+         * BacktestFlip
+         * @description One league's patient flips under one fill model. Money in Divines.
+         */
+        BacktestFlip: {
+            /** Bought */
+            bought: number;
+            /** Dumped */
+            dumped: number | null;
+            /** Invested */
+            invested: number;
+            /** League */
+            league: string;
+            /** Median Hours */
+            median_hours: number | null;
+            /** Median Return */
+            median_return: number | null;
+            /** Model */
+            model: string;
+            /** Overall Return */
+            overall_return: number | null;
+            /** Profit */
+            profit: number;
+            /** Tried */
+            tried: number;
+            /** Won */
+            won: number | null;
+        };
+        /**
+         * BacktestFlipSettings
+         * @description How the patient flips were placed (analysis/flips.py): bid and ask as a share of
+         *     the entry hour's range (0 its lowest trade, 1 its highest), the hourly ask cut.
+         */
+        BacktestFlipSettings: {
+            /** Ask At */
+            ask_at: number;
+            /** Bid At */
+            bid_at: number;
+            /** Capture */
+            capture: number;
+            /** Cut */
+            cut: number;
+            /** Entries */
+            entries: number;
+            /** Max Hold */
+            max_hold: number;
+            /** Max Range */
+            max_range: number;
+            /** Min Volume */
+            min_volume: number;
+            /** Top */
+            top: number;
+            /** Trade Divines */
+            trade_divines: number;
+        };
+        /**
          * BacktestHourly
          * @description One hourly strategy in one stretch of a league, at fair or harsh prices.
          *     Profits are in Divines.
@@ -260,6 +315,12 @@ export interface components {
              * Format: date-time
              */
             built_at: string;
+            flip_settings?: components["schemas"]["BacktestFlipSettings"] | null;
+            /**
+             * Flips
+             * @default []
+             */
+            flips: components["schemas"]["BacktestFlip"][];
             /** Hourly */
             hourly: components["schemas"]["BacktestHourly"][];
             /** Launch */

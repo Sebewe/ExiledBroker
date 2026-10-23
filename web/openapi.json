@@ -49,6 +49,164 @@
         "title": "BacktestAssumptions",
         "type": "object"
       },
+      "BacktestFlip": {
+        "description": "One league's patient flips under one fill model. Money in Divines.",
+        "properties": {
+          "bought": {
+            "title": "Bought",
+            "type": "integer"
+          },
+          "dumped": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dumped"
+          },
+          "invested": {
+            "title": "Invested",
+            "type": "number"
+          },
+          "league": {
+            "title": "League",
+            "type": "string"
+          },
+          "median_hours": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median Hours"
+          },
+          "median_return": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median Return"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "overall_return": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overall Return"
+          },
+          "profit": {
+            "title": "Profit",
+            "type": "number"
+          },
+          "tried": {
+            "title": "Tried",
+            "type": "integer"
+          },
+          "won": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Won"
+          }
+        },
+        "required": [
+          "league",
+          "model",
+          "tried",
+          "bought",
+          "won",
+          "median_return",
+          "overall_return",
+          "profit",
+          "invested",
+          "median_hours",
+          "dumped"
+        ],
+        "title": "BacktestFlip",
+        "type": "object"
+      },
+      "BacktestFlipSettings": {
+        "description": "How the patient flips were placed (analysis/flips.py): bid and ask as a share of\nthe entry hour's range (0 its lowest trade, 1 its highest), the hourly ask cut.",
+        "properties": {
+          "ask_at": {
+            "title": "Ask At",
+            "type": "number"
+          },
+          "bid_at": {
+            "title": "Bid At",
+            "type": "number"
+          },
+          "capture": {
+            "title": "Capture",
+            "type": "number"
+          },
+          "cut": {
+            "title": "Cut",
+            "type": "number"
+          },
+          "entries": {
+            "title": "Entries",
+            "type": "integer"
+          },
+          "max_hold": {
+            "title": "Max Hold",
+            "type": "integer"
+          },
+          "max_range": {
+            "title": "Max Range",
+            "type": "number"
+          },
+          "min_volume": {
+            "title": "Min Volume",
+            "type": "number"
+          },
+          "top": {
+            "title": "Top",
+            "type": "integer"
+          },
+          "trade_divines": {
+            "title": "Trade Divines",
+            "type": "number"
+          }
+        },
+        "required": [
+          "bid_at",
+          "ask_at",
+          "cut",
+          "max_hold",
+          "entries",
+          "top",
+          "max_range",
+          "min_volume",
+          "trade_divines",
+          "capture"
+        ],
+        "title": "BacktestFlipSettings",
+        "type": "object"
+      },
       "BacktestHourly": {
         "description": "One hourly strategy in one stretch of a league, at fair or harsh prices.\nProfits are in Divines.",
         "properties": {
@@ -395,6 +553,24 @@
             "format": "date-time",
             "title": "Built At",
             "type": "string"
+          },
+          "flip_settings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BacktestFlipSettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "flips": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/BacktestFlip"
+            },
+            "title": "Flips",
+            "type": "array"
           },
           "hourly": {
             "items": {

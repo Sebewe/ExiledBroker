@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { BacktestLimit, BacktestHourly, BacktestLaunch, BacktestReport } from '../api/client'
+import type { BacktestFlip, BacktestLimit, BacktestHourly, BacktestLaunch, BacktestReport } from '../api/client'
 import Backtest from './Backtest'
 
 function serve(routes: Record<string, { status?: number; body: unknown }>) {
@@ -77,6 +77,20 @@ const limit = (strategy: string, method: string, fill: string, per_hour: number,
   daily: [1],
 })
 
+const flip = (league: string, model: string, bought: number, overall_return: number): BacktestFlip => ({
+  league,
+  model,
+  tried: 786,
+  bought,
+  won: model === 'strict' ? 0.76 : 0.99,
+  median_return: overall_return,
+  overall_return,
+  profit: bought * overall_return,
+  invested: bought,
+  median_hours: model === 'strict' ? 18 : 2,
+  dumped: 0,
+})
+
 const REPORT: BacktestReport = {
   built_at: '2026-10-23T10:00:00Z',
   leagues: ['Settlers', 'Mercenaries', 'Keepers', 'Mirage'],
@@ -110,6 +124,19 @@ const REPORT: BacktestReport = {
     limit('loops', 'limit_mid', 'strict', 0.32, 90),
   ],
   launch: [launch('day1', 3.49), launch('days2_4', 1.31), launch('days5_10', 0.84)],
+  flip_settings: {
+    bid_at: 0.1,
+    ask_at: 0.75,
+    cut: 0.01,
+    max_hold: 72,
+    entries: 300,
+    top: 3,
+    max_range: 0.5,
+    min_volume: 10000,
+    trade_divines: 10,
+    capture: 0.1,
+  },
+  flips: [flip('Mirage', 'touch', 500, 0.34), flip('Mirage', 'even', 460, 0.32), flip('Mirage', 'peaked', 390, 0.29), flip('Mirage', 'strict', 40, 0.066)],
 }
 
 afterEach(() => vi.unstubAllGlobals())
@@ -140,5 +167,13 @@ describe('Backtest', () => {
     expect(within(table).getByText('Loops, limit orders mid-range')).toBeTruthy()
     expect(within(table).getByText('+0.32')).toBeTruthy() // strict fill, under +0.78
     expect(screen.getByText(/Loops did best bidding mid-range \(\+0\.78/)).toBeTruthy()
+    // Volatile flips come second, right after the launch picks, with the strategy named.
+    const strategies = within(verdict).getAllByText(/ · /).map((e) => e.textContent)
+    expect(strategies.slice(0, 2)).toEqual(['Hold for days · Launch picks', 'List and wait · Volatile flips'])
+    expect(within(verdict).getByText('+6.6% to +34.0% a trade')).toBeTruthy()
+    const sections = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)
+    expect(sections.indexOf('Volatile flips, with patience')).toBe(sections.indexOf('Launch picks, league by league') + 1)
+    const flips = screen.getByRole('table', { name: 'Volatile flips under each fill model' })
+    expect(within(flips).getByText('The hour’s average must cross your price')).toBeTruthy()
   })
 })

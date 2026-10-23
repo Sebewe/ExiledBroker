@@ -105,7 +105,7 @@ A dummy trader with 100 Divines does only what the site said at the time. Hourly
 
 ## 5. Patient flips on volatile items: real only if GGG's hourly lows and highs are real trades
 
-*`analysis/flips.py` (`python -m exiledbroker.analysis.flips`). Settlers, Mercenaries, Keepers, Mirage and Allflame, first 14 days each, built 2026-10-23. Research only; not on the site.*
+*`analysis/flips.py` (`python -m exiledbroker.analysis.flips`; on the Backtest page via `backtest.flip_results`, bid 10%, ask 75%, cut 1% an hour). Settlers, Mercenaries, Keepers, Mirage and Allflame, first 14 days each, built 2026-10-23.*
 
 **The idea.** Pick a random hour in a league's first 14 days and put capital into the Market recap's 3 most volatile liquid items that hour. Volatile means the widest traded range (high − low over the average), among items with at least 10k Chaos traded in the hour, a price of at least 5c and a range of at most 50%. Bid 10% of the way up that hour's range, filled the next hour or cancelled. List at 75% up from the hour after. Cut the ask by a fixed percentage every hour it doesn't sell, for up to 72 hours, then dump what's left at that hour's low. 300 random entry hours per league (seeded), at most 10 Divines and 10% of the hour's traded units per position.
 

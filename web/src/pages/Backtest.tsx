@@ -1,7 +1,7 @@
 import { Check, FlaskConical, Minus, X } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
-import type { BacktestLaunch, BacktestLimit, BacktestReport } from '../api/client'
+import type { BacktestFlip, BacktestLaunch, BacktestLimit, BacktestReport } from '../api/client'
 import { useBacktest, useStatus } from '../api/queries'
 import { Notice } from '../components/Notice'
 import { PageHeader, Section } from '../components/Section'
@@ -69,7 +69,7 @@ function Report({ r }: { r: BacktestReport }) {
     <>
       <section aria-label="Verdict" className="flex flex-col gap-2">
         <h2 className="text-sm font-medium text-muted">The best option we tested for each strategy</h2>
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-2">
           <Verdict
             kind="pays"
             strategy="Hold for days · Launch picks"
@@ -87,6 +87,7 @@ function Report({ r }: { r: BacktestReport }) {
             )}{' '}
             over the same days; the picks, ranked only from earlier leagues, beat it in every league we tested.
           </Verdict>
+          {r.flips.length > 0 && r.flip_settings && <FlipVerdict flips={r.flips} s={r.flip_settings} />}
           <Verdict
             kind="pays"
             strategy="Trade every hour · Loops"
@@ -140,6 +141,7 @@ function Report({ r }: { r: BacktestReport }) {
       </Section>
 
       <LaunchSection launch={r.launch} />
+      {r.flips.length > 0 && r.flip_settings && <FlipSection flips={r.flips} s={r.flip_settings} />}
       <HourlySection r={r} />
       <LimitSection limits={r.limits} />
 
@@ -154,7 +156,12 @@ function Report({ r }: { r: BacktestReport }) {
             .
           </li>
           <li>
-            <span className="text-text">Later windows pay less.</span> Days 2–4 still beat the typical item; days 5–10 is close to break-even at harsh prices.
+            <span className="text-text">Flip volatile items with patience.</span> Bid low in the hour's range on the recap's most volatile liquid items,
+            list high and cut the ask about 1% an hour until it sells. A bid that doesn't fill costs nothing: cancel it. It needs a busy market to fill, so it
+            should work best in a league's first days.
+          </li>
+          <li>
+            <span className="text-text">Later launch windows pay less.</span> Days 2–4 still beat the typical item; days 5–10 is close to break-even at harsh prices.
           </li>
           <li>
             <span className="text-text">For loops, put in orders instead of buying at the market.</span> Bid about halfway up the last hour's price range for the
@@ -500,6 +507,140 @@ function LimitSection({ limits }: { limits: BacktestLimit[] }) {
           Hourly data shows each hour's range, not the queue at each price, so the two figures bracket it. The mid-range loop orders were picked from a grid of
           bid and ask levels on Mirage and Allflame, then checked on the other leagues, where they held up but earned less. Cards' best settings didn't beat the
           simple ones.
+        </Finding>
+      </div>
+    </Section>
+  )
+}
+
+const FLIP_MODELS: { model: string; name: string; what: string }[] = [
+  { model: 'touch', name: 'One trade past your price fills you', what: 'the most optimistic: the hour’s lowest and highest trades are yours to take' },
+  { model: 'even', name: 'Volume spread evenly over the range', what: 'you get the share of the hour’s trading past your price' },
+  { model: 'peaked', name: 'Volume peaked at the average', what: 'the same, with most trades near the hour’s average' },
+  { model: 'strict', name: 'The hour’s average must cross your price', what: 'the most cautious: fills only when the typical trade reaches you' },
+]
+
+/** Pooled over leagues: bids filled, the share of those that made money, profit over
+ *  capital put in, and the middle league's hours to sell out. */
+function pooled(flips: BacktestFlip[], model: string) {
+  const rs = flips.filter((f) => f.model === model)
+  const bought = rs.reduce((n, f) => n + f.bought, 0)
+  const tried = rs.reduce((n, f) => n + f.tried, 0)
+  const invested = rs.reduce((n, f) => n + f.invested, 0)
+  const won = bought ? rs.reduce((n, f) => n + (f.won ?? 0) * f.bought, 0) / bought : null
+  const dumped = bought ? rs.reduce((n, f) => n + (f.dumped ?? 0) * f.bought, 0) / bought : null
+  const hours = rs.map((f) => f.median_hours).filter((h): h is number => h != null).sort((a, b) => a - b)
+  return {
+    rs,
+    bought,
+    tried,
+    won,
+    dumped,
+    ret: invested ? rs.reduce((n, f) => n + f.profit, 0) / invested : null,
+    hours: hours.length ? hours[Math.floor(hours.length / 2)]! : null,
+  }
+}
+
+const signedPct = (x: number | null | undefined) => (x == null ? '–' : `${x > 0 ? '+' : x < 0 ? '−' : ''}${Math.abs(x * 100).toFixed(1)}%`)
+
+function FlipVerdict({ flips, s }: { flips: BacktestFlip[]; s: NonNullable<BacktestReport['flip_settings']> }) {
+  const strict = pooled(flips, 'strict')
+  const touch = pooled(flips, 'touch')
+  const won = FLIP_MODELS.map((m) => pooled(flips, m.model).won).filter((w): w is number => w != null)
+  return (
+    <Verdict
+      kind="pays"
+      strategy="List and wait · Volatile flips"
+      title={`Bid low, list high, cut the ask ${pctOf(s.cut)} an hour`}
+      figure={`${signedPct(strict.ret)} to ${signedPct(touch.ret)} a trade`}
+      figureNote="from the strictest fill rule (the hour's average must cross your price) to the most optimistic (one trade past it fills you)"
+    >
+      On the recap's most volatile liquid items: bid {pctOf(s.bid_at)} of the way up the hour's range, list at {pctOf(s.ask_at)}. A bid that doesn't fill
+      costs nothing: cancel it and keep your Divines. Of the bids that filled, {range(won, pctOf)} sold at a profit. How often bids fill is the open question:{' '}
+      {pctOf(strict.bought / (strict.tried || 1))} to {pctOf(touch.bought / (touch.tried || 1))} here, and a league launch's busier market should fill more.
+    </Verdict>
+  )
+}
+
+function FlipSection({ flips, s }: { flips: BacktestFlip[]; s: NonNullable<BacktestReport['flip_settings']> }) {
+  const leagues = [...new Set(flips.map((f) => f.league))]
+  return (
+    <Section
+      title="Volatile flips, with patience"
+      description={`${s.entries} random hours in each league's first 14 days. Each time, the recap's top ${s.top} volatile items (at least ${Math.round(s.min_volume / 1000)}k Chaos traded that hour, a range of at most ${pctOf(s.max_range)}): bid ${pctOf(s.bid_at)} up the hour's range, filled the next hour or cancelled; listed at ${pctOf(s.ask_at)} up from the hour after, the ask cut ${pctOf(s.cut)} every hour it doesn't sell, and what's left after ${s.max_hold} hours dumped at the low. At most ${s.trade_divines} Divines and ${pctOf(s.capture)} of the hour's trading a position.`}
+    >
+      <div className="overflow-x-auto rounded-lg border border-border">
+        <table className="w-full min-w-[52rem] text-sm">
+          <caption className="sr-only">Volatile flips under each fill model</caption>
+          <thead className="bg-surface-2 text-xs text-muted">
+            <tr>
+              <th scope="col" className="px-3 py-2 text-left font-medium">
+                If fills work like this
+              </th>
+              <th scope="col" className="px-3 py-2 text-right font-medium">
+                Bids filled
+              </th>
+              <th scope="col" className="px-3 py-2 text-right font-medium">
+                Sold at a profit
+              </th>
+              <th scope="col" className="px-3 py-2 text-right font-medium">
+                Return a trade
+              </th>
+              <th scope="col" className="px-3 py-2 text-right font-medium">
+                Hours to sell
+              </th>
+              {leagues.map((l) => (
+                <th key={l} scope="col" className="px-3 py-2 text-right font-medium">
+                  {l}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {FLIP_MODELS.map((m) => {
+              const p = pooled(flips, m.model)
+              return (
+                <tr key={m.model}>
+                  <th scope="row" className="px-3 py-2 text-left font-normal">
+                    <span className="text-text">{m.name}</span>
+                    <span className="block text-xs text-faint">{m.what}</span>
+                  </th>
+                  <td className="num px-3 py-2 text-right text-muted" title={`${p.bought} of ${p.tried} bids`}>
+                    {pctOf(p.bought / (p.tried || 1))}
+                  </td>
+                  <td className="num px-3 py-2 text-right">{p.won == null ? '–' : pctOf(p.won)}</td>
+                  <td className={`num px-3 py-2 text-right font-medium ${tone(p.ret, 0)}`}>{signedPct(p.ret)}</td>
+                  <td className="num px-3 py-2 text-right text-muted" title={p.dumped ? `${pctOf(p.dumped)} dumped unsold` : ''}>
+                    {p.hours ?? '–'}
+                  </td>
+                  {leagues.map((l) => {
+                    const f = p.rs.find((x) => x.league === l)
+                    return (
+                      <td
+                        key={l}
+                        className={`num px-3 py-2 text-right ${tone(f?.overall_return, 0)}`}
+                        title={f ? `${f.bought} of ${f.tried} bids filled` : ''}
+                      >
+                        {f?.bought ? signedPct(f.overall_return) : '–'}
+                      </td>
+                    )
+                  })}
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        <Finding icon={<FlaskConical aria-hidden className="size-4 text-accent" />} title="Why it can work, and what it risks">
+          The volatility lasts: the picks' hourly range barely shrinks over the next day, so the hour's delay before the data is published costs little. A bid
+          that doesn't fill is cancelled and costs nothing, and a filled one is usually sold within hours at the first ask. The risk is a position that doesn't
+          sell: the ask comes down every hour, and after {s.max_hold} hours what's left is sold at the low. Cutting faster than 1–2% an hour gave the gain away.
+        </Finding>
+        <Finding icon={<FlaskConical aria-hidden className="size-4 text-accent" />} title="The open question: are the hour's extremes real trades?">
+          Hourly data shows each hour's average, lowest and highest trade, not how much traded at each price, and it isn't confirmed whether the lowest and
+          highest are executed trades or listings. If they're trades in any size, this is the best hourly strategy we tested. If not, it's the bottom row:
+          few fills, slow sales, and not every league ahead. A launch's busy market is the time to try it with small orders.
         </Finding>
       </div>
     </Section>

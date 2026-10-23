@@ -854,7 +854,53 @@ def build(con: duckdb.DuckDBPyConnection) -> dict:
         "persistence": persistence,
         "limits": limit_rows,
         "launch": launch_results(con, complete),
+        **flip_results(con, leagues),
     }
+
+
+# The patient flip the Backtest page shows (analysis/flips.py, finding 5).
+FLIP = {"bid_at": 0.1, "ask_at": 0.75, "cut": 0.01}
+
+
+def flip_results(con, leagues: list[str]) -> dict:
+    """Patient flips on volatile items in each league's first 14 days, under every fill
+    model: `flip_settings` and one `flips` row per league and model."""
+    from exiledbroker.analysis import flips  # it builds on this module
+
+    rows = []
+    for league in leagues:
+        px, rate = flips.prices(con, league), _rate(con, league)
+        when = flips.entry_hours(px, league)
+        tried = len(when) * flips.TOP
+        for model in flips.MODELS:
+            t = flips.positions(px, rate, when, model, **FLIP)
+            s = flips.summary(t, tried)
+            rows.append(
+                {
+                    "league": league,
+                    "model": model,
+                    "tried": tried,
+                    "bought": s["bought"],
+                    "won": s.get("won"),
+                    "median_return": s.get("median_return"),
+                    "overall_return": s.get("return"),
+                    "profit": s.get("profit", 0.0),
+                    "invested": float(t["cost"].sum()) if t.height else 0.0,
+                    "median_hours": s.get("hours"),
+                    "dumped": s.get("dumped"),
+                }
+            )
+    settings = {
+        **FLIP,
+        "max_hold": flips.MAX_HOLD,
+        "entries": flips.ENTRIES,
+        "top": flips.TOP,
+        "max_range": flips.MAX_RANGE,
+        "min_volume": flips.MIN_VOLUME,
+        "trade_divines": flips.TRADE_DIVINES,
+        "capture": flips.CAPTURE,
+    }
+    return {"flip_settings": settings, "flips": rows}
 
 
 def store(con, report: dict) -> None:
