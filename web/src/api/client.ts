@@ -22,7 +22,7 @@ export type LaunchPick = Schemas['LaunchPick']
 export type BacktestReport = Schemas['BacktestReport']
 export type BacktestHourly = Schemas['BacktestHourly']
 export type BacktestLaunch = Schemas['BacktestLaunch']
-export type BacktestCardLimit = Schemas['BacktestCardLimit']
+export type BacktestLimit = Schemas['BacktestLimit']
 
 // Same origin: the API serves this app in production, and Vite proxies /api in development.
 export const api = createClient<paths>({

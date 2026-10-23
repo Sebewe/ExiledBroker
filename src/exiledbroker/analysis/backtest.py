@@ -23,10 +23,10 @@ that hour (in whole items) and TRADE_DIVINES a trade. Every trade is priced two 
   to sell.
 An item that doesn't trade when the trader needs to sell is counted as lost.
 
-Card turn-ins are also tested with **limit orders** priced from the recap's own hour
-(`card_limit_trades`): a buy order at that hour's lowest card price, placed only if the
-set still pays at the reward's lowest price that hour, and optionally a sell order for
-the reward at that hour's average (else sold at the worst price). Whether an order
+Card turn-ins and loops are also tested with **limit orders** priced from the recap's
+own hour (`card_limit_trades`, `loop_limit_trades`): a buy order at that hour's lowest
+price, placed only if the trade still pays from it at that hour's worst sale price, and
+optionally a sell order at that hour's average (else sold at the worst price). Whether an order
 fills can't be seen in hourly data, so two fill models bracket it: **touch** (some
 trade that hour went past the order's price) and **strict** (the hour's average did).
 
@@ -60,7 +60,7 @@ LAUNCH_STAKE = 10.0  # Divines per launch pick (TOP picks: the bank)
 SCENARIOS = ("fair", "harsh")
 STRATEGIES = ("loops", "cards", "rising")
 RULES = {"top": 1, "steady": STEADY_HOURS}
-CARD_METHODS = ("market", "limit_buy", "limit_both")  # see card_limit_trades
+LIMIT_METHODS = ("market", "limit_buy", "limit_both")  # see card_limit_trades
 FILLS = ("touch", "strict")
 H = timedelta(hours=1)
 DIVINE = "currency:divine-orb"
@@ -260,7 +260,8 @@ def card_limit_trades(
       set still pays at that hour's lowest reward price; the reward sold at the worst;
     - limit_both: the same, with a sell order at the recap hour's average reward price,
       sold at the worst instead if it doesn't fill.
-    An unfilled buy costs nothing (the order is cancelled)."""
+    Every order placed is a signal; one the next hour doesn't reach buys nothing (it's
+    cancelled), so `filled` over signals is the share of orders that filled."""
     cards = db.frame(
         con,
         """
@@ -298,11 +299,11 @@ def card_limit_trades(
         rate.select(observed_at=pl.col("observed_at") - H, rate="rate"), on="observed_at"
     )
     if method == "market":
-        t = t.with_columns(buy=pl.col("next_hi"), placed=pl.col("next_p").is_not_null())
+        t = t.with_columns(buy=pl.col("next_hi"), placed=True, hit=pl.col("next_p").is_not_null())
     else:
         crossed = pl.col("next_p") if fill == "strict" else pl.col("next_lo")
         guard = pl.col("q") * pl.col("reward_lo") > pl.col("n") * pl.col("card_lo")
-        t = t.with_columns(buy=pl.col("card_lo"), placed=guard & (crossed < pl.col("card_lo")))
+        t = t.with_columns(buy=pl.col("card_lo"), placed=guard, hit=crossed < pl.col("card_lo"))
     t = t.filter(pl.col("placed").fill_null(False))
     sells = prices.select(
         sell_at="observed_at",
@@ -331,16 +332,154 @@ def card_limit_trades(
         sell = pl.when(crossed > pl.col("ask")).then(pl.col("ask")).otherwise(sell)
     t = t.with_columns(
         sell=sell,
-        k=pl.min_horizontal(
-            (pl.col("buy_units") * CAPTURE / pl.col("n")).floor(),
-            (TRADE_DIVINES * pl.col("rate") / (pl.col("n") * pl.col("buy"))).floor(),
-            (pl.col("sell_units").fill_null(1e12) * CAPTURE / pl.col("q")).floor(),
-        ).fill_null(0),
+        k=pl.when(pl.col("hit").fill_null(False))
+        .then(
+            pl.min_horizontal(
+                (pl.col("buy_units") * CAPTURE / pl.col("n")).floor(),
+                (TRADE_DIVINES * pl.col("rate") / (pl.col("n") * pl.col("buy"))).floor(),
+                (pl.col("sell_units").fill_null(1e12) * CAPTURE / pl.col("q")).floor(),
+            )
+        )
+        .otherwise(0)
+        .fill_null(0),
     )
     cost = pl.col("k") * pl.col("n") * pl.col("buy")
     value = (pl.col("k") * pl.col("q") * pl.col("sell")).fill_null(0)  # never sold: lost
     return t.with_columns(
         pnl=pl.when(pl.col("k") >= 1).then((value - cost) / pl.col("rate")).otherwise(0.0)
+    ).select("observed_at", "item_id", filled=pl.col("k") >= 1, pnl="pnl")
+
+
+def _cross_hours(con, league: str) -> pl.DataFrame:
+    """Every item-hour traded in both markets, with both markets' ranges and the hour's
+    Divine rate range (what the loop's limit orders are priced from)."""
+    return db.frame(
+        con,
+        f"""
+        SELECT x.item_id, x.observed_at, x.chaos_price AS cp, x.chaos_low AS clo,
+               x.chaos_high AS chi, x.chaos_volume AS cu, x.divine_price AS dp,
+               x.divine_low AS dlo, x.divine_high AS dhi, x.divine_volume AS du,
+               x.divine_rate_low AS rlo, x.divine_rate_high AS rhi
+        FROM cross_market_hour x
+        WHERE x.league_id = (SELECT id FROM league WHERE name = ?) AND {cross_market.BOTH_LEGS}
+        """,
+        [league],
+    ).sort("observed_at")
+
+
+def loop_limit_trades(
+    loops: pl.DataFrame, cross: pl.DataFrame, rate: pl.DataFrame, method: str, fill: str
+) -> pl.DataFrame:
+    """The recap's top loops, the item bought in the next hour and sold the hour after
+    (the first hour within SELL_WITHIN it traded in both markets), Divines converted at
+    the worst rate that hour:
+    - market: the item bought at the next hour's highest price, sold at the lowest;
+    - limit_buy: a buy order at the recap hour's lowest price in the paying currency,
+      placed only if the loop still beats BUFFER from it at the recap hour's worst sale;
+    - limit_both: the same, with a sell order at the recap hour's average price in the
+      other currency, sold at the lowest instead if it doesn't fill.
+    Chaos first buys with Chaos and sells for Divines; Divines first the other way."""
+    sig = (
+        _signals(missed.paying_loops(loops), ["item_id", "direction"], 1, "item_id")
+        .select("observed_at", "item_id", "direction")
+        .join(cross, on=["observed_at", "item_id"])
+    )
+    chaos_first = pl.col("direction") == "chaos_first"
+    # Per direction: the buy leg's (avg, low, high, units) and the sell leg's.
+    buy_cols = {"p": ("cp", "dp"), "lo": ("clo", "dlo"), "hi": ("chi", "dhi"), "u": ("cu", "du")}
+    pick = {
+        k: pl.when(chaos_first).then(pl.col(a)).otherwise(pl.col(b))
+        for k, (a, b) in buy_cols.items()
+    }
+    other = {
+        k: pl.when(chaos_first).then(pl.col(b)).otherwise(pl.col(a))
+        for k, (a, b) in buy_cols.items()
+    }
+    sig = sig.with_columns(
+        bid=pick["lo"],
+        ask=other["p"],
+        # The loop from the bid, at the recap hour's worst sale and conversion.
+        guard_ret=pl.when(chaos_first)
+        .then(pl.col("dlo") * pl.col("rlo") / pl.col("clo"))
+        .otherwise(pl.col("clo") / (pl.col("dlo") * pl.col("rhi")))
+        - 1,
+    ).select("observed_at", "item_id", "direction", "bid", "ask", "guard_ret")
+    # The next hour's prices, renamed so the buy leg can be picked per direction.
+    nxt = cross.select(
+        "item_id",
+        observed_at=pl.col("observed_at") - H,
+        **{c: c for c in ("cp", "clo", "chi", "cu", "dp", "dlo", "dhi", "du")},
+    )
+    t = (
+        sig.join(nxt, on=["observed_at", "item_id"], how="left")
+        .join(rate.select(observed_at=pl.col("observed_at") - H, rate="rate"), on="observed_at")
+        .with_columns(**{f"b_{k}": v for k, v in pick.items()})
+    )
+    if method == "market":
+        t = t.with_columns(buy=pl.col("b_hi"), placed=True, hit=pl.col("b_p").is_not_null())
+    else:
+        crossed = pl.col("b_p") if fill == "strict" else pl.col("b_lo")
+        guard = pl.col("guard_ret") > missed.BUFFER
+        t = t.with_columns(buy=pl.col("bid"), placed=guard, hit=crossed < pl.col("bid"))
+    t = t.filter(pl.col("placed").fill_null(False))
+    sells = cross.select(
+        "item_id",
+        sell_at="observed_at",
+        s_cp="cp",
+        s_clo="clo",
+        s_chi="chi",
+        s_cu="cu",
+        s_dp="dp",
+        s_dlo="dlo",
+        s_dhi="dhi",
+        s_du="du",
+        s_rlo="rlo",
+        s_rhi="rhi",
+    ).sort("sell_at")
+    t = (
+        t.with_columns(sell_from=pl.col("observed_at") + 2 * H)
+        .sort("sell_from")
+        .join_asof(
+            sells,
+            left_on="sell_from",
+            right_on="sell_at",
+            by="item_id",
+            strategy="forward",
+            tolerance=SELL_WITHIN,
+            check_sortedness=False,  # sorted by time above; checked per group it can't be
+        )
+    )
+    s_p = pl.when(chaos_first).then(pl.col("s_dp")).otherwise(pl.col("s_cp"))
+    s_lo = pl.when(chaos_first).then(pl.col("s_dlo")).otherwise(pl.col("s_clo"))
+    s_hi = pl.when(chaos_first).then(pl.col("s_dhi")).otherwise(pl.col("s_chi"))
+    s_u = pl.when(chaos_first).then(pl.col("s_du")).otherwise(pl.col("s_cu"))
+    sell = s_lo
+    if method == "limit_both":
+        crossed = s_p if fill == "strict" else s_hi
+        sell = pl.when(crossed > pl.col("ask")).then(pl.col("ask")).otherwise(s_lo)
+    # In Chaos per item: Chaos first spends `buy` Chaos and gets `sell` Divines, sold at
+    # the worst rate; Divines first spends `buy` Divines (bought back at the worst rate)
+    # and gets `sell` Chaos.
+    cost = pl.when(chaos_first).then(pl.col("buy")).otherwise(pl.col("buy") * pl.col("s_rhi"))
+    value = pl.when(chaos_first).then(sell * pl.col("s_rlo")).otherwise(sell)
+    t = t.with_columns(
+        cost=cost,
+        value=value.fill_null(0),  # never sold: lost
+        k=pl.when(pl.col("hit").fill_null(False))
+        .then(
+            pl.min_horizontal(
+                (pl.col("b_u") * CAPTURE).floor(),
+                (s_u.fill_null(1e12) * CAPTURE).floor(),
+                (TRADE_DIVINES * pl.col("rate") / pl.col("chi")).floor(),
+            )
+        )
+        .otherwise(0)
+        .fill_null(0),
+    )
+    return t.with_columns(
+        pnl=pl.when(pl.col("k") >= 1)
+        .then(pl.col("k") * (pl.col("value") - pl.col("cost").fill_null(0)) / pl.col("rate"))
+        .otherwise(0.0)
     ).select("observed_at", "item_id", filled=pl.col("k") >= 1, pnl="pnl")
 
 
@@ -455,13 +594,14 @@ def hourly_results(con, league: str) -> tuple[list[dict], list[dict], list[dict]
     loops = _loop_hours(con, league)
     prices = _prices(con, league)
     all_hours = loops.select("observed_at", "day_offset").unique("observed_at")
-    out, persistence, card_limits = [], [], []
+    out, persistence, limit_rows = [], [], []
     trades = {}
-    limits = {
-        (method, fill): card_limit_trades(con, prices, rate, method, fill)
-        for method in CARD_METHODS
-        for fill in (FILLS if method != "market" else FILLS[:1])
-    }
+    cross = _cross_hours(con, league)
+    limits = {}
+    for method in LIMIT_METHODS:
+        for fill in FILLS if method != "market" else FILLS[:1]:
+            limits["cards", method, fill] = card_limit_trades(con, prices, rate, method, fill)
+            limits["loops", method, fill] = loop_limit_trades(loops, cross, rate, method, fill)
     for rule in RULES:
         for scenario in SCENARIOS:
             trades["loops", rule, scenario] = loop_trades(loops, rate, rule, scenario)
@@ -483,17 +623,18 @@ def hourly_results(con, league: str) -> tuple[list[dict], list[dict], list[dict]
                 }
             )
         persistence.append({"league": league, "segment": segment, **_persistence(loops, hours)})
-        for (method, fill), t in limits.items():
-            card_limits.append(
+        for (strategy, method, fill), t in limits.items():
+            limit_rows.append(
                 {
                     "league": league,
                     "segment": segment,
+                    "strategy": strategy,
                     "method": method,
                     "fill": fill,
                     **_summary(t.join(hours, on="observed_at"), hours),
                 }
             )
-    return out, persistence, card_limits
+    return out, persistence, limit_rows
 
 
 # --- Launch picks, walk-forward ------------------------------------------------------
@@ -627,12 +768,12 @@ def hourly_leagues(con) -> list[str]:
 
 def build(con: duckdb.DuckDBPyConnection) -> dict:
     leagues = hourly_leagues(con)
-    hourly, persistence, card_limits = [], [], []
+    hourly, persistence, limit_rows = [], [], []
     for league in leagues:
         rows, persist, limits = hourly_results(con, league)
         hourly += rows
         persistence += persist
-        card_limits += limits
+        limit_rows += limits
     complete = [lg for lg in leagues if lg in launch_picks.complete_leagues(con)]
     return {
         "built_at": datetime.now(UTC).isoformat(),
@@ -649,7 +790,7 @@ def build(con: duckdb.DuckDBPyConnection) -> dict:
         },
         "hourly": hourly,
         "persistence": persistence,
-        "card_limits": card_limits,
+        "limits": limit_rows,
         "launch": launch_results(con, complete),
     }
 

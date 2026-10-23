@@ -72,12 +72,22 @@ A dummy trader with 100 Divines does only what the site said at the time. Hourly
 
   | Card orders (div/h, first 14 days; Allflame's latest 14 in brackets) | Result | Orders filled |
   |---|---|---|
-  | Market: buy at the next hour's high, sell at the low | −2.20 to −0.23 (0.00) | 21% |
-  | Limit buy, filled if any trade went under the bid | −0.05 to +0.54 (+0.01) | 37% |
-  | Limit buy and a sell order at the recap hour's average reward price | **+0.51 to +0.97** (+0.01) | 37% |
-  | Either limit, filled only if the hour's average crossed the order | −0.02 to +0.01 | 12% (17 of 140) |
+  | Market: buy at the next hour's high, sell at the low | −2.20 to −0.23 (0.00) | 24% |
+  | Limit buy, filled if any trade went under the bid | −0.05 to +0.54 (+0.01) | 16% |
+  | Limit buy and a sell order at the recap hour's average reward price | **+0.51 to +0.97** (+0.01) | 16% |
+  | Either limit, filled only if the hour's average crossed the order | −0.02 to +0.01 | 0.3% (11 of 4,068) |
 
   Whether the orders fill is the open question: hourly data shows each hour's range, not the queue at each price. If one trade past the price means a fill, the limits turn cards into the best hourly strategy tested; if the hour's average has to cross it, almost nothing fills. Late in a league (Allflame's latest 14 days) there was nothing either way.
+- **The same limit orders on loops help less** (`loop_limit_trades`): the item bought with a bid at the recap hour's lowest price, sold the hour after, Divines always converted at the worst rate. Every loop the recap flags still pays from its hour's low, so every one gets an order:
+
+  | Loop orders (div/h, first 14 days; Allflame's latest 14 in brackets) | Result | Orders filled |
+  |---|---|---|
+  | Market: buy at the next hour's high, sell the hour after at the low | −1.23 to −0.50 (−0.20) | 79% |
+  | Limit buy, filled if any trade went under the bid | +0.01 to +0.21 (+0.10) | 19% |
+  | Limit buy and a sell order at the recap hour's average in the other currency | **+0.04 to +0.29** (+0.24) | 19% |
+  | Either limit, filled only if the hour's average crossed the order | −0.01 to +0.02 (+0.02) | 1.4% (52 of 3,672) |
+
+  About what steady loops make with market orders, from fewer trades, and unlike cards it held up late in the league. The same fill caveat applies.
 - **The Rising list is not a buy signal**: risers fall after the hour they're published, at fair prices too.
 - **Thin markets flattered the first run.** Before the volume floor, many recap loops were markets with an edge over 1,000% from a couple of items traded; their few fills made acting on every loop look break-even. With the floor (now on the page too), it loses a little. The landing page was renamed from Missed opportunities to Market recap, without the "sat on the table" totals, and words its picks as options to check.
 - **Caveats:** no order book, so real fills sit between fair and harsh; one trader at small sizes; today's core pool and loot-filter card list (a small head start); five leagues, the first ones with few earlier leagues to rank picks from.

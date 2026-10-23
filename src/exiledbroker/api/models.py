@@ -326,13 +326,14 @@ class BacktestPersistence(BaseModel):
     others: float | None  # the same for every other loop that traded
 
 
-class BacktestCardLimit(BaseModel):
-    """The recap's top card turn-ins traded with orders priced from its hour, in one
-    stretch of a league. Profits are in Divines."""
+class BacktestLimit(BaseModel):
+    """The recap's top card turn-ins or loops traded with orders priced from its hour, in
+    one stretch of a league. Profits are in Divines."""
 
     league: str
     segment: str
-    method: str  # 'market' | 'limit_buy' | 'limit_both' (analysis/backtest.card_limit_trades)
+    strategy: str  # 'cards' | 'loops'
+    method: str  # 'market' | 'limit_buy' | 'limit_both' (analysis/backtest.*_limit_trades)
     fill: str  # 'touch' (a trade went past the order) | 'strict' (the hour's average did)
     hours: int
     signals: int  # orders placed
@@ -375,5 +376,5 @@ class BacktestReport(BaseModel):
     assumptions: BacktestAssumptions
     hourly: list[BacktestHourly]
     persistence: list[BacktestPersistence]
-    card_limits: list[BacktestCardLimit]
+    limits: list[BacktestLimit]
     launch: list[BacktestLaunch]

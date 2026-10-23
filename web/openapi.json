@@ -221,83 +221,6 @@
         "title": "BacktestAssumptions",
         "type": "object"
       },
-      "BacktestCardLimit": {
-        "description": "The recap's top card turn-ins traded with orders priced from its hour, in one\nstretch of a league. Profits are in Divines.",
-        "properties": {
-          "best_hour": {
-            "title": "Best Hour",
-            "type": "number"
-          },
-          "daily": {
-            "items": {
-              "type": "number"
-            },
-            "title": "Daily",
-            "type": "array"
-          },
-          "fill": {
-            "title": "Fill",
-            "type": "string"
-          },
-          "filled": {
-            "title": "Filled",
-            "type": "integer"
-          },
-          "hours": {
-            "title": "Hours",
-            "type": "integer"
-          },
-          "league": {
-            "title": "League",
-            "type": "string"
-          },
-          "method": {
-            "title": "Method",
-            "type": "string"
-          },
-          "per_hour": {
-            "title": "Per Hour",
-            "type": "number"
-          },
-          "segment": {
-            "title": "Segment",
-            "type": "string"
-          },
-          "signals": {
-            "title": "Signals",
-            "type": "integer"
-          },
-          "total": {
-            "title": "Total",
-            "type": "number"
-          },
-          "won": {
-            "title": "Won",
-            "type": "integer"
-          },
-          "worst_hour": {
-            "title": "Worst Hour",
-            "type": "number"
-          }
-        },
-        "required": [
-          "league",
-          "segment",
-          "method",
-          "fill",
-          "hours",
-          "signals",
-          "filled",
-          "won",
-          "total",
-          "per_hour",
-          "best_hour",
-          "worst_hour",
-          "daily"
-        ],
-        "title": "BacktestCardLimit",
-        "type": "object"
-      },
       "BacktestHourly": {
         "description": "One hourly strategy in one stretch of a league, at fair or harsh prices.\nProfits are in Divines.",
         "properties": {
@@ -511,6 +434,88 @@
         "title": "BacktestLaunchPick",
         "type": "object"
       },
+      "BacktestLimit": {
+        "description": "The recap's top card turn-ins or loops traded with orders priced from its hour, in\none stretch of a league. Profits are in Divines.",
+        "properties": {
+          "best_hour": {
+            "title": "Best Hour",
+            "type": "number"
+          },
+          "daily": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Daily",
+            "type": "array"
+          },
+          "fill": {
+            "title": "Fill",
+            "type": "string"
+          },
+          "filled": {
+            "title": "Filled",
+            "type": "integer"
+          },
+          "hours": {
+            "title": "Hours",
+            "type": "integer"
+          },
+          "league": {
+            "title": "League",
+            "type": "string"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "per_hour": {
+            "title": "Per Hour",
+            "type": "number"
+          },
+          "segment": {
+            "title": "Segment",
+            "type": "string"
+          },
+          "signals": {
+            "title": "Signals",
+            "type": "integer"
+          },
+          "strategy": {
+            "title": "Strategy",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "number"
+          },
+          "won": {
+            "title": "Won",
+            "type": "integer"
+          },
+          "worst_hour": {
+            "title": "Worst Hour",
+            "type": "number"
+          }
+        },
+        "required": [
+          "league",
+          "segment",
+          "strategy",
+          "method",
+          "fill",
+          "hours",
+          "signals",
+          "filled",
+          "won",
+          "total",
+          "per_hour",
+          "best_hour",
+          "worst_hour",
+          "daily"
+        ],
+        "title": "BacktestLimit",
+        "type": "object"
+      },
       "BacktestPersistence": {
         "properties": {
           "flagged": {
@@ -563,13 +568,6 @@
             "title": "Built At",
             "type": "string"
           },
-          "card_limits": {
-            "items": {
-              "$ref": "#/components/schemas/BacktestCardLimit"
-            },
-            "title": "Card Limits",
-            "type": "array"
-          },
           "hourly": {
             "items": {
               "$ref": "#/components/schemas/BacktestHourly"
@@ -591,6 +589,13 @@
             "title": "Leagues",
             "type": "array"
           },
+          "limits": {
+            "items": {
+              "$ref": "#/components/schemas/BacktestLimit"
+            },
+            "title": "Limits",
+            "type": "array"
+          },
           "persistence": {
             "items": {
               "$ref": "#/components/schemas/BacktestPersistence"
@@ -605,7 +610,7 @@
           "assumptions",
           "hourly",
           "persistence",
-          "card_limits",
+          "limits",
           "launch"
         ],
         "title": "BacktestReport",

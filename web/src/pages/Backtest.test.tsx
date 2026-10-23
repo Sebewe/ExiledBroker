@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { BacktestCardLimit, BacktestHourly, BacktestLaunch, BacktestReport } from '../api/client'
+import type { BacktestLimit, BacktestHourly, BacktestLaunch, BacktestReport } from '../api/client'
 import Backtest from './Backtest'
 
 function serve(routes: Record<string, { status?: number; body: unknown }>) {
@@ -60,9 +60,10 @@ const launch = (window_id: string, harsh: number): BacktestLaunch => ({
   picks: [{ name: 'Gemcutter’s Prism', rank: 1, stake: 10, fair: 4, harsh: 2.5 }],
 })
 
-const limit = (method: string, fill: string, per_hour: number, filled: number): BacktestCardLimit => ({
+const limit = (strategy: string, method: string, fill: string, per_hour: number, filled: number): BacktestLimit => ({
   league: 'Mirage',
   segment: 'launch',
+  strategy,
   method,
   fill,
   hours: 336,
@@ -98,13 +99,13 @@ const REPORT: BacktestReport = {
     hourly('rising', 'steady', s, s === 'fair' ? -0.93 : -9.7),
   ]),
   persistence: [{ league: 'Mirage', segment: 'launch', flagged: 0.63, others: 0.09 }],
-  card_limits: [
-    limit('market', 'touch', -1.01, 150),
-    limit('limit_buy', 'touch', 0.34, 100),
-    limit('limit_buy', 'strict', 0, 4),
-    limit('limit_both', 'touch', 0.66, 100),
-    limit('limit_both', 'strict', 0, 4),
-  ],
+  limits: ['cards', 'loops'].flatMap((s) => [
+    limit(s, 'market', 'touch', -1.01, 150),
+    limit(s, 'limit_buy', 'touch', 0.34, 100),
+    limit(s, 'limit_buy', 'strict', 0, 4),
+    limit(s, 'limit_both', 'touch', s === 'cards' ? 0.66 : 0.29, 100),
+    limit(s, 'limit_both', 'strict', 0, 4),
+  ]),
   launch: [launch('day1', 3.49), launch('days2_4', 1.31), launch('days5_10', 0.84)],
 }
 
@@ -127,6 +128,7 @@ describe('Backtest', () => {
     expect(screen.getByText(/63% of the time, against 9%/)).toBeTruthy()
     expect(screen.getByText("Mirage's day-1 picks")).toBeTruthy()
     expect(screen.getByText(/cards made \+0\.66 div\/h, if the orders fill/)).toBeTruthy()
-    expect(screen.getByText(/only 4 of 300 orders filled/)).toBeTruthy()
+    expect(screen.getByText(/only 4 of 300 filled/)).toBeTruthy()
+    expect(screen.getByText(/makes \+0\.29 div\/h: about what steady loops make/)).toBeTruthy()
   })
 })
