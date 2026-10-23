@@ -53,7 +53,7 @@ services:
     volumes:
       - ./:/sim:ro
       - ./.cache:/sim-cache:ro
-      - ../../data/raw/ggg/currency_exchange:/pages:ro
+      - ${EB_SIM_DATA:-../../data}/raw/ggg/currency_exchange:/pages:ro
     networks: [private, public]  # public only so run.py can set its clock
     ports: ["9100:9000"]
 

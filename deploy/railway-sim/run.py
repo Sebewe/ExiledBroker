@@ -28,6 +28,7 @@ real day and month:
 import argparse
 import asyncio
 import json
+import os
 import subprocess
 import sys
 import threading
@@ -39,6 +40,8 @@ import httpx
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
+# The local copy the server is seeded from (default: this checkout's data/).
+DATA = Path(os.environ.get("EB_SIM_DATA", ROOT / "data"))
 sys.path.insert(0, str(HERE))
 import loadgen
 import meter
@@ -131,7 +134,7 @@ def reset_and_seed(
             "--user",
             "root",
             "-v",
-            f"{ROOT / 'data'}:/src:ro",
+            f"{DATA}:/src:ro",
             "-v",
             f"{HERE}:/sim:ro",
             "-v",
@@ -230,7 +233,7 @@ def report(
         "hobby_bill_slow_cpu": round(meter.hobby_bill(cost_slow["total"]), 2),
         "rates": meter.RATES,
     }
-    perf = ROOT / "data" / "perf"
+    perf = DATA / "perf"
     perf.mkdir(parents=True, exist_ok=True)
     (perf / f"railway-{label}.json").write_text(json.dumps(out, indent=2, default=str))
     return out
@@ -344,7 +347,7 @@ def spike(args) -> dict:
         "web": d["web"].as_dict(),
         "postgres": d["postgres"].as_dict(),
     }
-    (ROOT / "data" / "perf" / f"railway-{args.label or f'spike-{args.users}u'}.json").write_text(
+    (DATA / "perf" / f"railway-{args.label or f'spike-{args.users}u'}.json").write_text(
         json.dumps(out, indent=2)
     )
     t = traffic
@@ -385,7 +388,7 @@ def switch(args) -> dict:
         print(json.dumps(steps[-1]))
     upstream = httpx.get(f"{UPSTREAM}/_sim/stats", timeout=10).json()["counts"]
     out = {"label": "switch", "steps": steps, "upstream": upstream}
-    (ROOT / "data" / "perf" / "railway-switch.json").write_text(json.dumps(out, indent=2))
+    (DATA / "perf" / "railway-switch.json").write_text(json.dumps(out, indent=2))
     print(f"upstream requests: {upstream}")
     NEXT_ENV.write_text("")
     return out

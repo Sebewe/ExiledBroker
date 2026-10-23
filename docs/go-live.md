@@ -24,7 +24,7 @@ Deadline: the next league launches in about a month. The server must be live, ca
 - [x] Reduced history for the history pages: only Launch market reads history (Conversions is a static research note, no data). `launch_history` holds each finished league's window medians: 12,332 rows for the five reference leagues instead of 977k hourly; the picks ranked from it are identical on the real data.
 - [x] When the live league's fortnight is over, the pipeline captures it into the history and rebuilds the picks (`launch_picks.refresh`); a replaced league's rows are dropped once the new league has data (`site.drop_leagues`).
 - [x] `eb site seed --hosted` seeds a new server from the local copy (rows, history, picks, the loaded hours' pages); the pipeline refuses an unseeded database.
-- [ ] Re-run the simulation's tiers on the new shape (no volume) and update the bill.
+- [ ] Re-run the simulation's tiers on the new shape (no volume) and update the bill (running). Seeded at hour 48 of the league the server's Postgres is 29 MB; pages average ~77 KB, so a full window is ~50–80 MB.
 
 ### 2. League switch, rehearsed (works in the local simulation before going live)
 
@@ -41,7 +41,7 @@ What the last four switches on disk show (Settlers → Mercenaries → Keepers �
 - [x] **The loader doesn't depend on the page's shape:** shuffled markets, pairs listed the other way round, numbers as floats, unknown fields and pages padded with other leagues give identical rows.
 - [x] **The site in the gap** says "Mirage has ended" (with the countdown) instead of "the live feed may have stopped", once a next league is announced.
 - [x] Replayed on the real pages (`tests/test_league_switch.py`, `tests/fixtures/league_switch.json.gz`): the hosted pipeline from 2 hours before Allflame's launch to 4 after. Mirage is kept through the gap; Allflame is picked up at its first published hour with ≤ 8 requests; one request per hour after; every endpoint answers.
-- [ ] The same switch in the Railway simulation (`deploy/railway-sim/run.py switch`), real containers.
+- [x] The same switch in the Railway simulation (`deploy/railway-sim/run.py switch`, real containers): Mirage kept with the countdown at 21:06 and 22:06; Allflame live at 23:06 (9.7 s, Mirage dropped); then one hour a pass in 2–3 s. 8 exchange requests in 7 passes, and the core pool's Allflame lists downloaded once.
 
 ### 3. Railway project (setup)
 
