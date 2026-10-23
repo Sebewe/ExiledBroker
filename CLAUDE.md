@@ -136,3 +136,12 @@ Target: everything on Railway Hobby ($5 a month including $5 of usage): web, Pos
 - Settings come from `EB_*` environment variables or `.env` (`config.py`).
 - `.claude/` and `.agents/` are intentionally left untracked.
 - The root `.gitignore` is Python's template, which ignores every `lib/`; `!web/src/lib/` re-includes the frontend's. Check `git add -n` for new folders.
+
+## Working alongside other sessions
+
+Several Claude sessions may work in this checkout at once, sharing one working tree and one git index. On 2026-10-23 one session's `git commit` picked up another's staged `git rm`, which broke `main` until it was restored. So:
+- **Stage and commit only your own files, by path, in one step:** `git add <your paths> && git commit -m …`, or `git commit -m … -- <your paths>`. Never `git add -A`, `git add .`, `git add <whole folder>` or `git commit -a`.
+- **Don't leave anything staged between turns.** Delete files with plain `rm` and stage the deletion only in the commit that needs it (`git add -u <path>`). Something you didn't stage may be sitting in the index: check `git diff --cached --stat` right before committing and unstage what isn't yours (`git restore --staged <path>`), leaving the file itself alone.
+- **Leave other changes alone.** Modified or new files you didn't touch belong to someone else's work in progress: don't commit, revert, format or delete them, and don't run formatters over the whole repo when others' files are dirty (format your own paths). If your change needs theirs, say so instead of committing it.
+- **For long or wide changes, use your own worktree:** `git worktree add ../eb-<task> -b <task>` and merge back, so nothing is shared. Remove it when done.
+- **Before pushing,** `git fetch` and look at `git log origin/main..main`: say which commits are yours, never push someone else's unreviewed work as part of yours without saying so, and never force-push `main`. A broken commit that's already pushed gets a fixing commit, not a rewrite.
