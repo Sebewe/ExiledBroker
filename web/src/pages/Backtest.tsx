@@ -84,7 +84,7 @@ function Report({ r }: { r: BacktestReport }) {
           The typical affordable item fell to {range(day1.map((l) => l.typical_harsh ?? 0), times)} over the same days. Picks ranked only from earlier leagues beat it in
           every league we tested.
         </Verdict>
-        <Verdict kind="even" title="Steady loops pay a little" figure={`${range(perHour(steady), signed)} div/h`} figureNote="harsh, loops that paid every hour of the last 3">
+        <Verdict kind="even" title="Steady loops about break even" figure={`${range(perHour(steady), signed)} div/h`} figureNote="harsh, loops that paid every hour of the last 3">
           Pocket change, not a few Divines an hour. Acting on every loop the recap shows makes {range(perHour(top), signed)} div/h harsh.
         </Verdict>
         <Verdict kind="loses" title="Cards and risers lose" figure={`${range(perHour(cards), signed)} div/h`} figureNote="card turn-ins, harsh">
@@ -300,7 +300,7 @@ function HourlySection({ r }: { r: BacktestReport }) {
   }
   return (
     <Section
-      title="Missed opportunities, hour by hour"
+      title="Market recap, hour by hour"
       description="Divines an hour, harsh (fair below), for a trader acting on the recap every hour. Green made money, red lost it."
     >
       <div className="overflow-x-auto rounded-lg border border-border">

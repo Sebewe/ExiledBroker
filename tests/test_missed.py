@@ -59,9 +59,38 @@ def test_movers_volatility_and_streaks(con):
     assert three["falling"][0]["change"] == pytest.approx(30 / 50 - 1)  # against 3 hours before
     assert one["volatile"][0]["name"] == "Swingy"
     assert one["volatile"][0]["range"] == pytest.approx(1.0)
-    # Nothing paid: no loops or cards in this data, and the totals say so.
-    assert (one["loops"], one["cards"], one["loops_missed"], one["cards_missed"]) == ([], [], 0, 0)
+    # Nothing paid: no loops or cards in this data, and the counts say so.
+    assert (one["loops"], one["cards"], one["loops_paid"], one["cards_paid"]) == ([], [], 0, 0)
 
 
 def test_no_trades_yet(con):
     assert missed.missed(con, "L") == []
+
+
+def _loop_hour(con, item_id: str, hours_ago: int, items: float, edge: float):
+    """A Chaos-first loop hour at 10c an item: `items` traded in both markets, paying
+    `edge` at the worst prices (Divine at 100c all round)."""
+    con.execute(
+        "INSERT INTO item (id, game, canonical_name, category) VALUES (?, 'poe1', ?, 'currency')"
+        " ON CONFLICT DO NOTHING",
+        [item_id, item_id.split(":")[1].title()],
+    )
+    at = LATEST - timedelta(hours=hours_ago)
+    divine = 10.0 * (1 + edge) / 100.0
+    con.execute(
+        "INSERT INTO cross_market_hour VALUES ('L', ?, ?, 1, 10, ?, 10, 10, ?, ?, ?, ?, 100, 100, 100)",
+        [item_id, at, items, divine, items, divine, divine],
+    )
+
+
+def test_loops_need_enough_traded_and_the_steadiest_come_first(con):
+    _item(con, "currency:anchor", [10, 10, 10])  # the latest hour comes from the prices
+    _loop_hour(con, "currency:thin", 0, items=2, edge=40.0)  # one odd trade: ignored
+    _loop_hour(con, "currency:once", 0, items=500, edge=0.5)  # pays most, but only now
+    for h in range(3):
+        _loop_hour(con, "currency:steady", h, items=100, edge=0.05)
+    [one, _, three] = missed.missed(con, "L")
+    assert [lp["name"] for lp in one["loops"]] == ["Once", "Steady"] and one["loops_paid"] == 2
+    # Over 3 hours, the one that paid every hour leads, with its volume per paying hour.
+    assert [lp["name"] for lp in three["loops"]] == ["Steady", "Once"]
+    assert three["loops"][0]["hours_paid"] == 3 and three["loops"][0]["volume"] == 1000

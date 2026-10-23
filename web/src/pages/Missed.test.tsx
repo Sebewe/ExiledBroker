@@ -39,12 +39,14 @@ const recap = (hours: number, scale: number): MissedWindow => ({
   rising: [{ item_id: 'currency:a', name: 'Domination Scarab', price: 60, before: 40, change: 0.5, volume: 5000, streak: 3 }],
   falling: [{ item_id: 'currency:b', name: 'Essence of Horror', price: 30, before: 45, change: -1 / 3, volume: 3000, streak: -2 }],
   volatile: [{ item_id: 'currency:c', name: 'Abyss Scarab', low: 4, high: 64, price: 10, range: 6, volume: 9000 }],
-  loops: [{ item_id: 'currency:d', name: 'Reverent Fragment', direction: 'chaos_first', missed: 2000 * scale, best_edge: 1.2, hours_paid: hours, price: 50 }],
+  loops: [
+    { item_id: 'currency:d', name: 'Reverent Fragment', direction: 'chaos_first', missed: 2000 * scale, best_edge: 0.12, hours_paid: hours, price: 50, volume: 4000 },
+  ],
   cards: [
     { item_id: 'currency:e', name: 'The Sephirot', reward: '10× Divine Orb', missed: 1000 * scale, margin: 400, set_cost: 1600, sets: 2.5, hours_paid: 1 },
   ],
-  loops_missed: 3000 * scale,
-  cards_missed: 1000 * scale,
+  loops_paid: 2 * scale,
+  cards_paid: scale,
 })
 const RECAP = [recap(1, 1), recap(2, 2), recap(3, 3)]
 
@@ -58,15 +60,15 @@ const empty = (hours: number): MissedWindow => ({
   volatile: [],
   loops: [],
   cards: [],
-  loops_missed: 0,
-  cards_missed: 0,
+  loops_paid: 0,
+  cards_paid: 0,
 })
 const iso = (msFromNow: number) => new Date(Date.now() + msFromNow).toISOString()
 const MIN = 60_000
 
 afterEach(() => vi.unstubAllGlobals())
 
-describe('Missed opportunities', () => {
+describe('Market recap', () => {
   it('explains when nothing is loaded yet', async () => {
     serve({ '/api/status': { status: 503, body: { detail: 'no data loaded yet' } } })
     renderPage()
@@ -85,16 +87,21 @@ describe('Missed opportunities', () => {
     expect(await screen.findByText('Data may be out of date')).toBeInTheDocument()
   })
 
-  it('recaps the last hour, in Divines', async () => {
+  it('recaps the last hour without promising a payout', async () => {
     serve({ '/api/status': status('2026-10-22T08:00:00Z'), '/api/missed/Allflame': { body: RECAP } })
     renderPage()
     const hero = await screen.findByRole('region', { name: 'Recap' })
-    expect(within(hero).getByText('20.0div')).toBeInTheDocument() // (3000 + 1000)c at 200c
-    expect(screen.getByText('Domination Scarab')).toBeInTheDocument()
-    expect(screen.getByText(/up 3h running · momentum/)).toBeInTheDocument()
-    expect(screen.getByText(/down 2h running · still sliding/)).toBeInTheDocument()
+    expect(within(hero).getByText('Loops that paid').nextSibling?.textContent).toBe('2')
+    expect(within(hero).getByText('Domination Scarab')).toBeInTheDocument() // the biggest move
+    expect(screen.queryByText(/on the table/)).not.toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Options' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Backtest/ })).toHaveAttribute('href', '/backtest')
+    expect(screen.getByText(/^up 3h running$/)).toBeInTheDocument()
+    expect(screen.getByText(/^down 2h running$/)).toBeInTheDocument()
     expect(screen.getByText('600% range')).toBeInTheDocument()
-    expect(screen.getByText('10.0div')).toBeInTheDocument() // the best loop, 2000c
+    expect(screen.getByText('+12%')).toBeInTheDocument() // the loop's edge, not a total
+    expect(screen.queryByText(/likely one odd trade/)).not.toBeInTheDocument() // 12% isn't odd
+    expect(screen.getByText('20.0div')).toBeInTheDocument() // 4000c traded an hour, at 200c
     expect(screen.getByText('40.0c → 60.0c')).toBeInTheDocument() // under a Divine: Chaos
     expect(screen.getByText('10× Divine Orb')).toBeInTheDocument()
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
@@ -106,7 +113,7 @@ describe('Missed opportunities', () => {
     await screen.findByRole('region', { name: 'Recap' })
     const calls = vi.mocked(fetch).mock.calls.length
     fireEvent.change(screen.getByRole('slider'), { target: { value: '3' } })
-    expect(await screen.findByText('60.0div')).toBeInTheDocument() // 3 × 20 div
+    expect(await screen.findByText(/1 of the loops below paid every hour of the last 3/)).toBeInTheDocument()
     expect(screen.getByText('paid every hour')).toBeInTheDocument()
     expect(vi.mocked(fetch).mock.calls.length).toBe(calls)
   })
@@ -160,9 +167,9 @@ describe('Missed opportunities', () => {
     })
     renderPage()
     expect(await screen.findByText("Looks like it's early in the league")).toBeInTheDocument()
-    expect(await screen.findByText('Nothing paid yet')).toBeInTheDocument()
+    expect(await screen.findByText('nothing liquid moved')).toBeInTheDocument()
     expect(screen.getByText('Nothing liquid rose.')).toBeInTheDocument()
-    expect(screen.getByText(/No loop beat a 2% edge/)).toBeInTheDocument()
+    expect(screen.getByText(/No loop with enough volume beat a 2% edge/)).toBeInTheDocument()
     expect(screen.getByText(/No card turn-in paid/)).toBeInTheDocument()
   })
 

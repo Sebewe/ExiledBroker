@@ -4,7 +4,7 @@ A dummy trader replays every hour we have (each league's launch fortnight, plus 
 live league's latest 14 days) with a bank of BANK_DIVINES, and does only what the site
 told them at the time:
 
-- **Hourly tools (Missed opportunities).** Each hour the trader reads the 1-hour recap,
+- **Hourly tools (Market recap, the landing page).** Each hour the trader reads the 1-hour recap,
   as `services/missed` builds it, and acts on its top 3 picks in the *next* hour (GGG
   publishes an hour only after it ends, so that's the earliest anyone could):
   - loops: the item's Chaos/Divine loop, in its better direction;
@@ -126,9 +126,7 @@ def _loop_hours(con, league: str) -> pl.DataFrame:
 
 
 def loop_trades(loops: pl.DataFrame, rate: pl.DataFrame, rule: str, scenario: str):
-    paid = loops.filter(pl.col("edge") > missed.BUFFER).with_columns(
-        missed=pl.col("edge") * pl.col("overlap_chaos")
-    )
+    paid = missed.paying_loops(loops)
     sig = _signals(paid, ["item_id", "direction"], RULES[rule], "item_id")
     # At fair prices the loop earns the VWAP gap, less slippage on its three trades.
     fair = pl.when(pl.col("direction") == "chaos_first").then(pl.col("gap"))
@@ -216,8 +214,9 @@ def card_trades(con, prices: pl.DataFrame, rate: pl.DataFrame, rule: str, scenar
     paid = (
         c.join(r, on=["observed_at", "reward_id"])
         .with_columns(margin=pl.col("q") * pl.col("rp") - pl.col("n") * pl.col("p"))
-        .filter(pl.col("margin") > 0)
-        .with_columns(missed=pl.col("margin") * pl.col("units") / pl.col("n"))
+        .with_columns(sets=pl.col("units") / pl.col("n"))
+        .filter(pl.col("margin") > 0, pl.col("sets") >= missed.MIN_CARD_SETS)
+        .with_columns(missed=pl.col("margin") * pl.col("sets"))
     )
     sig = _signals(paid, ["item_id"], RULES[rule], "item_id").join(cards, on="item_id")
     buys = c.select(
@@ -323,10 +322,8 @@ def _summary(trades: pl.DataFrame, hours: pl.DataFrame) -> dict:
 
 def _persistence(loops: pl.DataFrame, hours: pl.DataFrame) -> dict:
     """How often a loop the recap flags pays again the next hour, against every other
-    loop that traded that hour."""
-    paid = loops.filter(pl.col("edge") > missed.BUFFER).with_columns(
-        missed=pl.col("edge") * pl.col("overlap_chaos")
-    )
+    loop that traded enough that hour to show on it."""
+    paid = missed.paying_loops(loops)
     flagged = _signals(paid, ["item_id", "direction"], 1, "item_id").select(
         "observed_at", "item_id", "direction", flagged=pl.lit(True)
     )
@@ -336,8 +333,12 @@ def _persistence(loops: pl.DataFrame, hours: pl.DataFrame) -> dict:
         observed_at=pl.col("observed_at") - H,
         again=pl.col("edge") > missed.BUFFER,
     )
+    liquid = loops.filter(
+        pl.col("overlap_chaos") >= missed.MIN_LOOP_CHAOS,
+        pl.col("overlap_chaos") / pl.col("chaos_price") >= missed.MIN_LOOP_ITEMS,
+    )
     j = (
-        loops.join(hours, on="observed_at")
+        liquid.join(hours, on="observed_at")
         .join(flagged, on=["observed_at", "item_id", "direction"], how="left")
         .join(nxt, on=["observed_at", "item_id", "direction"])
         .with_columns(pl.col("flagged").fill_null(False))

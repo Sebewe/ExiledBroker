@@ -1782,6 +1782,10 @@
               }
             ],
             "title": "Price"
+          },
+          "volume": {
+            "title": "Volume",
+            "type": "number"
           }
         },
         "required": [
@@ -1791,7 +1795,8 @@
           "missed",
           "best_edge",
           "hours_paid",
-          "price"
+          "price",
+          "volume"
         ],
         "title": "MissedLoop",
         "type": "object"
@@ -1805,9 +1810,9 @@
             "title": "Cards",
             "type": "array"
           },
-          "cards_missed": {
-            "title": "Cards Missed",
-            "type": "number"
+          "cards_paid": {
+            "title": "Cards Paid",
+            "type": "integer"
           },
           "falling": {
             "items": {
@@ -1832,9 +1837,9 @@
             "title": "Loops",
             "type": "array"
           },
-          "loops_missed": {
-            "title": "Loops Missed",
-            "type": "number"
+          "loops_paid": {
+            "title": "Loops Paid",
+            "type": "integer"
           },
           "rising": {
             "items": {
@@ -1859,8 +1864,8 @@
           "volatile",
           "loops",
           "cards",
-          "loops_missed",
-          "cards_missed"
+          "loops_paid",
+          "cards_paid"
         ],
         "title": "MissedWindow",
         "type": "object"

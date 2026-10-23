@@ -1,15 +1,21 @@
-"""Missed opportunities (the landing page): what the latest published hours of trading
-offered, for someone who wasn't watching.
+"""Market recap (the landing page): what traded in the latest published hours, and what
+a player could look into next.
 
 GGG publishes each hour after it ends, so nothing here is live: it's a recap of the
 last 1, 2 or 3 hours, computed once per loaded hour for all three look-backs and sent
 together, so the page's slider never asks the server again. Each look-back has:
 - **movers**: liquid items whose price rose or fell most since the start of it, with
-  how many hours running they've moved that way (a short-term trend to act on);
+  how many hours running they've moved that way (what already happened: the backtest
+  found buying the risers loses);
 - **volatile**: liquid items with the widest traded range (high vs low) in it;
-- **loops** and **cards**: the Chaos/Divine loops and card turn-ins that left the most
-  Chaos on the table: edge × volume traded in both markets, or margin × sets traded,
-  summed over the hours that paid. An upper bound: nobody catches every trade.
+- **loops** and **cards**: the Chaos/Divine loops and card turn-ins that paid, ranked
+  by edge × volume traded in both markets, or margin × sets traded, summed over the
+  hours that paid, with how many of them paid. Only markets with enough traded to act
+  on count (MIN_LOOP_CHAOS / MIN_LOOP_ITEMS, a full set for cards): a thin market's
+  one odd trade shows a huge edge nobody can repeat.
+
+`analysis/backtest.py` replays these picks an hour late; the page words them as
+options to check, not promises, to match what it found.
 
 SQL here must stay Postgres-compatible.
 """
@@ -31,6 +37,19 @@ MIN_PRICE = 5.0  # Chaos: below this, whole-number exchange ratios dominate the 
 MIN_VOLUME = 2000.0  # Chaos traded an hour: thinner markets swing on a single trade
 BUFFER = 0.02  # a loop only counts if it beat this edge, as on the Arbitrage page
 DIRECTIONS = ("chaos_first", "divine_first")
+MIN_LOOP_CHAOS = 500.0  # Chaos traded through both markets in the hour
+MIN_LOOP_ITEMS = 10.0  # items traded through both markets in the hour
+MIN_CARD_SETS = 1.0  # full sets traded in the hour
+
+
+def paying_loops(loops: pl.DataFrame) -> pl.DataFrame:
+    """Loop hours that beat BUFFER in a market with enough traded to act on, with the
+    Chaos they could have made (`missed`). Shared with the backtest."""
+    return loops.filter(
+        pl.col("edge") > BUFFER,
+        pl.col("overlap_chaos") >= MIN_LOOP_CHAOS,
+        pl.col("overlap_chaos") / pl.col("chaos_price") >= MIN_LOOP_ITEMS,
+    ).with_columns(missed=pl.col("edge") * pl.col("overlap_chaos"))
 
 
 def _prices(con, league: str, since) -> pl.DataFrame:
@@ -109,46 +128,53 @@ def _movement(prices: pl.DataFrame, latest, hours: int) -> tuple[list, list, lis
     return up.head(TOP).to_dicts(), down.head(TOP).to_dicts(), volatile.head(TOP).to_dicts()
 
 
-def _loops(loops: pl.DataFrame, latest, hours: int) -> tuple[list, float]:
-    paid = loops.filter(
-        pl.col("observed_at") > latest - timedelta(hours=hours), pl.col("edge") > BUFFER
-    )
+def _loops(loops: pl.DataFrame, latest, hours: int) -> tuple[list, int]:
+    paid = paying_loops(loops.filter(pl.col("observed_at") > latest - timedelta(hours=hours)))
     if paid.is_empty():
-        return [], 0.0
+        return [], 0
     per = (
         paid.group_by("item_id", "name", "direction")
         .agg(
-            missed=(pl.col("edge") * pl.col("overlap_chaos")).sum(),
+            missed=pl.col("missed").sum(),
             best_edge=pl.col("edge").max(),
             hours_paid=pl.len(),
             price=pl.col("chaos_price").sort_by("observed_at").last(),
+            volume=pl.col("overlap_chaos").mean(),
         )
-        .sort(["missed", "item_id"], descending=[True, False])
+        # Steadiest first (paid in more of the hours), then what paid the most.
+        .sort(["hours_paid", "missed", "item_id"], descending=[True, True, False])
         .unique("item_id", keep="first", maintain_order=True)  # its better direction
     )
-    return per.head(TOP).to_dicts(), float(per["missed"].sum())
+    return per.head(TOP).to_dicts(), per.height
 
 
-def _cards(turn_ins: pl.DataFrame, latest, hours: int) -> tuple[list, float]:
-    paid = turn_ins.filter(
-        pl.col("observed_at") > latest - timedelta(hours=hours), pl.col("margin") > 0
+def paying_cards(turn_ins: pl.DataFrame) -> pl.DataFrame:
+    """Card hours whose full set was worth less than its reward, with at least a full
+    set traded (`sets`, and the Chaos they could have made as `missed`)."""
+    return (
+        turn_ins.with_columns(sets=pl.col("card_volume") / pl.col("stack_size"))
+        .filter(pl.col("margin") > 0, pl.col("sets") >= MIN_CARD_SETS)
+        .with_columns(missed=pl.col("margin") * pl.col("sets"))
     )
+
+
+def _cards(turn_ins: pl.DataFrame, latest, hours: int) -> tuple[list, int]:
+    paid = paying_cards(turn_ins.filter(pl.col("observed_at") > latest - timedelta(hours=hours)))
     if paid.is_empty():
-        return [], 0.0
+        return [], 0
     per = (
-        paid.with_columns(sets=pl.col("card_volume") / pl.col("stack_size"))
-        .group_by("item_id", "card", "reward")
+        paid.group_by("item_id", "card", "reward")
         .agg(
-            missed=(pl.col("margin") * pl.col("sets")).sum(),
+            missed=pl.col("missed").sum(),
             margin=pl.col("margin").sort_by("observed_at").last(),
             set_cost=pl.col("set_cost").sort_by("observed_at").last(),
             sets=pl.col("sets").sum(),
             hours_paid=pl.len(),
         )
         .rename({"card": "name"})
-        .sort(["missed", "item_id"], descending=[True, False])
+        .sort(["hours_paid", "missed", "item_id"], descending=[True, True, False])
     )
-    return per.head(TOP).to_dicts(), float(per["missed"].sum())
+    return per.head(TOP).to_dicts(), per.height
 
 
 def missed(con: duckdb.DuckDBPyConnection, league: str) -> list[dict]:
@@ -178,8 +204,8 @@ def missed(con: duckdb.DuckDBPyConnection, league: str) -> list[dict]:
     out = []
     for hours in LOOKBACKS:
         up, down, volatile = _movement(prices, latest, hours)
-        top_loops, loops_total = _loops(loops, latest, hours)
-        top_cards, cards_total = _cards(turn_ins, latest, hours)
+        top_loops, loops_paid = _loops(loops, latest, hours)
+        top_cards, cards_paid = _cards(turn_ins, latest, hours)
         out.append(
             {
                 "hours": hours,
@@ -189,8 +215,8 @@ def missed(con: duckdb.DuckDBPyConnection, league: str) -> list[dict]:
                 "volatile": volatile,
                 "loops": top_loops,
                 "cards": top_cards,
-                "loops_missed": loops_total,
-                "cards_missed": cards_total,
+                "loops_paid": loops_paid,
+                "cards_paid": cards_paid,
             }
         )
     return out

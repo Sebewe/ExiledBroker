@@ -6,7 +6,7 @@ import { FreshnessBadge } from './Freshness'
 
 // `featured`: the two pages to start from, lit up in the bar.
 const NAV = [
-  { to: '/', label: 'Missed opportunities', icon: Hourglass, end: true, featured: true },
+  { to: '/', label: 'Market recap', icon: Hourglass, end: true, featured: true },
   { to: '/backtest', label: 'Backtest', icon: FlaskConical, featured: true },
   { to: '/launch', label: 'Launch market', icon: CandlestickChart },
   { to: '/arbitrage', label: 'Arbitrage', icon: ArrowLeftRight },

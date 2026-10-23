@@ -816,13 +816,15 @@ export interface components {
             name: string;
             /** Price */
             price: number | null;
+            /** Volume */
+            volume: number;
         };
         /** MissedWindow */
         MissedWindow: {
             /** Cards */
             cards: components["schemas"]["MissedCard"][];
-            /** Cards Missed */
-            cards_missed: number;
+            /** Cards Paid */
+            cards_paid: number;
             /** Falling */
             falling: components["schemas"]["Mover"][];
             /** Hours */
@@ -834,8 +836,8 @@ export interface components {
             latest_hour: string;
             /** Loops */
             loops: components["schemas"]["MissedLoop"][];
-            /** Loops Missed */
-            loops_missed: number;
+            /** Loops Paid */
+            loops_paid: number;
             /** Rising */
             rising: components["schemas"]["Mover"][];
             /** Volatile */

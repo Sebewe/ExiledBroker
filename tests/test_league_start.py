@@ -83,13 +83,13 @@ def test_every_endpoint_works_in_the_first_hours(settings, hours_in):
         assert (
             w["latest_hour"] == f"{cx.from_ts(LAUNCH + (hours_in - 1) * 3600):%Y-%m-%dT%H:%M:%S}Z"
         )
-        assert w["loops_missed"] >= 0 and w["cards_missed"] >= 0
+        assert w["loops_paid"] >= 0 and w["cards_paid"] >= 0
         for key in ("rising", "falling", "volatile", "loops", "cards"):
             assert len(w[key]) <= 3
     sections = [w[k] for w in recap for k in ("rising", "falling", "volatile", "loops", "cards")]
     if hours_in == 1:
         # One hour in: nothing to compare against and too thin to count, but no errors.
-        assert not any(sections) and recap[0]["loops_missed"] == recap[0]["cards_missed"] == 0
+        assert not any(sections) and recap[0]["loops_paid"] == recap[0]["cards_paid"] == 0
     if hours_in == 3:
         # By the third hour something shows (Allflame: the Divine rising, a loop, cards)...
         assert any(sections)

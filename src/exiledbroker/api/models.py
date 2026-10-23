@@ -257,10 +257,11 @@ class MissedLoop(BaseModel):
     item_id: str
     name: str
     direction: str  # chaos_first | divine_first
-    missed: float  # Chaos left on the table: edge × volume in both markets, paying hours
+    missed: float  # Chaos it could have made: edge × volume in both markets, paying hours
     best_edge: float
     hours_paid: int
     price: float | None
+    volume: float  # Chaos traded through both markets, per paying hour
 
 
 class MissedCard(BaseModel):
@@ -282,8 +283,8 @@ class MissedWindow(BaseModel):
     volatile: list[Volatile]
     loops: list[MissedLoop]
     cards: list[MissedCard]
-    loops_missed: float  # every paying loop, not just the top ones
-    cards_missed: float
+    loops_paid: int  # how many items' loops paid, not just the top ones
+    cards_paid: int
 
 
 class BacktestAssumptions(BaseModel):
