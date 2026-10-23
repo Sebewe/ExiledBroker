@@ -41,7 +41,7 @@ After that:
 | **Live market** (landing) | The best Chaos↔Divine loops and card flips right now, ranked on the latest published hours | `/api/status`, `/api/live/{league}/loops`, `/api/live/{league}/card-flips` |
 | **Arbitrage** | Cross-market loops scored across leagues, with hourly charts | `/api/arbitrage`, `/api/arbitrage/hourly` |
 | **Card turn-ins** | Card sets whose fixed reward is worth more than the set, scored | `/api/cards/{league}`, `/api/cards/{league}/{card}/hourly` |
-| **Launch market** | Currency, essence, scarab and card prices over a league's first 14 days | `/api/market/...` |
+| **Launch market** | What to buy on day 1, days 2–4 and days 5–10 with a couple of Divines, ranked from the last five leagues | `/api/launch/picks` |
 | **About** | Sources and credits | |
 
 "Now" is the latest published exchange hour, about an hour behind real time. Every page handles a league with no data yet, the first hours, and a stopped feed. Interactive API docs are at `/docs` when the API is running.

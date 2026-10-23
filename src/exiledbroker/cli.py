@@ -448,6 +448,27 @@ def live_watch(
             time.sleep(max(60.0, (next_run - datetime.now(UTC)).total_seconds()))
 
 
+launch_app = typer.Typer(help="Launch picks: what to buy early in a league.", no_args_is_help=True)
+app.add_typer(launch_app, name="launch")
+
+
+@launch_app.command("picks")
+def launch_picks_build() -> None:
+    """Rank what to buy on day 1, days 2-4 and days 5-10 from the newest five leagues
+    with a complete launch fortnight, in the local database (copy them to the site
+    with `eb site seed`). Reads only what's loaded; makes no requests."""
+    from exiledbroker.services import launch_picks
+
+    with db.session() as con:
+        db.init_schema(con)
+        leagues = launch_picks.complete_leagues(con)[: launch_picks.REFERENCE_LEAGUES]
+        rows = launch_picks.build(con, leagues)
+    if not leagues:
+        typer.echo("No league with a complete launch fortnight loaded yet.")
+        raise typer.Exit(1)
+    typer.echo(f"Ranked from {', '.join(leagues)}: {rows['launch_pick']} picks")
+
+
 perf_app = typer.Typer(help="Local performance measurements (not part of the site).")
 app.add_typer(perf_app, name="perf")
 

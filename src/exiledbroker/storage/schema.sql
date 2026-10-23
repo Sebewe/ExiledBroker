@@ -218,3 +218,42 @@ CREATE TABLE IF NOT EXISTS ingest_run (
     error          VARCHAR,
     PRIMARY KEY (league_id, started_at)
 );
+
+-- Launch picks (the Launch market page): what to buy in each early-league window, ranked
+-- from past leagues' hourly prices by `eb launch picks` on the research database and
+-- copied to the site by `eb site seed`. Past leagues don't change, so this is rebuilt
+-- only when a league's launch fortnight completes. A rebuild replaces every row.
+CREATE TABLE IF NOT EXISTS launch_window (
+    window_id     VARCHAR PRIMARY KEY,  -- 'day1' | 'days2_4' | 'days5_10'
+    first_day     INTEGER NOT NULL,     -- 1-based launch days the window covers
+    last_day      INTEGER NOT NULL,
+    sell_first    INTEGER NOT NULL,     -- the days the picks are sold in
+    sell_last     INTEGER NOT NULL,
+    leagues       VARCHAR NOT NULL,     -- the reference leagues, newest first, comma-separated
+    chaos_growth  DOUBLE PRECISION,     -- Chaos held from the window to the sale, in Divines
+    typical_growth DOUBLE PRECISION,    -- the median affordable item's, in Divines
+    candidates    INTEGER NOT NULL,     -- items that passed the filters
+    built_at      TIMESTAMP NOT NULL
+);
+CREATE TABLE IF NOT EXISTS launch_pick (
+    window_id  VARCHAR NOT NULL,
+    item_id    VARCHAR NOT NULL,
+    rank       INTEGER NOT NULL,
+    name       VARCHAR NOT NULL,
+    group_id   VARCHAR NOT NULL,
+    score      DOUBLE PRECISION NOT NULL,
+    growth     DOUBLE PRECISION NOT NULL,  -- typical sale/buy multiple in Divines (recency-weighted)
+    worst      DOUBLE PRECISION NOT NULL,  -- the worst league's multiple
+    rose       INTEGER NOT NULL,           -- leagues where it beat holding Divines
+    traded     INTEGER NOT NULL,           -- leagues it traded in, in the window and the sale
+    buy_divine DOUBLE PRECISION NOT NULL,  -- typical unit price in the window, in Divines
+    liquidity  DOUBLE PRECISION NOT NULL,  -- Divines traded a day (the thinner of buy and sale)
+    PRIMARY KEY (window_id, item_id)
+);
+CREATE TABLE IF NOT EXISTS launch_pick_league (
+    window_id VARCHAR NOT NULL,
+    item_id   VARCHAR NOT NULL,
+    league    VARCHAR NOT NULL,
+    growth    DOUBLE PRECISION NOT NULL,
+    PRIMARY KEY (window_id, item_id, league)
+);

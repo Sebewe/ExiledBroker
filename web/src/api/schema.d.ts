@@ -103,6 +103,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/launch/picks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Picks
+         * @description What to buy in each early-league window, ranked from past leagues (empty until
+         *     `eb launch picks` has been run on the research database and seeded).
+         */
+        get: operations["picks_api_launch_picks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/leagues": {
         parameters: {
             query?: never;
@@ -414,6 +435,72 @@ export interface components {
             row_count: number;
             /** Start At */
             start_at: string | null;
+        };
+        /** LaunchPick */
+        LaunchPick: {
+            /** Buy Divine */
+            buy_divine: number;
+            /** Group Id */
+            group_id: string;
+            /** Growth */
+            growth: number;
+            /** Item Id */
+            item_id: string;
+            /** Leagues */
+            leagues: components["schemas"]["LeagueGrowth"][];
+            /** Liquidity */
+            liquidity: number;
+            /** Live Divine */
+            live_divine: number | null;
+            /** Name */
+            name: string;
+            /** Rank */
+            rank: number;
+            /** Rose */
+            rose: number;
+            /** Score */
+            score: number;
+            /** Traded */
+            traded: number;
+            /** Worst */
+            worst: number;
+        };
+        /** LaunchWindow */
+        LaunchWindow: {
+            /**
+             * Built At
+             * Format: date-time
+             */
+            built_at: string;
+            /** Candidates */
+            candidates: number;
+            /** Chaos Growth */
+            chaos_growth: number | null;
+            /** First Day */
+            first_day: number;
+            /** Last Day */
+            last_day: number;
+            /** Leagues */
+            leagues: string[];
+            /** Live League */
+            live_league: string | null;
+            /** Picks */
+            picks: components["schemas"]["LaunchPick"][];
+            /** Sell First */
+            sell_first: number;
+            /** Sell Last */
+            sell_last: number;
+            /** Typical Growth */
+            typical_growth: number | null;
+            /** Window Id */
+            window_id: string;
+        };
+        /** LeagueGrowth */
+        LeagueGrowth: {
+            /** Growth */
+            growth: number | null;
+            /** League */
+            league: string;
         };
         /** LiveLeague */
         LiveLeague: {
@@ -793,6 +880,26 @@ export interface operations {
                     "application/json": {
                         [key: string]: string;
                     };
+                };
+            };
+        };
+    };
+    picks_api_launch_picks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LaunchWindow"][];
                 };
             };
         };

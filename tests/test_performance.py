@@ -121,6 +121,7 @@ API_BUDGET = {
     "/api/cards/{league}": (30, 8_000),  # 4 rows, 1.2 KB
     "/api/market/{league}/summary?group=currency&group=divination": (150, 30_000),  # 32, 5.6 KB
     "/api/market/{league}/hourly?item_id=currency:divine-orb": (150, 24_000),  # 30, 4.6 KB
+    "/api/launch/picks": (60, 2_000),  # no picks in the replay; up to 30 picks hosted
 }
 # Endpoints about one league must not read more as other leagues' history accumulates,
 # except a row per league in league lists.

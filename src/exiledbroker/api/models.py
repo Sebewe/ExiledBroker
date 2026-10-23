@@ -186,3 +186,39 @@ class CalendarLeague(BaseModel):
     end_date: date | None
     length_days: int | None
     price_rows: float | None
+
+
+class LeagueGrowth(BaseModel):
+    league: str
+    growth: float | None  # sale price / buy price in Divines; null: didn't trade there
+
+
+class LaunchPick(BaseModel):
+    rank: int
+    item_id: str
+    name: str
+    group_id: str
+    score: float
+    growth: float  # typical multiple in Divines, recency-weighted
+    worst: float  # the worst reference league's multiple
+    rose: int  # reference leagues where it beat holding Divines
+    traded: int  # reference leagues it traded in, in the window and the sale
+    buy_divine: float  # typical unit price in the window, in Divines
+    liquidity: float  # Divines traded a day, the thinner of window and sale
+    leagues: list[LeagueGrowth]  # newest first
+    live_divine: float | None  # latest price in live_league, last 6 hours
+
+
+class LaunchWindow(BaseModel):
+    window_id: str
+    first_day: int  # 1-based launch days
+    last_day: int
+    sell_first: int
+    sell_last: int
+    leagues: list[str]  # the reference leagues, newest first
+    chaos_growth: float | None  # Chaos held from the window to the sale, in Divines
+    typical_growth: float | None  # the median affordable item's multiple
+    candidates: int
+    built_at: datetime
+    live_league: str | None  # the newest league with trades (its prices are live_divine)
+    picks: list[LaunchPick]

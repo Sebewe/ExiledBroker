@@ -13,8 +13,8 @@ export type TurnIn = Schemas['TurnIn']
 export type TurnInHour = Schemas['TurnInHour']
 export type HourlyLeague = Schemas['HourlyLeague']
 export type Group = Schemas['Group']
-export type MarketItem = Schemas['MarketItem']
-export type MarketHour = Schemas['MarketHour']
+export type LaunchWindow = Schemas['LaunchWindow']
+export type LaunchPick = Schemas['LaunchPick']
 
 // Same origin: the API serves this app in production, and Vite proxies /api in development.
 export const api = createClient<paths>({

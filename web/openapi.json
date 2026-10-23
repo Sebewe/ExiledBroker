@@ -629,6 +629,210 @@
         "title": "HourlyLeague",
         "type": "object"
       },
+      "LaunchPick": {
+        "properties": {
+          "buy_divine": {
+            "title": "Buy Divine",
+            "type": "number"
+          },
+          "group_id": {
+            "title": "Group Id",
+            "type": "string"
+          },
+          "growth": {
+            "title": "Growth",
+            "type": "number"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "string"
+          },
+          "leagues": {
+            "items": {
+              "$ref": "#/components/schemas/LeagueGrowth"
+            },
+            "title": "Leagues",
+            "type": "array"
+          },
+          "liquidity": {
+            "title": "Liquidity",
+            "type": "number"
+          },
+          "live_divine": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Live Divine"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          },
+          "rose": {
+            "title": "Rose",
+            "type": "integer"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "traded": {
+            "title": "Traded",
+            "type": "integer"
+          },
+          "worst": {
+            "title": "Worst",
+            "type": "number"
+          }
+        },
+        "required": [
+          "rank",
+          "item_id",
+          "name",
+          "group_id",
+          "score",
+          "growth",
+          "worst",
+          "rose",
+          "traded",
+          "buy_divine",
+          "liquidity",
+          "leagues",
+          "live_divine"
+        ],
+        "title": "LaunchPick",
+        "type": "object"
+      },
+      "LaunchWindow": {
+        "properties": {
+          "built_at": {
+            "format": "date-time",
+            "title": "Built At",
+            "type": "string"
+          },
+          "candidates": {
+            "title": "Candidates",
+            "type": "integer"
+          },
+          "chaos_growth": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chaos Growth"
+          },
+          "first_day": {
+            "title": "First Day",
+            "type": "integer"
+          },
+          "last_day": {
+            "title": "Last Day",
+            "type": "integer"
+          },
+          "leagues": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Leagues",
+            "type": "array"
+          },
+          "live_league": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Live League"
+          },
+          "picks": {
+            "items": {
+              "$ref": "#/components/schemas/LaunchPick"
+            },
+            "title": "Picks",
+            "type": "array"
+          },
+          "sell_first": {
+            "title": "Sell First",
+            "type": "integer"
+          },
+          "sell_last": {
+            "title": "Sell Last",
+            "type": "integer"
+          },
+          "typical_growth": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Typical Growth"
+          },
+          "window_id": {
+            "title": "Window Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "window_id",
+          "first_day",
+          "last_day",
+          "sell_first",
+          "sell_last",
+          "leagues",
+          "chaos_growth",
+          "typical_growth",
+          "candidates",
+          "built_at",
+          "live_league",
+          "picks"
+        ],
+        "title": "LaunchWindow",
+        "type": "object"
+      },
+      "LeagueGrowth": {
+        "properties": {
+          "growth": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Growth"
+          },
+          "league": {
+            "title": "League",
+            "type": "string"
+          }
+        },
+        "required": [
+          "league",
+          "growth"
+        ],
+        "title": "LeagueGrowth",
+        "type": "object"
+      },
       "LiveLeague": {
         "properties": {
           "divine_chaos": {
@@ -1999,6 +2203,32 @@
         "summary": "Health",
         "tags": [
           "meta"
+        ]
+      }
+    },
+    "/api/launch/picks": {
+      "get": {
+        "description": "What to buy in each early-league window, ranked from past leagues (empty until\n`eb launch picks` has been run on the research database and seeded).",
+        "operationId": "picks_api_launch_picks_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LaunchWindow"
+                  },
+                  "title": "Response Picks Api Launch Picks Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Picks",
+        "tags": [
+          "market"
         ]
       }
     },

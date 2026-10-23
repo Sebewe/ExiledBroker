@@ -115,36 +115,7 @@ export function useCardHourly(
   )
 }
 
-export function useMarketLeagues() {
-  return useVersioned(['market-leagues'], () => unwrap(api.GET('/api/market/leagues')))
-}
-
-export function useGroups() {
-  return useVersioned(['groups'], () => unwrap(api.GET('/api/market/groups')))
-}
-
-export function useMarketSummary(league: string | undefined, group: string[], unit: 'chaos' | 'divine') {
-  return useVersioned(
-    ['market-summary', league, group, unit],
-    () =>
-      unwrap(
-        api.GET('/api/market/{league}/summary', {
-          params: { path: { league: league! }, query: { group, unit } },
-        }),
-      ),
-    !!league && group.length > 0,
-  )
-}
-
-export function useMarketHourly(league: string | undefined, itemIds: string[], unit: 'chaos' | 'divine') {
-  return useVersioned(
-    ['market-hourly', league, itemIds, unit],
-    () =>
-      unwrap(
-        api.GET('/api/market/{league}/hourly', {
-          params: { path: { league: league! }, query: { item_id: itemIds, unit } },
-        }),
-      ),
-    !!league && itemIds.length > 0,
-  )
+/** Ranked from past leagues; the live prices in it change with each loaded hour. */
+export function useLaunchPicks() {
+  return useVersioned(['launch-picks'], () => unwrap(api.GET('/api/launch/picks')))
 }

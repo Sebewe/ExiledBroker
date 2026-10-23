@@ -5,7 +5,8 @@ hosted worker would have written for those leagues, and nothing else ("store onl
 what the site reads"). In production the worker writes Postgres itself, incrementally.
 
 Re-seeding a league replaces that league's rows only. Shared tables (items, card
-and price mappings, reference data) are upserted, so other leagues' rows survive."""
+and price mappings, reference data) are upserted, so other leagues' rows survive. The
+launch picks, ranked from past leagues the site doesn't hold, are replaced whole."""
 
 from dataclasses import dataclass
 
@@ -25,6 +26,8 @@ SHARED_TABLES = {
     "divination_card": ["item_id"],
     "reference_data": ["key"],
 }
+# Derived from the research database's history and replaced whole (services/launch_picks).
+REPLACED_TABLES = ["launch_window", "launch_pick", "launch_pick_league"]
 
 
 @dataclass
@@ -99,6 +102,18 @@ def seed(duck: duckdb.DuckDBPyConnection, pg, league_names: list[str]) -> SeedRe
                 _upsert(pg, table, SHARED_TABLES[table], cols, data)
             else:
                 _copy(pg, table, cols, data)
+            counts[table] = len(data)
+        for table in REPLACED_TABLES:
+            pg.execute(f"DELETE FROM {table}")
+            if not db.scalar(
+                duck,
+                "SELECT count(*) FROM information_schema.tables WHERE table_name = ?",
+                [table],
+            ):
+                continue  # `eb launch picks` hasn't been run locally yet
+            cols = _columns(duck, table)
+            data = db.rows(duck, f"SELECT {', '.join(cols)} FROM {table}")
+            _copy(pg, table, cols, data)
             counts[table] = len(data)
     pg.execute("ANALYZE")
     return SeedResult(league_names, counts)

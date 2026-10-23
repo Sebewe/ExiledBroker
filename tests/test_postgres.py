@@ -19,7 +19,15 @@ from exiledbroker.analysis import launch_patterns as lp
 from exiledbroker.config import Settings
 from exiledbroker.ingest import currency_exchange as cx
 from exiledbroker.ingest.live import sync_live
-from exiledbroker.services import cross_market, divination, live, market, overview, prices
+from exiledbroker.services import (
+    cross_market,
+    divination,
+    launch_picks,
+    live,
+    market,
+    overview,
+    prices,
+)
 from exiledbroker.storage import db, site
 from test_currency_exchange import FakeExchange, client_for
 from test_live_pipeline import LAUNCH, PAGES, store_reference_data
@@ -98,6 +106,9 @@ def _cases(duck) -> dict:
             c, groups[0], leagues, bucket_hours=1, min_baseline_hours=1
         ),
         "lp.turn_ins_across_leagues": lambda c: lp.turn_ins_across_leagues(c, leagues, weights),
+        "launch_picks.window_prices": lambda c: launch_picks.window_prices(c, leagues),
+        "launch_picks.complete_leagues": lambda c: launch_picks.complete_leagues(c),
+        "launch_picks.launch_board": lambda c: launch_picks.launch_board(c),
     }
 
 

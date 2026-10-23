@@ -48,6 +48,7 @@ docker compose --profile worker up -d        # also the live worker (makes reque
 .venv/bin/eb dumps sync && .venv/bin/eb dumps load   # daily poe.ninja dumps → tables
 .venv/bin/eb exchange sync [-l Mirage]               # hourly GGG exchange, first 14 days per league
 .venv/bin/eb live sync|watch [-l Allflame]           # running league: launch fortnight + latest 14 days
+.venv/bin/eb launch picks                             # rank the Launch market picks from past leagues (then `eb site seed`)
 scripts/ingest.sh [exchange|dumps|all|live]          # unattended runner, logs to data/logs/latest.log
 ```
 
