@@ -145,7 +145,7 @@ export default function Missed() {
         </div>
       )}
       {upcoming && <Countdown upcoming={upcoming} compact />}
-      <FreshnessBanner league={info} now={serverNow} />
+      <FreshnessBanner league={info} now={serverNow} upcoming={upcoming} />
       {info.latest_hour && early && (
         <Notice kind="info" title="Looks like it's early in the league">
           Waiting for more data to flow in before we can make our predictions. The exchange fills up over the first hours, so these lists stay thin for now and

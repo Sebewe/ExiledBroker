@@ -5,6 +5,11 @@ tools are tested against the API's actual output, not hand-written markets.
 - mirage_launch.json.gz: Mirage's first 30 hours, trimmed to a handful of items.
 - allflame_start.json.gz: Allflame's first 3 hours, every Allflame market untrimmed:
   what the site sees at a league's start, when the exchange is still mostly empty.
+- league_switch.json.gz: the switch to Allflame as the exchange showed it: the 2 hours
+  before its launch (Mirage had ended 4 days earlier; only Standard and an event
+  league trading) and its first 4 hours, every Allflame market, the other leagues
+  trimmed to a few currencies. `new_ids` are the items Allflame traded that no page
+  before its launch had, so tests can drop them from RePoE (RePoE lagging a launch).
 
 Run from the repo root (after `eb exchange sync -l Mirage` and `eb live sync -l
 Allflame`; it reads pages already on disk and fetches nothing):
@@ -61,9 +66,53 @@ def allflame_start(base_items: dict) -> None:
     print(f"{out}: {ALLFLAME_HOURS} hours, {markets} markets, {len(ids)} items")
 
 
+SWITCH_FROM, SWITCH_TO = ALLFLAME_LAUNCH - 2 * 3600, ALLFLAME_LAUNCH + 4 * 3600
+OTHERS = {"Chaos Orb", "Divine Orb", "Orb of Alchemy", "Exalted Orb"}
+
+
+def league_switch(base_items: dict) -> None:
+    others = {k for k, v in base_items.items() if v.get("name") in OTHERS}
+    pages = {}
+    for ts in range(SWITCH_FROM, SWITCH_TO, 3600):
+        page = _page(ts)
+        page["markets"] = [
+            m
+            for m in page["markets"]
+            if m["league"] == "Allflame" or all(x in others for x in m["market_pair"])
+        ]
+        pages[str(ts)] = page
+    seen = set()
+    for path in (RAW / "ggg" / "currency_exchange").glob("*.json.gz"):
+        if int(path.name.split(".")[0]) < ALLFLAME_LAUNCH:
+            with gzip.open(path, "rt") as f:
+                seen |= {x for m in json.load(f)["markets"] for x in m["market_pair"]}
+    used = {x for p in pages.values() for m in p["markets"] for x in m["market_pair"]}
+    allflame = {
+        x
+        for p in pages.values()
+        for m in p["markets"]
+        if m["league"] == "Allflame"
+        for x in m["market_pair"]
+    }
+    new_ids = sorted(allflame - seen)
+    fixture = {
+        "league": "Allflame",
+        "launch": ALLFLAME_LAUNCH,
+        "pages": pages,
+        "base_items": {k: v for k, v in base_items.items() if k in used},
+        "new_ids": new_ids,
+    }
+    out = Path(__file__).parent / "league_switch.json.gz"
+    with gzip.open(out, "wt") as f:
+        json.dump(fixture, f)
+    markets = sum(len(p["markets"]) for p in pages.values())
+    print(f"{out}: {len(pages)} hours, {markets} markets, {len(new_ids)} new items")
+
+
 def main() -> None:
     base_items = json.loads((RAW / "repoe" / "base_items.min.json").read_text())
     allflame_start(base_items)
+    league_switch(base_items)
     ids = {k: v for k, v in base_items.items() if v.get("name") in KEEP}
     pages = {}
     for ts in range(LAUNCH, LAUNCH + HOURS * 3600, 3600):

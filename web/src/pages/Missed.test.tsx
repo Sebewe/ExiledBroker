@@ -139,6 +139,19 @@ describe('Missed opportunities', () => {
     expect(await screen.findByRole('region', { name: 'Recap' })).toBeInTheDocument()
   })
 
+  it('says the old league has ended, not that the feed stopped, once the next is announced', async () => {
+    // Leagues end days before the next one launches: the old one's last hours are stale.
+    const upcoming = { name: 'Next', start_at: iso(26 * 60 * MIN), first_data_at: iso(27 * 60 * MIN) }
+    serve({
+      '/api/status': { body: { now: NOW, data_version: 'v1', leagues: [league('2026-10-20T08:00:00Z')], upcoming } },
+      '/api/missed/Allflame': { body: RECAP },
+    })
+    renderPage()
+    expect(await screen.findByText('Allflame has ended')).toBeInTheDocument()
+    expect(screen.queryByText('Data may be out of date')).not.toBeInTheDocument()
+    expect(await screen.findByRole('region', { name: 'Recap' })).toBeInTheDocument()
+  })
+
   it('says it is early when the league has only a few hours of trades', async () => {
     const first = { ...league('2026-10-22T08:00:00Z'), launched_at: '2026-10-22T08:00:00Z' }
     serve({

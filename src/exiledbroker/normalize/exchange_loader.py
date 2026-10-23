@@ -108,6 +108,17 @@ def resolve_names(metadata_ids: list[str], names: dict[str, BaseItem]) -> list[t
     return rows
 
 
+def renamed_items(con: duckdb.DuckDBPyConnection, names: dict[str, BaseItem]) -> list[str]:
+    """Stored items whose metadata id RePoE now names differently (e.g. a new league's
+    item stored under its placeholder before RePoE knew it): their hours must be
+    reloaded, or the item would split in two. Returns the old item ids."""
+    stored = db.rows(con, "SELECT id, metadata_id FROM item WHERE metadata_id IS NOT NULL")
+    if not stored:
+        return []
+    resolved = {mid: item_id for mid, item_id, _, _ in resolve_names([m for _, m in stored], names)}
+    return sorted(item_id for item_id, mid in stored if resolved[mid] != item_id)
+
+
 def _stage_names(con: duckdb.DuckDBPyConnection, metadata_ids: list[str], names) -> None:
     con.execute(
         "CREATE OR REPLACE TEMP TABLE stage_names "

@@ -1,5 +1,5 @@
 import { useServerNow, useStatus } from '../api/queries'
-import type { LiveLeague } from '../api/client'
+import type { LiveLeague, Upcoming } from '../api/client'
 import { freshness } from '../lib/freshness'
 import { duration, utcHour } from '../lib/format'
 import { Notice } from './Notice'
@@ -20,8 +20,10 @@ export function FreshnessBadge() {
   )
 }
 
-/** The landing page's banner: the latest hour, and whether the feed looks stopped. */
-export function FreshnessBanner({ league, now }: { league: LiveLeague; now: number }) {
+/** The landing page's banner: the latest hour, and whether the feed looks stopped. With
+ * a next league announced, a league that stopped trading has ended (leagues end days
+ * before the next one launches), so it says so instead of warning about the feed. */
+export function FreshnessBanner({ league, now, upcoming }: { league: LiveLeague; now: number; upcoming?: Upcoming | null }) {
   if (!league.latest_hour) {
     return (
       <Notice kind="waiting" title={league.launched_at ? 'Waiting for the first trades' : 'Waiting for launch'}>
@@ -33,6 +35,12 @@ export function FreshnessBanner({ league, now }: { league: LiveLeague; now: numb
   }
   const f = freshness(league, now)!
   const text = `Latest published hour: ${utcHour(league.latest_hour)} (ended ${duration(f.age)} ago).`
+  if (f.stale && upcoming)
+    return (
+      <Notice kind="info" title={`${league.name} has ended`}>
+        Its last trades were published for {utcHour(league.latest_hour)}. This is a recap of its final hours until {upcoming.name} launches.
+      </Notice>
+    )
   return f.stale ? (
     <Notice kind="warning" title="Data may be out of date">
       {text} That's older than expected, so the live feed may have stopped.

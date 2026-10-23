@@ -7,8 +7,9 @@ rebuild re-reads them instead of fetching again), and the Launch history the pic
 are ranked from. No DuckDB file and no disk: the loader runs on an in-memory DuckDB
 with Postgres attached (`db.site_writer`). Each pass:
 
-1. picks the league: the announced next league once it has started (settings),
-   else poe.ninja's current one, checked at most hourly with a conditional request;
+1. picks the league: the announced next league once it has started (settings), else
+   the one already followed (`pick_league`: never Standard or an event in the days
+   between leagues);
 2. loads the newly published hours (`live.sync_live`, which records the run and
    prunes pages that left the window);
 3. once the live league's launch fortnight is over, adds it to the Launch history and
@@ -30,6 +31,7 @@ from exiledbroker.ingest import currency_exchange as cx
 from exiledbroker.ingest.http import PoliteClient
 from exiledbroker.ingest.live import LiveStatus, sync_live
 from exiledbroker.services import launch_picks
+from exiledbroker.services.live import live_leagues
 from exiledbroker.storage import db, site
 
 LEAGUES_MAX_AGE = timedelta(hours=1)  # a new league must be picked up within the hour
@@ -63,20 +65,56 @@ def hosted(settings: Settings) -> Settings:
     return settings.model_copy(update={"exchange_pages": "database"})
 
 
+def challenge_like(name: str) -> bool:
+    """Could `name` be a challenge league? Rules out the permanent leagues and the
+    variants poe.ninja lists next to a challenge league (Hardcore, Ruthless, SSF) and
+    private leagues. Event leagues can't be told apart by name, which is why
+    poe.ninja's list is only a fallback (see `pick_league`)."""
+    lowered = name.lower()
+    return not (
+        lowered in ("standard", "hardcore", "ruthless", "hardcore ruthless")
+        or lowered.startswith(("hardcore ", "hc ", "ruthless ", "ssf ", "solo self-found"))
+        or "(pl" in lowered
+    )
+
+
 def pick_league(client: PoliteClient, settings: Settings, now: datetime) -> str:
-    """The announced next league once it has started, else poe.ninja's current
-    challenge league (its first listed), from the copy checked within the hour."""
+    """The league to follow this pass.
+
+    1. The announced next league (EB_NEXT_LEAGUE / _START), once it has started.
+    2. Else the league the site already follows (the newest in the database), even
+       after it has stopped trading: an old league ends days before the next one
+       launches, and in between only Standard and event leagues trade. It's never
+       swapped for whatever poe.ninja lists first in that gap.
+    3. Else (a database with no league yet) poe.ninja's first challenge-like league,
+       from the copy checked within the hour."""
     start = settings.next_league_start
     if settings.next_league and start:
         start = start if start.tzinfo else start.replace(tzinfo=UTC)
         if now >= start:
             return settings.next_league
-    url = f"{settings.poe_ninja_base_url}/poe1/api/economy/leagues"
     with db.site_writer(settings) as con:
+        followed = live_leagues(con)
+        if followed.height:
+            return followed["name"][0]
+        url = f"{settings.poe_ninja_base_url}/poe1/api/economy/leagues"
         leagues = reference.fetch_if_changed(
             con, client, core_pool.LEAGUES_KEY, url, json.loads, LEAGUES_MAX_AGE
         ).value
-    return leagues[0]["id"]
+    names = [lg["id"] for lg in leagues if challenge_like(lg["id"])]
+    if not names:
+        raise LookupError("poe.ninja lists no challenge league; set EB_NEXT_LEAGUE")
+    return names[0]
+
+
+def launch_search_from(settings: Settings, league: str) -> datetime:
+    """Where the search for a league's first hour starts: a day before its announced
+    start (a dozen pages fewer than searching from 2024), else the exchange's start."""
+    start = settings.next_league_start
+    if settings.next_league == league and start:
+        start = start if start.tzinfo else start.replace(tzinfo=UTC)
+        return max(start - timedelta(days=1), cx.HISTORY_START)
+    return cx.HISTORY_START
 
 
 def _seeded(settings: Settings) -> bool:
@@ -100,7 +138,8 @@ def run(
         )
     moment = now or datetime.now(UTC)
     name = league or pick_league(client, settings, moment)
-    status = sync_live(client, settings, name, lookback_hours, now=now, earliest=cx.HISTORY_START)
+    earliest = launch_search_from(settings, name)
+    status = sync_live(client, settings, name, lookback_hours, now=now, earliest=earliest)
     result = PipelineResult(name, status)
     if status.state not in ("updated", "unchanged"):
         return result  # e.g. the announced league has no trades yet: keep the old one

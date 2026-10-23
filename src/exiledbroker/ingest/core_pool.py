@@ -89,22 +89,30 @@ def refresh_pool(
     con: duckdb.DuckDBPyConnection,
     settings: Settings,
     max_age: timedelta = timedelta(0),
+    league: str | None = None,
 ) -> CorePool:
-    """Check the current league's lists and the loot filter's card tiers for changes.
+    """Check a league's lists (default: poe.ninja's current league, its first listed)
+    and the loot filter's card tiers for changes.
 
     Each source is checked at most every `max_age` (0 = check now) with a conditional
-    request: unchanged sources answer "304 Not Modified" and aren't downloaded."""
+    request: unchanged sources answer "304 Not Modified" and aren't downloaded. A
+    `league` poe.ninja doesn't list (one that ended, or one so new poe.ninja hasn't
+    added it yet) keeps the stored lists: the pool never comes from another league,
+    such as Standard in the days between leagues."""
     base = f"{settings.poe_ninja_base_url}/poe1/api/economy"
     leagues = reference.fetch_if_changed(
         con, client, LEAGUES_KEY, f"{base}/leagues", json.loads, max_age
     ).value
-    league = leagues[0]["id"]
+    listed = [lg["id"] for lg in leagues]
+    league = league or listed[0]
 
     def parse(text: str) -> dict:
         items = json.loads(text).get("items", ())
         return {"league": league, "names": sorted(i["name"] for i in items)}
 
     for ninja_type in sorted({t for types in SOURCES.values() for t in types}):
+        if league not in listed:
+            break
         reference.fetch_if_changed(
             con,
             client,
@@ -126,7 +134,8 @@ def refresh_pool_if_stale(
     con: duckdb.DuckDBPyConnection,
     settings: Settings,
     max_age: timedelta = MAX_AGE,
+    league: str | None = None,
 ) -> CorePool:
     """The pool, checking its sources at most once a day (`max_age`): it changes with
     leagues and loot-filter updates, not hourly."""
-    return refresh_pool(client, con, settings, max_age)
+    return refresh_pool(client, con, settings, max_age, league)

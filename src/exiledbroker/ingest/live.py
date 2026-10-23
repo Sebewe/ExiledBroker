@@ -59,6 +59,19 @@ def current_league(client: PoliteClient, settings: Settings) -> str:
     return leagues[0]["id"]
 
 
+def _stored_names(con) -> dict:
+    try:
+        return item_names.load_base_items(con)
+    except LookupError:  # a new database: RePoE isn't stored yet
+        return {}
+
+
+def _unknown_ids(page: dict, league: str, names: dict) -> set[str]:
+    """Items the league trades in `page` that RePoE doesn't name (yet)."""
+    traded = {x for m in page["markets"] if m["league"] == league for x in m["market_pair"]}
+    return traded - set(names) if names else set()
+
+
 def _known_launch(settings: Settings, league_id: str) -> datetime | None:
     with db.site_writer(settings) as con:
         rows = db.rows(con, "SELECT launched_at FROM league WHERE id = ?", [league_id])
@@ -173,14 +186,24 @@ def _sync_live(
     # Only running leagues: an ended league has no recent hours, and loading an empty
     # window would replace its history.
     last = cx.latest_published_hour(client, settings, now)
-    if last is None or not cx.league_in_page(cx.fetch_page(client, settings, last), league):
+    latest = cx.fetch_page(client, settings, last) if last is not None else None
+    if latest is None or not cx.league_in_page(latest, league):
         return LiveStatus(league, "not_running")
     # Reference data from the database, refreshed only when stale (RePoE weekly, the
     # core pool and card tiers daily), so a fresh container doesn't re-download it.
+    # New league items can trade before RePoE knows them (a league's own currency, new
+    # cards): until it does they're checked daily, not weekly, and once their names
+    # arrive the league is rebuilt from its stored pages (no requests), so an item
+    # never splits into a placeholder and its real name.
     with db.site_writer(settings) as con:
-        item_names.ensure_base_items(client, settings, con)
+        known = _stored_names(con)
+        unknown = _unknown_ids(latest, league, known)
+        max_age = item_names.UNKNOWN_MAX_AGE if unknown else item_names.MAX_AGE
+        state = item_names.ensure_base_items(client, settings, con, max_age)
         names = item_names.load_base_items(con)
-        refresh_pool_if_stale(client, con, settings)
+        renamed = state == "downloaded" and exchange_loader.renamed_items(con, names)
+        refresh_pool_if_stale(client, con, settings, league=league)
+    force = force or bool(renamed)
     launched_at = _known_launch(settings, lid)
     if launched_at is None:
         launched_at = cx.find_launch(client, settings, league, now=now, earliest=earliest)
@@ -207,6 +230,9 @@ def _sync_live(
     with db.site_writer(settings) as con:
         con.execute("UPDATE league SET exchange_tracked = TRUE WHERE id = ?", [lid])
         loaded = exchange_loader.load_league(con, settings, result.window, names, force=force)
+        if renamed:  # their placeholders no longer stand for anything
+            for item_id in renamed:
+                con.execute("UPDATE item SET metadata_id = NULL WHERE id = ?", [item_id])
     fetched = cx.page_count(settings) - pages_before
     # Pages kept in the database: only the window's (a rebuild re-reads them).
     cx.prune_pages(settings, hours)

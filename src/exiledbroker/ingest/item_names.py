@@ -16,6 +16,8 @@ from exiledbroker.ingest.http import PoliteClient
 
 KEY = "repoe/base_items"
 MAX_AGE = timedelta(days=7)
+# While the exchange trades items RePoE doesn't know (a new league's first days).
+UNKNOWN_MAX_AGE = timedelta(days=1)
 
 
 @dataclass(frozen=True)
