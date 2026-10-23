@@ -783,14 +783,16 @@ function Flips({ flips, money }: { flips: MissedFlip[]; money: Money }) {
             <Opportunity
               key={f.item_id}
               title={f.name}
-              amount={`${Math.round(f.range * 100)}%`}
-              label="the latest hour's range"
-              muted
+              // What the flip makes if both orders fill at their first rates (before any cuts).
+              amount={signedPct(f.ask / f.bid - 1, 0)}
+              label="a flip, if both orders fill"
               footer={
                 <>
                   <span>
-                    <span className="num text-text">{money(f.volume)}</span> traded that hour
+                    <span className="num text-text">{Math.round(f.range * 100)}%</span> range last hour
                   </span>
+                  <span>
+                    <span className="num text-text">{money(f.volume)}</span> traded</span>
                   <span>average {money(f.price, f.high)}</span>
                 </>
               }

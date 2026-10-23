@@ -149,6 +149,8 @@ describe('Market recap', () => {
     expect(headings.indexOf('Volatile flips')).toBe(headings.indexOf('Loops that paid') - 1)
     const flips = screen.getByRole('heading', { name: 'Volatile flips' }).closest('section')!
     expect(within(flips).getByText('90%')).toBeInTheDocument() // went through, recently
+    // The flip's margin at its orders: 110c over 84c, and 5.5c over 4.2c (11c for 2 over 21c for 5).
+    expect(within(flips).getAllByText('+31%')).toHaveLength(2)
     expect(within(flips).getByText(/Too few tries/)).toBeInTheDocument() // the one with 1 try
     expect(within(flips).queryByText(/after 6 hours/)).not.toBeInTheDocument()
     fireEvent.click(within(flips).getAllByRole('button', { name: 'Show rates' })[0]!)
