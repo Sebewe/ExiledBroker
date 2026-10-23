@@ -1,4 +1,4 @@
-import { Activity, ArrowDownRight, ArrowUpRight, CandlestickChart, FlaskConical, Layers, Repeat, Tag, Timer, Waves } from 'lucide-react'
+import { Activity, AlertTriangle, ArrowDownRight, ArrowUpRight, CandlestickChart, FlaskConical, Layers, Repeat, Tag, Timer, Waves, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import type { LiveLeague, MissedCard, MissedFlip, MissedWindow, Mover, Upcoming } from '../api/client'
@@ -470,28 +470,61 @@ function quoted(x: number | null | undefined, currency: string | null | undefine
 }
 
 /** The orders the backtest's best option would place this hour, worded as an option. */
-function Orders({ steps, ok, skip, missing }: { steps: ReactNode[]; ok: boolean | null | undefined; skip: string; missing: boolean }) {
+interface Step {
+  verb: 'Buy' | 'Sell'
+  value: ReactNode // the order, large: "50c for 3"
+  note?: ReactNode // how to place it
+}
+
+/** The orders as numbered steps, the price large and how to place it underneath. */
+function Orders({
+  steps,
+  ok,
+  skip,
+  missing,
+  margin,
+}: {
+  steps: Step[]
+  ok: boolean | null | undefined
+  skip: string
+  missing: boolean
+  margin?: number | null
+}) {
+  if (missing) return <p className="text-sm text-muted">It didn't trade in the latest hour, so there's no price to order from.</p>
   return (
-    <div className="flex flex-col gap-1 rounded-md border border-border bg-bg/40 px-2.5 py-2 text-xs">
-      <span className="text-[11px] font-medium tracking-wide text-faint uppercase">Orders for this hour</span>
-      {missing ? (
-        <span className="text-muted">Didn't trade in the latest hour, so there's no price to order from.</span>
-      ) : (
-        <>
-          <ol className="flex flex-col gap-0.5 text-muted">
-            {steps.map((s, i) => (
-              <li key={i}>{s}</li>
-            ))}
-          </ol>
-          {ok === false && <span className="text-warning">{skip}</span>}
-        </>
+    <div className="flex flex-col gap-3">
+      <ol className="flex flex-col gap-3">
+        {steps.map((s, i) => (
+          <li key={i} className="grid grid-cols-[1.5rem_1fr] gap-x-3 gap-y-0.5">
+            <span className="num row-span-2 mt-0.5 grid size-6 place-items-center rounded-full bg-accent/15 text-xs font-semibold text-accent-strong">
+              {i + 1}
+            </span>
+            <div className="flex items-baseline gap-2">
+              <span className="w-8 text-[11px] font-semibold tracking-wide text-faint uppercase">{s.verb}</span>
+              <span className="num text-base font-semibold text-text">{s.value}</span>
+            </div>
+            {s.note && <p className="text-xs leading-relaxed text-muted">{s.note}</p>}
+          </li>
+        ))}
+      </ol>
+      {margin != null && (
+        <div className="flex items-baseline justify-between rounded-lg bg-positive/10 px-3 py-2">
+          <span className="text-xs text-muted">Margin if both fill</span>
+          <span className="num text-lg font-semibold text-positive">{signedPct(margin, 0)}</span>
+        </div>
+      )}
+      {ok === false && (
+        <p className="flex gap-2 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-xs leading-relaxed text-warning">
+          <AlertTriangle aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+          {skip}
+        </p>
       )}
     </div>
   )
 }
 
-/** A price range (by default the last 24 hours'): lowest to highest trade, the average,
- *  and where the order sits. */
+/** A price range (by default the last 24 hours'): lowest to highest trade, the average
+ *  (the tick) and where the order sits (the dot). */
 function RangeBar({
   low,
   avg,
@@ -500,7 +533,7 @@ function RangeBar({
   mark,
   markLabel,
   money,
-  label = '24h',
+  heading = 'Last 24 hours',
 }: {
   low: number | null | undefined
   avg: number | null | undefined
@@ -509,28 +542,34 @@ function RangeBar({
   mark?: number | null
   markLabel?: string
   money: Money
-  label?: string
+  heading?: string
 }) {
   if (low == null || high == null || !hours) return null
   const at = (x: number) => (high > low ? Math.min(100, Math.max(0, ((x - low) / (high - low)) * 100)) : 50)
   return (
-    <div className="flex flex-col gap-1" title={`${label === '24h' ? `Last 24 hours (${hours} traded)` : label}: low ${money(low, high)}, average ${money(avg, high)}, high ${money(high, high)}`}>
-      <div className="relative h-2 rounded-full bg-surface-2">
-        {avg != null && <span className="absolute top-0 h-2 w-0.5 -translate-x-1/2 bg-muted" style={{ left: `${at(avg)}%` }} />}
+    <div className="flex flex-col gap-2 border-t border-border pt-3">
+      <div className="flex items-baseline justify-between text-xs">
+        <span className="font-medium text-muted">{heading}</span>
+        {mark != null && (
+          <span className="flex items-center gap-1.5 text-faint">
+            <span className="size-2 rounded-full bg-accent" /> {markLabel}
+          </span>
+        )}
+      </div>
+      <div className="relative h-2.5 rounded-full bg-gradient-to-r from-info/30 to-warning/40" title={`low ${money(low, high)}, average ${money(avg, high)}, high ${money(high, high)}`}>
+        {avg != null && <span className="absolute -top-0.5 h-3.5 w-0.5 -translate-x-1/2 rounded bg-text/70" style={{ left: `${at(avg)}%` }} />}
         {mark != null && (
           <span
             aria-label={markLabel}
-            className="absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-bg bg-accent"
+            className="absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-surface-2 bg-accent"
             style={{ left: `${at(mark)}%` }}
           />
         )}
       </div>
-      <div className="num flex justify-between text-[11px] text-faint">
-        <span>
-          {label} low {money(low, high)}
-        </span>
-        <span>avg {money(avg, high)}</span>
-        <span>high {money(high, high)}</span>
+      <div className="num grid grid-cols-3 text-xs">
+        <span className="text-muted">low {money(low, high)}</span>
+        <span className="text-center text-muted">avg {money(avg, high)}</span>
+        <span className="text-right text-muted">high {money(high, high)}</span>
       </div>
     </div>
   )
@@ -547,7 +586,7 @@ function ShowAll({ all, total, onToggle }: { all: boolean; total: number; onTogg
 
 /** "Show rates": the orders sit behind a button. Hovering (or focusing) it shows them;
  *  clicking pins them open until a click anywhere else, or Escape. */
-function Rates({ label, children }: { label: string; children: ReactNode }) {
+function Rates({ label, title, children }: { label: string; title: string; children: ReactNode }) {
   const [hover, setHover] = useState(false)
   const [pinned, setPinned] = useState(false)
   const box = useRef<HTMLDivElement>(null)
@@ -586,8 +625,28 @@ function Rates({ label, children }: { label: string; children: ReactNode }) {
       </button>
       {open && (
         // The padding bridges the gap to the button, so moving onto the popup keeps it open.
-        <div id={id} role="dialog" aria-label={label} className="absolute top-full left-0 z-30 w-[min(20rem,80vw)] pt-2">
-          <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface-2 p-3 shadow-xl shadow-black/40">{children}</div>
+        <div id={id} role="dialog" aria-label={label} className="absolute top-full left-0 z-30 w-[min(22rem,85vw)] pt-2">
+          <div className="flex flex-col gap-3 rounded-xl border border-accent/30 bg-surface-2 p-4 shadow-2xl shadow-black/50">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold tracking-wide text-accent uppercase">Orders for this hour</p>
+                <p className="truncate font-semibold text-text" title={title}>
+                  {title}
+                </p>
+              </div>
+              {pinned && (
+                <button
+                  type="button"
+                  aria-label="Close"
+                  onClick={() => setPinned(false)}
+                  className="-mt-1 -mr-1 grid size-7 shrink-0 cursor-pointer place-items-center rounded-md text-muted hover:bg-surface hover:text-text"
+                >
+                  <X aria-hidden className="size-4" />
+                </button>
+              )}
+            </div>
+            {children}
+          </div>
         </div>
       )}
     </div>
@@ -657,18 +716,24 @@ function Loops({ w, money }: { w: MissedWindow; money: Money }) {
               >
                 <Route steps={loopRoute(l.name, l.direction)} item={l.name} />
                 <Chance tries={l.tries} through={l.through} chance={l.chance} />
-                <Rates label={`Rates for ${l.name}`}>
+                <Rates label={`Rates for ${l.name}`} title={l.name}>
                   <Orders
                     missing={l.bid == null}
                     ok={l.order_ok}
                     skip="From this bid it wouldn't pay at the hour's worst sale: skip it this hour."
                     steps={[
-                      <>
-                        Bid <span className="num text-text">{quoted(l.bid, l.bid_in, money)}</span> each, in {l.bid_in === 'divine' ? 'Divines' : 'Chaos'}
-                      </>,
-                      <>
-                        Ask <span className="num text-text">{quoted(l.ask, other, money)}</span> each, in {other === 'divine' ? 'Divines' : 'Chaos'}
-                      </>,
+                      {
+                        verb: 'Buy',
+                        value: `${quoted(l.bid, l.bid_in, money)} each`,
+                        note: `Bid for the item in ${chaosFirst ? 'Chaos' : 'Divines'}, halfway up the latest hour's range.`,
+                      },
+                      {
+                        verb: 'Sell',
+                        value: `${quoted(l.ask, other, money)} each`,
+                        note: chaosFirst
+                          ? 'Ask in Divines, three quarters up its range there; then sell the Divines for Chaos.'
+                          : 'Ask in Chaos, three quarters up its range there; then buy your Divines back.',
+                      },
                     ]}
                   />
                   <RangeBar
@@ -725,19 +790,23 @@ function Cards({ w, money }: { w: MissedWindow; money: Money }) {
                 a full set turns into <Pill accent>{c.reward}</Pill>
               </div>
               <Chance tries={c.tries} through={c.through} chance={c.chance} />
-              <Rates label={`Rates for ${c.name}`}>
+              <Rates label={`Rates for ${c.name}`} title={c.name}>
                 <Orders
                   missing={c.bid == null}
                   ok={c.order_ok}
                   skip="A set wouldn't pay from this bid at the reward's lowest price: skip it this hour."
                   steps={[
-                    <>
-                      Bid <span className="num text-text">{money(c.bid, c.range_high ?? c.bid)}</span> a card
-                    </>,
-                    <>
-                      {/* In Chaos: a reward is often a Divine Orb itself. */}
-                      Ask <span className="num text-text">{money(c.ask, 0)}</span> for each reward
-                    </>,
+                    {
+                      verb: 'Buy',
+                      value: `${money(c.bid, c.range_high ?? c.bid)} a card`,
+                      note: "Bid the card's lowest price from the latest hour, then turn in each full set.",
+                    },
+                    {
+                      // In Chaos: a reward is often a Divine Orb itself.
+                      verb: 'Sell',
+                      value: `${money(c.ask, 0)} each`,
+                      note: `Ask the reward's average from the latest hour for each ${c.reward.replace(/^\d+× /, '')}.`,
+                    },
                   ]}
                 />
                 <RangeBar low={c.range_low} avg={c.range_avg} high={c.range_high} hours={c.range_hours} mark={c.bid} markLabel="your bid" money={money} />
@@ -754,14 +823,8 @@ function Cards({ w, money }: { w: MissedWindow; money: Money }) {
 const cutTotal = (f: MissedFlip, hours: number) => Math.ceil(f.ask_total * (1 - f.cut) ** hours)
 
 /** An order as placed on the exchange: whole Chaos for a whole number of items. */
-function Lot({ total, lot }: { total: number; lot: number }) {
-  return (
-    <span className="num text-text">
-      {Math.round(total)}c {lot === 1 ? 'each' : `for ${lot}`}
-      {lot > 1 && <span className="text-faint"> ({(total / lot).toFixed(2)}c each)</span>}
-    </span>
-  )
-}
+const lot = (total: number, n: number) => `${Math.round(total)}c ${n === 1 ? 'each' : `for ${n}`}`
+const each = (total: number, n: number) => (n > 1 ? `${(total / n).toFixed(2)}c each. ` : '')
 
 /** The latest hour's flips: the same whatever the look-back (sent with the 1-hour one). */
 function Flips({ flips, money }: { flips: MissedFlip[]; money: Money }) {
@@ -785,7 +848,7 @@ function Flips({ flips, money }: { flips: MissedFlip[]; money: Money }) {
               title={f.name}
               // What the flip makes if both orders fill at their first rates (before any cuts).
               amount={signedPct(f.ask / f.bid - 1, 0)}
-              label="a flip, if both orders fill"
+              label="per flip, if both orders fill"
               footer={
                 <>
                   <span>
@@ -798,20 +861,26 @@ function Flips({ flips, money }: { flips: MissedFlip[]; money: Money }) {
               }
             >
               <Chance tries={f.tries} through={f.through} chance={f.chance} sell="sold within 6 hours at the ask" />
-              <Rates label={`Rates for ${f.name}`}>
-                <div className="flex flex-col gap-1 rounded-md border border-border bg-bg/40 px-2.5 py-2 text-xs">
-                  <span className="text-[11px] font-medium tracking-wide text-faint uppercase">Orders for this hour</span>
-                  <ol className="flex flex-col gap-0.5 text-muted">
-                    <li>
-                      Bid <Lot total={f.bid_total} lot={f.bid_lot} />, in Chaos; cancel it if it hasn't filled by the end of the hour
-                    </li>
-                    <li>
-                      Then list <Lot total={f.ask_total} lot={f.ask_lot} />, {Math.round(f.cut * 100)}% lower each hour it doesn't sell:{' '}
-                      <span className="num text-text">{cutTotal(f, 6)}c</span> after 6 hours, <span className="num text-text">{cutTotal(f, 24)}c</span> after a day
-                    </li>
-                  </ol>
-                </div>
-                <RangeBar low={f.low} avg={f.price} high={f.high} hours={1} mark={f.bid} markLabel="your bid" money={money} label="latest hour" />
+              <Rates label={`Rates for ${f.name}`} title={f.name}>
+                <Orders
+                  missing={false}
+                  ok={true}
+                  skip=""
+                  margin={f.ask / f.bid - 1}
+                  steps={[
+                    {
+                      verb: 'Buy',
+                      value: lot(f.bid_total, f.bid_lot),
+                      note: `${each(f.bid_total, f.bid_lot)}In Chaos. Cancel it if it hasn't filled by the end of the hour: an unfilled bid costs nothing.`,
+                    },
+                    {
+                      verb: 'Sell',
+                      value: lot(f.ask_total, f.ask_lot),
+                      note: `${each(f.ask_total, f.ask_lot)}${Math.round(f.cut * 100)}% lower each hour it doesn't sell: ${cutTotal(f, 6)}c after 6 hours, ${cutTotal(f, 24)}c after a day.`,
+                    },
+                  ]}
+                />
+                <RangeBar low={f.low} avg={f.price} high={f.high} hours={1} mark={f.bid} markLabel="your bid" money={money} heading="Latest hour" />
               </Rates>
             </Opportunity>
           ))}

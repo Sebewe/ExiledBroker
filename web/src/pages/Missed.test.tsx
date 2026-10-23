@@ -157,7 +157,9 @@ describe('Market recap', () => {
     const rates = screen.getByRole('dialog', { name: 'Rates for Orb of Conflict' })
     expect(within(rates).getByText('84c each')).toBeInTheDocument() // the bid, whole Chaos
     expect(within(rates).getByText('110c each')).toBeInTheDocument() // the first ask
-    expect(within(rates).getByText('104c')).toBeInTheDocument() // 1% lower each hour, rounded up: after 6 hours
+    expect(within(rates).getByText(/104c after 6 hours/)).toBeInTheDocument() // 1% lower each hour, rounded up
+    expect(within(rates).getByText('Margin if both fill')).toBeInTheDocument()
+    expect(within(rates).getByText('+31%')).toBeInTheDocument()
     fireEvent.pointerDown(document.body)
     // A cheap item is ordered in lots: whole Chaos for a whole number of items.
     fireEvent.click(within(flips).getAllByRole('button', { name: 'Show rates' })[1]!)
@@ -208,13 +210,14 @@ describe('Market recap', () => {
     expect(within(section).getAllByRole('heading', { level: 3 })).toHaveLength(3) // the top 3
     expect(within(section).getAllByText('15 of 20 tries in the last 3 days, by the optimistic fill rule')).toHaveLength(3)
     // The rates stay hidden until asked for.
-    expect(within(section).queryByText('10.5c')).not.toBeInTheDocument()
+    expect(within(section).queryByText('10.5c each')).not.toBeInTheDocument()
     const [first, second] = within(section).getAllByRole('button', { name: 'Show rates' })
     fireEvent.mouseEnter(first!.parentElement!)
     const rates = screen.getByRole('dialog', { name: 'Rates for Loop item 1' })
-    expect(within(rates).getByText('10.5c')).toBeInTheDocument() // the bid, in Chaos
-    expect(within(rates).getByText('0.0600 div')).toBeInTheDocument() // the ask, in Divines
-    expect(within(rates).getByText('24h low 9.00c')).toBeInTheDocument()
+    expect(within(rates).getByText('10.5c each')).toBeInTheDocument() // the bid, in Chaos
+    expect(within(rates).getByText('0.0600 div each')).toBeInTheDocument() // the ask, in Divines
+    expect(within(rates).getByText('low 9.00c')).toBeInTheDocument() // the last 24 hours' range
+    expect(within(rates).getByText('Last 24 hours')).toBeInTheDocument()
     fireEvent.mouseLeave(first!.parentElement!)
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     // A click pins them open until a click somewhere else.
@@ -222,6 +225,10 @@ describe('Market recap', () => {
     fireEvent.mouseLeave(second!.parentElement!)
     expect(within(screen.getByRole('dialog', { name: 'Rates for Loop item 2' })).getByText(/skip it this hour/)).toBeInTheDocument()
     fireEvent.pointerDown(document.body)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    // Pinned again, the close button closes it too.
+    fireEvent.click(second!)
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Rates for Loop item 2' })).getByRole('button', { name: 'Close' }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     fireEvent.click(within(section).getAllByRole('button', { name: 'Show rates' })[2]!)
     expect(screen.getByText(/no price to order from/)).toBeInTheDocument() // didn't trade last hour
