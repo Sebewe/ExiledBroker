@@ -34,7 +34,7 @@ pipeline (cron "6 * * * *": eb pipeline run, then exits; no volume, no disk)
 
 Not deployed yet.
 
-## Supabase for the database (tried 2026-10-23)
+## Supabase for the database (tried 2026-10-23, fits after the pipeline fix)
 
 The idea: Postgres on Supabase's free tier (500 MB database, 5 GB egress a month, 500 MB RAM, paused after a week without activity), web and the pipeline on Railway. The bill stays $5 either way at our traffic (Hobby includes $5 of usage); it would free about half of that usage as headroom. Project in AWS us-east-1 (Railway should run in US East), Postgres 17.11, 60 connections, Data API turned off (it would expose `public` to anyone with the publishable key). Reached through the session pooler (port 5432, IPv4); the direct connection is IPv6 only.
 
@@ -47,10 +47,17 @@ Measured on the seeded project, from home (105 ms round trip), through a byte-co
 | Web: every other endpoint once, cold | 1.24 MB |
 | Web: a cached request | 0 |
 | Web: one data-version read | 173 B (every 30 s ≈ 15 MB a month) |
-| **Pipeline: one pass loading 2 hours** | **98 MB**, 121 s (2 requests to the GGG stand-in) |
+| Pipeline: one pass loading 2 hours, before the fix | 98 MB, 121 s (2 requests to the GGG stand-in) |
+| **Pipeline: the same pass, after the fix** | **1.8 MB**, 72 s from home (many small round trips; a few seconds from Railway US East) |
+| Pipeline: a pass with nothing new | 1.5 MB (mostly reading RePoE's names once) |
 
-- **The pipeline rules it out as it stands.** `db.site_writer` runs the loader on DuckDB with Postgres attached, and DuckDB's postgres scanner doesn't push down aggregates or deletes: it copies the columns it needs for the whole league (`pg_stat_statements`: ctid-range `COPY … TO STDOUT` of all 318k price rows and 439k loop rows, for `max(observed_at)`-style reads and for the DELETE of hours leaving the window). That is free and quick on Railway's private network (2–3 s a pass in the simulation) but ~70 GB a month across the internet, against 5 GB.
-- **What would make it fit:** run the pipeline's whole-table statements on Postgres itself (`postgres_query` / `postgres_execute`, or plain psycopg) so a pass reads only the new hour. The site's reads (~1–2 MB an hour) plus that would be roughly 1.5–2 GB a month. It would also shorten passes on Railway.
+- **What the pipeline read, and the fix.** `db.site_writer` runs the loader on DuckDB with Postgres attached, and DuckDB's postgres scanner doesn't push down deletes, aggregates or correlated subqueries: it copies the columns it needs for the whole league (`pg_stat_statements`: ctid-range `COPY … TO STDOUT` of all 318k price rows and 439k loop rows). Free and quick on Railway's private network (2–3 s a pass in the simulation), ~70 GB a month across the internet. Fixed (profiled on a local Postgres, then confirmed on Supabase):
+  - `db.pushdown(con)` runs a statement on Postgres itself, inside the same transaction (`postgres_query` / `postgres_execute`), so a failed pass still rolls back. Used for the loader's deletes (hours listed, not a DuckDB temp table) and its item count, `live_leagues` in `pick_league`, the picks' per-pass checks (`launch_picks.refresh`), the league drop and the seeded check.
+  - The attach sees only `public` (`SCHEMA 'public'`): its catalog read was ~0.5 MB per connection, ×8 a pass.
+  - Reference documents are read only when used (`Fetch.value` is lazy) and kept in memory by content MD5 (`reference.get`): RePoE's ~1 MB was read 5 times a pass, now once.
+  - Pages a pass writes or reads are kept in memory by MD5 (`cx.read_page` asks the database for the stored page's MD5 first), so the loader doesn't read back what was just fetched.
+  - `tests/test_pipeline.py::test_a_pass_never_copies_a_whole_table_out_of_postgres` logs every query DuckDB sends (`db.SHOW_PG_QUERIES`) and fails if one copies a big table without an hour or item filter.
+- **The month, estimated:** pipeline ~1.8 MB × 720 passes ≈ 1.3 GB; warming the default views 0.76 MB an hour ≈ 0.55 GB; other views at most ~1.24 MB an hour ≈ 0.9 GB; version checks ~15 MB. About 2–3 GB of the free 5 GB. Visitor traffic barely moves it (cached views read nothing).
 - **Size:** the window is the most the site holds (launch fortnight + latest 14 days; a switch drops the old league), so 282 MB is about the peak, 56% of the free 500 MB. Re-seeding is a DELETE then COPY, which leaves the old rows as dead space until reused: two re-seeds took it to 488 MB (VACUUM marks the space reusable but doesn't shrink the files). Empty the tables (TRUNCATE) before re-seeding a near-full free project; Supabase makes it read-only above 500 MB.
 - **Scheduled fetching on Supabase** (Edge Functions, TypeScript only, 2 s CPU and 256 MB per run, shared outbound IPs) doesn't fit the Python pipeline or the politeness rules; the pipeline stays a Railway cron.
 

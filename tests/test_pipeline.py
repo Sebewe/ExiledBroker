@@ -8,6 +8,7 @@ the disk. These run on a DuckDB file as the site's database; the seed-then-catch
 comparison also runs on a disposable Postgres (EB_TEST_POSTGRES_URL, as
 tests/test_postgres.py; CI starts one)."""
 
+import ctypes
 import gzip
 import json
 import os
@@ -278,3 +279,31 @@ def test_a_failed_pass_leaves_the_site_as_it_was(local, pg, monkeypatch):
     monkeypatch.setattr(exchange_loader, "refresh_mappings", real)
     result, requests = run(hosted, server, 9)  # the next pass catches up
     assert result.live.hours_added == 3 and requests == []  # its pages were kept
+
+
+@needs_pg
+def test_a_pass_never_copies_a_whole_table_out_of_postgres(local, pg, monkeypatch, capfd):
+    """Through an attached Postgres, DuckDB answers a DELETE, an aggregate or a
+    correlated subquery by copying the league's rows out (the hosted pass read ~100 MB
+    that way; across the internet to Supabase, ~70 GB a month). Those statements run on
+    Postgres itself (`db.pushdown`); what DuckDB still copies from the big tables must
+    be limited to some hours or items."""
+    s, server = local
+    _seed(s, pg["eb_site"])
+    hosted = s.model_copy(update={"database_url": pg["eb_site"]})
+    monkeypatch.setattr(db, "SHOW_PG_QUERIES", True)
+    capfd.readouterr()
+    result, requests = run(hosted, server, 9)
+    assert result.live.hours_added == 3 and len(requests) == 3
+    ctypes.CDLL(None).fflush(None)  # DuckDB prints from C, to stderr
+    sent = capfd.readouterr().err
+    copies = [q for q in sent.split("\n\n") if q.lstrip().startswith("COPY (SELECT")]
+    assert copies  # the debug output was captured
+    for table in ("price_observation", "cross_market_hour", "exchange_page"):
+        whole = [
+            q
+            for q in copies
+            if f'"public"."{table}"' in q
+            and not any(c in q for c in ('"observed_at"', '"item_id" ='))
+        ]
+        assert not whole, (table, whole[:1])

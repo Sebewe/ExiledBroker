@@ -320,14 +320,18 @@ def refresh(con, live: str | None = None) -> list[str] | None:
     """Capture every league with a complete fortnight that isn't in launch_history yet
     (the live league only once its fortnight is over, so its sale days are whole), then
     rebuild the picks if their reference leagues changed. Returns the new reference
-    leagues if the picks were rebuilt, else None."""
-    captured = set(captured_leagues(con))
-    for league in complete_leagues(con):
-        if league in captured or (league == live and not _fortnight_over(con, league)):
+    leagues if the picks were rebuilt, else None.
+
+    The checks run every hosted pass, so they run on the site's database itself
+    (`db.pushdown`); capturing and rebuilding happen about once a league."""
+    site = db.pushdown(con)
+    captured = set(captured_leagues(site))
+    for league in complete_leagues(site):
+        if league in captured or (league == live and not _fortnight_over(site, league)):
             continue
         capture(con, league)
-    refs = captured_leagues(con)[:REFERENCE_LEAGUES]
-    built = db.rows(con, "SELECT leagues FROM launch_window LIMIT 1")
+    refs = captured_leagues(site)[:REFERENCE_LEAGUES]
+    built = db.rows(site, "SELECT leagues FROM launch_window LIMIT 1")
     if not refs or (built and built[0][0] == ",".join(refs)):
         return None
     build(con, refs)

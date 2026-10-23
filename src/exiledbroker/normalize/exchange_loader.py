@@ -337,28 +337,29 @@ def load_league(
             "UPDATE league SET launched_at = ? WHERE id = ?",
             [window.launched_at.replace(tzinfo=None), lid],
         )
+        # Deletes run on the site's database itself (`db.pushdown`): through an attached
+        # Postgres, DuckDB would copy the whole league out to find the rows.
+        site = db.pushdown(con)
         if rebuild:
             for table in ("price_observation", "cross_market_hour", "exchange_hour_loaded"):
                 extra = " AND source = ?" if table == "price_observation" else ""
                 params = [lid, SOURCE] if extra else [lid]
-                con.execute(f"DELETE FROM {table} WHERE league_id = ?{extra}", params)
+                db.execute(site, f"DELETE FROM {table} WHERE league_id = ?{extra}", params)
         # Only the hours leaving the window, and (to make a retry safe) the new ones.
-        _hours_table(con, "touched_hours", remove + add)
-        con.execute(
-            "DELETE FROM price_observation WHERE league_id = ? AND source = ? "
-            "AND observed_at IN (SELECT hour FROM touched_hours)",
-            [lid, SOURCE],
-        )
-        con.execute(
-            "DELETE FROM cross_market_hour WHERE league_id = ? "
-            "AND observed_at IN (SELECT hour FROM touched_hours)",
-            [lid],
-        )
-        con.execute(
-            "DELETE FROM exchange_hour_loaded WHERE league_id = ? "
-            "AND hour IN (SELECT hour FROM touched_hours)",
-            [lid],
-        )
+        touched = [cx.from_ts(h).replace(tzinfo=None) for h in remove + add]
+        if touched and not rebuild:
+            marks = ", ".join("?" for _ in touched)
+            for table, col, extra in (
+                ("price_observation", "observed_at", [SOURCE]),
+                ("cross_market_hour", "observed_at", []),
+                ("exchange_hour_loaded", "hour", []),
+            ):
+                source = " AND source = ?" if extra else ""
+                db.execute(
+                    site,
+                    f"DELETE FROM {table} WHERE league_id = ?{source} AND {col} IN ({marks})",
+                    [lid, *extra, *touched],
+                )
         if markets:
             metadata_ids = [
                 r[0]
@@ -398,7 +399,7 @@ def load_league(
         con.execute("INSERT INTO exchange_hour_loaded SELECT ?, hour FROM added_hours", [lid])
         refresh_mappings(con, settings)
         items, rows = db.rows(
-            con,
+            site,
             "SELECT count(DISTINCT item_id), count(*) FROM price_observation "
             "WHERE league_id = ? AND source = ?",
             [lid, SOURCE],
@@ -423,7 +424,6 @@ def load_league(
             "stage_names",
             "stage_price",
             "stage_cross",
-            "touched_hours",
             "added_hours",
             "keep_items",
         ):

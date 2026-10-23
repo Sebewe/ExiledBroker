@@ -169,7 +169,9 @@ def _seed_pages(duck, pg, settings: Settings, ids: list[str]) -> int:
 
 def drop_leagues(con, keep: str) -> list[str]:
     """Delete every other league's site rows (on the pipeline's connection), and stop
-    following them, once `keep` is the live league. Returns the leagues dropped."""
+    following them, once `keep` is the live league. Returns the leagues dropped.
+    Runs on the site's database itself (`db.pushdown`), not through DuckDB's scanner."""
+    con = db.pushdown(con)
     q = (
         "SELECT DISTINCT l.id, l.name FROM ingest_load il JOIN league l ON l.id = il.league_id "
         "WHERE il.league_id <> (SELECT id FROM league WHERE name = ?)"

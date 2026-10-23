@@ -200,7 +200,8 @@ def _sync_live(
         unknown = _unknown_ids(latest, league, known)
         max_age = item_names.UNKNOWN_MAX_AGE if unknown else item_names.MAX_AGE
         state = item_names.ensure_base_items(client, settings, con, max_age)
-        names = item_names.load_base_items(con)
+        # Read RePoE again only if it changed (it's ~1 MB, read every pass).
+        names = item_names.load_base_items(con) if state == "downloaded" or not known else known
         renamed = state == "downloaded" and exchange_loader.renamed_items(con, names)
         refresh_pool_if_stale(client, con, settings, league=league)
     force = force or bool(renamed)

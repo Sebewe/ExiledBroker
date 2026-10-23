@@ -13,8 +13,10 @@ pipeline: only the live window's pages, see `prune_pages`).
 """
 
 import gzip
+import hashlib
 import json
 import os
+from collections import OrderedDict
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -56,6 +58,20 @@ def _in_db(settings: Settings) -> bool:
     return settings.exchange_pages == "database"
 
 
+# Pages this process wrote to or read from the database, gzipped, by their MD5: a
+# pass reads back the pages it just fetched, which would otherwise cross the network
+# again. A read asks the database for the stored page's MD5 (computed there), so only
+# the exact page the database holds is served from memory. Oldest out first.
+_bodies: OrderedDict[str, bytes] = OrderedDict()
+BODIES_MAX_BYTES = 32_000_000
+
+
+def _remember(body: bytes) -> None:
+    _bodies[hashlib.md5(body).hexdigest()] = body
+    while sum(map(len, _bodies.values())) > BODIES_MAX_BYTES and len(_bodies) > 1:
+        _bodies.popitem(last=False)
+
+
 def has_page(settings: Settings, ts: int) -> bool:
     if _in_db(settings):
         with db.site_session(settings, read_only=False) as con:
@@ -66,8 +82,14 @@ def has_page(settings: Settings, ts: int) -> bool:
 def read_page(settings: Settings, ts: int) -> dict | None:
     if _in_db(settings):
         with db.site_session(settings, read_only=False) as con:
-            found = db.rows(con, "SELECT body FROM exchange_page WHERE hour = ?", [ts])
-        return json.loads(gzip.decompress(found[0][0])) if found else None
+            digest = db.rows(con, "SELECT md5(body) FROM exchange_page WHERE hour = ?", [ts])
+            if not digest:
+                return None
+            body = _bodies.get(digest[0][0])
+            if body is None:
+                body = bytes(db.scalar(con, "SELECT body FROM exchange_page WHERE hour = ?", [ts]))
+                _remember(body)
+        return json.loads(gzip.decompress(body))
     path = page_path(settings, ts)
     if not path.exists():
         return None
@@ -84,6 +106,7 @@ def write_page(settings: Settings, ts: int, page: dict) -> None:
                 "INSERT INTO exchange_page (hour, body) VALUES (?, ?) ON CONFLICT (hour) DO NOTHING",
                 [ts, body],
             )
+        _remember(body)
         return
     path = page_path(settings, ts)
     path.parent.mkdir(parents=True, exist_ok=True)

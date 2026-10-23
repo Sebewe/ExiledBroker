@@ -94,7 +94,7 @@ def pick_league(client: PoliteClient, settings: Settings, now: datetime) -> str:
         if now >= start:
             return settings.next_league
     with db.site_writer(settings) as con:
-        followed = live_leagues(con)
+        followed = live_leagues(db.pushdown(con))  # its subqueries scan, through DuckDB
         if followed.height:
             return followed["name"][0]
         url = f"{settings.poe_ninja_base_url}/poe1/api/economy/leagues"
@@ -119,7 +119,7 @@ def launch_search_from(settings: Settings, league: str) -> datetime:
 
 def _seeded(settings: Settings) -> bool:
     with db.site_writer(settings) as con:
-        return db.scalar(con, f"SELECT count(*) FROM {launch_picks.HISTORY}") > 0
+        return bool(db.rows(db.pushdown(con), f"SELECT 1 FROM {launch_picks.HISTORY} LIMIT 1"))
 
 
 def run(

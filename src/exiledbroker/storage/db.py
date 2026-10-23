@@ -69,6 +69,9 @@ def site_session(settings=None, *, read_only: bool = True) -> Iterator:
 
 
 _schema_ready: set[str] = set()
+# Print every query `site_writer`'s DuckDB sends to Postgres (to stderr; tests check
+# that a hosted pass never copies a whole table).
+SHOW_PG_QUERIES = False
 
 
 @contextmanager
@@ -96,7 +99,13 @@ def site_writer(settings=None) -> Iterator[duckdb.DuckDBPyConnection]:
     try:
         con.execute("INSTALL postgres")  # a no-op once installed (the image bakes it in)
         con.execute("LOAD postgres")
-        con.execute(f"ATTACH '{url.replace(chr(39), chr(39) * 2)}' AS site (TYPE postgres)")
+        if SHOW_PG_QUERIES:
+            con.execute("SET pg_debug_show_queries = true")
+        # Only `public`: each attach reads the catalog of the schemas it sees (~0.5 MB
+        # for all of them; Supabase adds auth, storage and more), ~40 kB for ours.
+        con.execute(
+            f"ATTACH '{url.replace(chr(39), chr(39) * 2)}' AS site (TYPE postgres, SCHEMA 'public')"
+        )
         con.execute("USE site")
         yield con
     finally:
@@ -199,6 +208,75 @@ def _pg_query(con, sql: str, params: list | None):
     cur = con.cursor()
     cur.execute(sql.replace("%", "%%").replace("?", "%s"), params or None)
     return cur
+
+
+# DuckDB with Postgres attached (`site_writer`) reads an attached table by copying the
+# columns it needs out of Postgres: fine for a join on the new hour's rows, but a
+# DELETE, an aggregate or a correlated subquery over the league copies the whole table
+# (the hosted pipeline read ~100 MB a pass that way; across the internet, to Supabase,
+# that's ~70 GB a month). `pushdown` runs such statements on Postgres itself, inside
+# the same transaction (postgres_query / postgres_execute), so only the result
+# crosses the network. The SQL must be plain Postgres on site tables (no DuckDB temp
+# tables or read_parquet).
+def pushdown(con):
+    """`con`, or for a DuckDB connection with Postgres attached and selected, a
+    connection-like object that runs each statement on Postgres. Pass it to
+    rows / scalar / frame / execute."""
+    if is_postgres(con):
+        return con
+    current = con.execute(
+        "SELECT database_name, type FROM duckdb_databases() "
+        "WHERE database_name = current_database()"
+    ).fetchall()
+    if current and current[0][1] == "postgres":
+        return _Attached(con, current[0][0])
+    return con
+
+
+class _Attached:
+    """Enough of a psycopg connection for `_pg_query`: statements go to Postgres
+    through the DuckDB connection, parameters inlined as Postgres literals."""
+
+    def __init__(self, con: duckdb.DuckDBPyConnection, name: str):
+        self.con, self.name = con, name
+
+    def cursor(self) -> "_AttachedCursor":
+        return _AttachedCursor(self)
+
+
+@dataclass
+class _Column:
+    name: str
+
+
+class _AttachedCursor:
+    def __init__(self, attached: _Attached):
+        self.attached, self.description, self._rows = attached, None, []
+
+    def execute(self, sql: str, params: list | None = None) -> None:
+        from psycopg import sql as pgsql
+
+        literals = tuple(pgsql.Literal(p).as_string(None) for p in params or [])
+        text = sql % literals if literals else sql.replace("%%", "%")
+        con, name = self.attached.con, self.attached.name
+        if text.lstrip().upper().startswith(("SELECT", "WITH")):
+            result = con.execute(f"SELECT * FROM postgres_query('{name}', ?)", [text])
+            self.description = [_Column(d[0]) for d in result.description]
+            self._rows = result.fetchall()
+        else:
+            con.execute(f"CALL postgres_execute('{name}', ?)", [text])
+
+    def fetchall(self) -> list[tuple]:
+        return self._rows
+
+    def close(self) -> None:
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc) -> None:
+        pass
 
 
 # DuckDB 2.0 keeps an execute() result open until it is fully fetched, so always

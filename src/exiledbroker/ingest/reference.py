@@ -27,13 +27,34 @@ def _now() -> datetime:
 
 @dataclass
 class Fetch:
-    value: Any
     state: str  # "skipped" (checked recently) | "unchanged" (304) | "downloaded"
+    # The document, read from the database only when asked for (RePoE's is ~1 MB, and
+    # the hourly check only needs `state`). Read it while the connection is open.
+    _load: Callable[[], Any]
+
+    @property
+    def value(self) -> Any:
+        return self._load()
+
+
+# Documents already read by this process, by key and the content's MD5. A pass reads
+# RePoE's (~1 MB) from several places; the hash, computed by the database, is all
+# that crosses the network after the first read.
+_texts: dict[tuple[str, str], str] = {}
 
 
 def get(con: duckdb.DuckDBPyConnection, key: str) -> Any | None:
-    rows = db.rows(con, "SELECT content FROM reference_data WHERE key = ?", [key])
-    return json.loads(rows[0][0]) if rows else None
+    site = db.pushdown(con)
+    digest = db.rows(site, "SELECT md5(content) FROM reference_data WHERE key = ?", [key])
+    if not digest:
+        return None
+    cached = (key, digest[0][0])
+    if cached not in _texts:
+        text = db.scalar(site, "SELECT content FROM reference_data WHERE key = ?", [key])
+        if len(_texts) > 32:  # a long-running process: old versions pile up
+            _texts.clear()
+        _texts[cached] = text
+    return json.loads(_texts[cached])
 
 
 def checked_at(con: duckdb.DuckDBPyConnection, key: str) -> datetime | None:
@@ -88,20 +109,21 @@ def fetch_if_changed(
       different URL, e.g. a new league) is downloaded, parsed and stored."""
     rows = db.rows(
         con,
-        "SELECT content, source_url, etag, last_modified, coalesce(checked_at, fetched_at) "
+        "SELECT NULL, source_url, etag, last_modified, coalesce(checked_at, fetched_at) "
         "FROM reference_data WHERE key = ?",
         [key],
     )
     have = rows[0] if rows else None
     same_source = have is not None and have[1] == url
+    stored = lambda: get(con, key)
     if same_source and have[4] is not None and _now() - have[4] < max_age:
-        return Fetch(json.loads(have[0]), "skipped")
+        return Fetch("skipped", stored)
     response = client.get_if_changed(
         url, etag=have[2] if same_source else None, last_modified=have[3] if same_source else None
     )
     if response is None:  # 304: unchanged, nothing downloaded
         con.execute("UPDATE reference_data SET checked_at = ? WHERE key = ?", [_now(), key])
-        return Fetch(json.loads(have[0]), "unchanged")
+        return Fetch("unchanged", stored)
     value = parse(response.text)
     put(
         con,
@@ -111,4 +133,4 @@ def fetch_if_changed(
         etag=response.headers.get("ETag"),
         last_modified=response.headers.get("Last-Modified"),
     )
-    return Fetch(value, "downloaded")
+    return Fetch("downloaded", lambda: value)
