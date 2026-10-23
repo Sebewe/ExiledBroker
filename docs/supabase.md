@@ -15,7 +15,7 @@ Railway's Postgres template is **not** used in this shape: `EB_DATABASE_URL` on 
 
 - **Supabase project** `qoroikeceewhwqccffrv`, region **us-east-1**, Postgres 17.11, free plan (dashboard: supabase.com, the account that owns it).
 - **Data API turned off** (Project Settings → Data API). Keep it off: it serves every `public` table over REST to anyone holding the publishable key, which is public by design. The site talks to Postgres directly and doesn't use it.
-- **Seeded** with Allflame through 2026-10-22 18:00 (`eb site seed --hosted`): 672 hours, their raw pages, the Launch history and picks, the backtest report.
+- **Seeded fresh on 2026-10-23** (tables emptied, then one `eb site seed --hosted`): Allflame through 2026-10-22 18:00, 672 hours and their raw pages, the Launch history (5 leagues) and picks, and the backtest report rebuilt on the current code. **282 MB of the 500 MB**, no dead rows (`cross_market_hour` 114 MB, `price_observation` 96 MB, `exchange_page` 57 MB); no security advisories. The first Railway pass catches up the hours since then, one request per missing hour.
 - **The pipeline fix that makes it fit** (`db.pushdown`, the `SCHEMA 'public'` attach, reference and page caches by MD5): a pass reads ~1.8 MB from the database instead of ~98 MB. `tests/test_pipeline.py::test_a_pass_never_copies_a_whole_table_out_of_postgres` guards it.
 - **Local connection string** in `/Users/sebm/Documents/ExiledBroker/.env.supabase`, one folder above the repo, so it can't be committed. `EB_DATABASE_URL` holds the session-pooler URL with a `[YOUR-PASSWORD]` placeholder, and the password is in `SUPABSAE_PASSWORD` (sic). Substitute it URL-encoded, never print it:
 
@@ -48,7 +48,7 @@ postgresql://postgres.qoroikeceewhwqccffrv:<password>@aws-0-us-east-1.pooler.sup
 2. **Variables on both services** (Railway → service → Variables; a shared variable is simplest):
    - `EB_DATABASE_URL` = the session-pooler URL above, with the password filled in. Mark it as sealed/secret.
    - `EB_NEXT_LEAGUE` / `EB_NEXT_LEAGUE_START` once the next league is announced (launch around 2026-11-13).
-3. **Free the dead space first.** The project is at ~488 MB of its 500 MB (re-seeds during the trial left dead rows; `VACUUM` made them reusable but didn't shrink the files). Above 500 MB Supabase makes the database read-only. Empty the site tables, then seed once:
+3. **Before any re-seed, empty the tables** (done for the current seed, 2026-10-23). Seeding replaces rows with a DELETE then COPY, which leaves the old rows as dead space: two re-seeds during the trial took the project to 488 MB, and `VACUUM` makes that space reusable but doesn't shrink the files (`VACUUM FULL` needs room for a second copy, which would cross the limit). Above 500 MB Supabase makes the database read-only. Empty the site tables, then seed once:
 
    ```sql
    -- via psql / psycopg on the session pooler: empties every table in public (the site's
@@ -59,8 +59,8 @@ postgresql://postgres.qoroikeceewhwqccffrv:<password>@aws-0-us-east-1.pooler.sup
    END $$;
    ```
 
-   This needs the user's go-ahead (it's destructive, and auto mode blocks it). Expect ~282 MB after the seed. Re-seeding is a DELETE then COPY, so **always TRUNCATE before re-seeding** a free project rather than seeding on top.
-4. **Seed from the local copy**, never from GGG (`eb pipeline run` refuses an unseeded database):
+   It's destructive, so it needs the user's go-ahead, and Claude Code's auto mode blocks it even then: the user runs it in the Supabase dashboard's SQL Editor. Check it took (`SELECT pg_size_pretty(pg_database_size(current_database()))`: ~11 MB empty), then seed; expect ~282 MB at a full window.
+4. **Seed from the local copy** (done for now; repeat after emptying), never from GGG (`eb pipeline run` refuses an unseeded database):
 
    ```bash
    .venv/bin/eb live sync         # local copy up to date (the user runs the live feed)
