@@ -1,8 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { Farming as FarmingData, FarmingMechanic, FarmingOutlook } from '../api/farming'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { Farming as FarmingData, FarmingHours, FarmingMechanic, FarmingOutlook, HourEffect } from '../api/farming'
 import Farming from './Farming'
 
 function serve(routes: Record<string, { status?: number; body: unknown }>) {
@@ -62,6 +62,28 @@ const outlook = (id: string, name: string, day1: number, days5_10: number): Farm
   windows: { day1: { growth: day1, worst: 0.9 }, days2_4: { growth: 1.2, worst: 1.0 }, days5_10: { growth: days5_10, worst: 1.01 } },
 })
 const flat = Array(24).fill(0)
+const effect = (gain: number, best: number, worst: number, verdict: 'small' | 'worth_it' = 'worth_it'): HourEffect => ({
+  gain,
+  gap: gain * 2,
+  best,
+  worst,
+  null95: 0.01,
+  verdict,
+})
+// In UTC (the tests' time zone is pinned below): evening dear, early morning cheap.
+const HOURS: FarmingHours = {
+  phase: 'd2_7',
+  leagues: 5,
+  days: 30,
+  price: flat.map((_, h) => (h === 23 ? 0.021 : h === 6 ? -0.017 : 0)),
+  price_divine_market: flat.map((_, h) => (h === 21 ? 0.017 : 0)),
+  divine: flat.map((_, h) => (h === 23 ? 0.041 : h === 12 ? -0.04 : 0)),
+  volume: Array(24).fill(1 / 24),
+  effect: effect(0.021, 23, 6),
+  effect_divine_market: effect(0.003, 21, 8, 'small'),
+  divine_effect: { ...effect(0.041, 23, 12), gap: 0.081 },
+  mechanics: { essence: { ...effect(0.092, 23, 6), price: flat.map((_, h) => (h === 23 ? 0.092 : 0)), items: 42, stability: 0.9, shown: true } },
+}
 const FARMING: FarmingData = {
   league: 'Allflame',
   latest_hour: iso(-80 * MIN),
@@ -89,11 +111,21 @@ const FARMING: FarmingData = {
       divine: null,
     },
   ],
-  hours: { price: flat.map((_, h) => (h === 20 ? 0.03 : h === 4 ? -0.02 : 0)), volume: Array(24).fill(1 / 24), effect: 0.05, verdict: 'worth_it' },
+  hours: HOURS,
   impact: { y: 0.8, note: null },
 }
 
-afterEach(() => vi.unstubAllGlobals())
+// Hour labels are local time: pin the clock's zone so they read as UTC.
+const realDTF = Intl.DateTimeFormat
+beforeEach(() => {
+  vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(function (locales?: Intl.LocalesArgument, options?: Intl.DateTimeFormatOptions) {
+    return new realDTF(locales, { ...options, timeZone: options?.timeZone ?? 'UTC' })
+  } as unknown as typeof Intl.DateTimeFormat)
+})
+afterEach(() => {
+  vi.unstubAllGlobals()
+  vi.restoreAllMocks()
+})
 
 describe('Farming', () => {
   it('explains when nothing is loaded yet', async () => {
@@ -186,17 +218,23 @@ describe('Farming', () => {
     expect(await screen.findByText(/no Divine price yet/)).toBeInTheDocument()
   })
 
-  it('names the best hours, or says time of day barely matters', async () => {
+  it("names the best hours: the item's own mechanic's where it holds, the pooled ones otherwise", async () => {
     serve({ '/api/status': status([league(iso(-80 * MIN))]), '/api/farming/Allflame': { body: FARMING } })
-    const { unmount } = renderFarming()
-    expect(await screen.findByText(/Prices run highest around/)).toHaveTextContent('about 5.0% above the lowest hours')
-    unmount()
-    serve({
-      '/api/status': status([league(iso(-80 * MIN))]),
-      '/api/farming/Allflame': { body: { ...FARMING, hours: { ...FARMING.hours!, effect: 0.004, verdict: 'small' } } },
-    })
+    renderFarming('/farming?item=currency:splinter-of-xoph')
+    expect(await screen.findByText(/^Prices run highest/)).toHaveTextContent(
+      "Prices run highest around 23:00 your time: about 2.1% over the day's average, and 4.2% over the lowest hour (06:00).",
+    )
+    expect(screen.getByText(/Converting to Divines/)).toHaveTextContent("They're cheapest in Chaos around 12:00 your time and dearest around 23:00: about 8.1% apart.")
+    expect(screen.getByText(/From 5 past leagues' days 2–7 \(30 league-days\)/)).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Item'), { target: { value: 'currency:deafening-essence-of-greed' } })
+    expect(screen.getByText(/drops sell highest/)).toHaveTextContent("Essence's drops sell highest around 23:00 your time: about 9.2% over the day's average")
+  })
+
+  it('says when time of day barely matters, as in the Divine market here', async () => {
+    serve({ '/api/status': status([league(iso(-80 * MIN))]), '/api/farming/Allflame': { body: FARMING } })
     renderFarming()
-    expect(await screen.findByText(/Time of day barely matters/)).toHaveTextContent('about 0.4%')
+    fireEvent.click(await screen.findByRole('radio', { name: 'Divine market' }))
+    expect(screen.getByText(/Time of day barely matters/)).toHaveTextContent("on days 2–7: the best hour beats the day's average by about 0.3%")
   })
 
   it('later in the league: no usual path after day 14, the outlook is for the next league', async () => {
@@ -205,7 +243,7 @@ describe('Farming', () => {
       day_offset: 40,
       phase: 'later',
       mechanics: FARMING.mechanics.map((m) => ({ ...m, usual: null, usual_low: null, usual_high: null })),
-      hours: null,
+      hours: { ...HOURS, price: Array(24).fill(null), divine_effect: effect(0.004, 23, 12, 'small'), mechanics: {} },
     }
     serve({ '/api/status': status([league(iso(-80 * MIN))]), '/api/farming/Allflame': { body: later } })
     renderFarming()

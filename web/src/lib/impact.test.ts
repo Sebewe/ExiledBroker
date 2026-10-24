@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { FarmingItem } from '../api/farming'
-import { bestHours, compareMarkets, impactBand, localHours, marketImpact } from './impact'
+import { bestHours, compareMarkets, impactBand, localHour, localHours, marketImpact, profileFor } from './impact'
 
 const item = (divine: FarmingItem['divine']): FarmingItem => ({
   item_id: 'currency:splinter-of-xoph',
@@ -57,22 +57,58 @@ describe('compareMarkets', () => {
 })
 
 describe('localHours', () => {
-  const profile = { price: Array.from({ length: 24 }, (_, h) => h / 100), volume: Array(24).fill(1 / 24) }
+  const price = Array.from({ length: 24 }, (_, h) => h / 100)
+  const volume = Array(24).fill(1 / 24)
 
   it('keeps UTC order in UTC', () => {
-    const bars = localHours(profile, 'UTC')
+    const bars = localHours(price, volume, 'UTC')
     expect(bars.map((b) => b.utc)).toEqual(Array.from({ length: 24 }, (_, h) => h))
     expect(bars[0]?.label).toBe('00:00')
   })
 
   it('starts from local midnight elsewhere, half-hour zones included', () => {
-    const tokyo = localHours(profile, 'Asia/Tokyo') // UTC+9
+    const tokyo = localHours(price, volume, 'Asia/Tokyo') // UTC+9
     expect(tokyo[0]).toMatchObject({ utc: 15, label: '00:00' })
-    const india = localHours(profile, 'Asia/Kolkata') // UTC+5:30
+    const india = localHours(price, volume, 'Asia/Kolkata') // UTC+5:30
     expect(india[0]).toMatchObject({ utc: 19, label: '00:30' })
   })
 
   it('picks the best hours by price', () => {
-    expect(bestHours(localHours(profile, 'UTC')).map((b) => b.utc)).toEqual([23, 22, 21])
+    expect(bestHours(localHours(price, volume, 'UTC')).map((b) => b.utc)).toEqual([23, 22, 21])
+    const peak = Array.from({ length: 24 }, (_, h) => (h === 23 ? 0.04 : h === 22 ? 0.035 : h === 21 ? 0.02 : 0))
+    expect(bestHours(localHours(peak, null, 'UTC')).map((b) => b.utc)).toEqual([23, 22])
+  })
+})
+
+describe('profileFor', () => {
+  const effect = { gain: 0.02, gap: 0.04, best: 23, worst: 6, null95: 0.01, verdict: 'worth_it' as const }
+  const pooled = Array(24).fill(0)
+  const own = Array(24).fill(0.01)
+  const hours = {
+    phase: 'd2_7' as const,
+    leagues: 5,
+    days: 30,
+    price: pooled,
+    price_divine_market: pooled,
+    divine: pooled,
+    volume: null,
+    effect,
+    effect_divine_market: effect,
+    divine_effect: effect,
+    mechanics: {
+      essence: { ...effect, gain: 0.09, price: own, items: 42, stability: 0.9, shown: true },
+      breach: { ...effect, price: own, items: 20, stability: 0.2, shown: false },
+    },
+  }
+
+  it("uses the item's mechanic's own profile where it holds, else the pooled one", () => {
+    expect(profileFor(hours, ['legion', 'essence'])).toMatchObject({ mechanic: 'essence', price: own, effect: { gain: 0.09 } })
+    expect(profileFor(hours, ['breach'])).toMatchObject({ mechanic: null, price: pooled, effect: { gain: 0.02 } })
+    expect(profileFor(hours, [])).toMatchObject({ mechanic: null, price: pooled })
+  })
+
+  it('names a UTC hour in local time', () => {
+    expect(localHour(23, 'Europe/Paris')).toMatch(/^0[01]:00$/) // CET or CEST
+    expect(localHour(6, 'UTC')).toBe('06:00')
   })
 })

@@ -1,6 +1,6 @@
 import { Clock, Coins, Rocket, Sprout } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
-import type { Farming as FarmingData, FarmingHours, FarmingItem, FarmingMechanic, FarmingOutlook, OutlookWindowId } from '../api/farming'
+import type { Farming as FarmingData, FarmingHours, FarmingItem, FarmingMechanic, FarmingOutlook, HourEffect, OutlookWindowId } from '../api/farming'
 import type { Upcoming } from '../api/client'
 import { useFarming, useServerNow, useStatus } from '../api/queries'
 import { Field, NumberField, Segmented, Select, Toolbar } from '../components/Controls'
@@ -9,7 +9,7 @@ import { Notice } from '../components/Notice'
 import { Empty, Meter } from '../components/Opportunity'
 import { PageHeader } from '../components/Section'
 import { count, duration, pct, signedPct, tone, utcHour } from '../lib/format'
-import { bestHours, compareMarkets, localHours, type MarketSale } from '../lib/impact'
+import { bestHours, compareMarkets, localHour, localHours, profileFor, type MarketSale } from '../lib/impact'
 import { makeMoney, type Money } from '../lib/money'
 import { queryFallback } from '../lib/queryFallback'
 import { useLeague } from '../lib/useLeague'
@@ -380,7 +380,7 @@ function SellHelper({
           <Sale item={item} qty={qty} y={impact?.y ?? null} note={impact?.note ?? null} money={money} divineChaos={divineChaos} />
         </>
       )}
-      <BestHours hours={hours} />
+      <BestHours hours={hours} item={item} mechanicName={mechanicName} />
     </Block>
   )
 }
@@ -475,30 +475,48 @@ function MarketCard({ name, sale, best, money, missing }: { name: string; sale: 
 
 // --- Best hours ----------------------------------------------------------------------
 
-function BestHours({ hours }: { hours: FarmingHours | null }) {
-  const bars = hours && hours.price.some((p) => p != null) ? localHours(hours) : []
+const PHASE_TEXT: Record<FarmingHours['phase'], string> = { d0_2: 'days 0–2', d2_7: 'days 2–7', d7_14: 'days 7–14', later: 'later days' }
+type HourMarket = 'chaos' | 'divine'
+
+/** Finding 6's profiles (past leagues, for the league's phase): the item's own mechanic's
+ *  where it holds across leagues, else the pooled one; and when Divines are cheapest. */
+function BestHours({ hours, item, mechanicName }: { hours: FarmingHours | null; item: FarmingItem | undefined; mechanicName: Map<string, string> }) {
+  const [marketParam, setMarket] = useParam<HourMarket>('hours', 'chaos')
+  const market: HourMarket = marketParam === 'divine' ? 'divine' : 'chaos'
+  const chosen = !hours
+    ? null
+    : market === 'divine'
+      ? { mechanic: null, price: hours.price_divine_market, effect: hours.effect_divine_market }
+      : profileFor(hours, item?.mechanics ?? [])
+  const bars = chosen && chosen.price.some((p) => p != null) ? localHours(chosen.price, market === 'chaos' ? hours!.volume : null) : []
   const best = bestHours(bars)
   const bestText = [...best].sort((a, b) => a.label.localeCompare(b.label)).map((b) => b.label).join(', ')
   const max = Math.max(...bars.map((b) => Math.abs(b.price ?? 0)), 1e-9)
-  const effect = hours?.effect
+  const e = chosen?.effect
+  const whose = chosen?.mechanic ? `${mechanicName.get(chosen.mechanic) ?? chosen.mechanic}'s drops sell` : 'Prices run'
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-4">
-      <h3 className="flex items-center gap-2 font-semibold">
-        <Clock aria-hidden className="size-4 text-accent" /> Best time to sell
-      </h3>
-      {!bars.length ? (
+      <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
+        <h3 className="flex items-center gap-2 font-semibold">
+          <Clock aria-hidden className="size-4 text-accent" /> Best time to sell
+        </h3>
+        {hours && <Segmented label="Market" value={market} options={['chaos', 'divine'] as const} onChange={setMarket} format={(m) => MARKET_NAME[m]} />}
+      </div>
+      {!bars.length || !e ? (
         <p className="text-sm text-muted">Not enough days of trades yet to tell which hours sell higher.</p>
       ) : (
         <>
           <p className="text-sm text-muted">
-            {hours!.verdict === 'small'
-              ? `Time of day barely matters: the best and worst hours differ by about ${pct(effect, 1)}. Sell whenever suits you.`
-              : `Prices run highest around ${bestText} your time${effect != null ? `, about ${pct(effect, 1)} above the lowest hours` : ''}.`}
+            {e.verdict === 'small'
+              ? `Time of day barely matters on ${PHASE_TEXT[hours!.phase]}: the best hour beats the day's average by about ${pct(e.gain, 1)}. Sell whenever suits you.`
+              : `${whose} highest around ${bestText} your time: about ${pct(e.gain, 1)} over the day's average${
+                  e.gap != null && e.worst != null ? `, and ${pct(e.gap, 1)} over the lowest hour (${localHour(e.worst)})` : ''
+                }.`}
           </p>
           <div className="flex h-28 items-center gap-px" role="img" aria-label={`Price by hour of day, your time. Highest: ${bestText}`}>
             {bars.map((b) => {
               const h = ((Math.abs(b.price ?? 0) / max) * 50).toFixed(1)
-              const top = best.some((x) => x.utc === b.utc)
+              const top = e.verdict === 'worth_it' && best.some((x) => x.utc === b.utc)
               const up = (b.price ?? 0) >= 0
               return (
                 <div
@@ -522,9 +540,26 @@ function BestHours({ hours }: { hours: FarmingHours | null }) {
               </span>
             ))}
           </div>
-          <p className="text-xs text-faint">Each bar: how far that hour's prices sit from the day's average. In your time zone.</p>
         </>
       )}
+      {hours && <ConvertHint e={hours.divine_effect} />}
+      {hours && (
+        <p className="text-xs text-faint">
+          Each bar: how far that hour's prices sit from their 24-hour average, in your time zone. From {count(hours.leagues)} past league
+          {hours.leagues === 1 ? '' : 's'}' {PHASE_TEXT[hours.phase]} ({count(hours.days)} league-days).
+        </p>
+      )}
     </div>
+  )
+}
+
+/** The Divine's own daily cycle: when Chaos buys the most Divines. */
+function ConvertHint({ e }: { e: HourEffect }) {
+  if (e.verdict !== 'worth_it' || e.best == null || e.worst == null || e.gap == null) return null
+  return (
+    <p className="text-sm text-muted">
+      Converting to Divines? They're cheapest in Chaos around <span className="num text-text">{localHour(e.worst)}</span> your time and dearest around{' '}
+      <span className="num text-text">{localHour(e.best)}</span>: about {pct(e.gap, 1)} apart.
+    </p>
   )
 }
