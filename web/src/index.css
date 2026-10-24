@@ -118,3 +118,9 @@
     animation: none;
   }
 }
+
+/* The Market recap's look-back is pinned to the bottom of the screen: leave room for it
+   below the footer, so scrolling to the end never leaves the disclaimer under it. */
+body:has([data-look-back]) footer {
+  padding-bottom: 5.5rem;
+}

@@ -170,8 +170,6 @@ export default function Missed() {
               <Cards w={w} money={money} />
               <MarketMovers w={w} money={money} />
               <LookBack hours={w.hours} onHours={setHours} />
-              {/* Room at the bottom, so the pinned look-back never covers the last cards. */}
-              <div aria-hidden className="h-10" />
             </>
           ) : (
             <Notice kind="info">Nothing to recap yet.</Notice>
@@ -186,7 +184,8 @@ const lastHours = (n: number) => (n === 1 ? 'the last hour' : `the last ${n} hou
  *  A small pill, centred, so it never covers much of the page. */
 function LookBack({ hours, onHours }: { hours: number; onHours: (h: number) => void }) {
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-4 z-30 flex justify-center px-4">
+    // data-look-back: the page leaves room below its footer for it (index.css).
+    <div data-look-back className="pointer-events-none fixed inset-x-0 bottom-4 z-30 flex justify-center px-4">
       <label className="pointer-events-auto flex items-center gap-3 rounded-full border border-accent/40 bg-surface-2/95 px-4 py-2 text-xs font-medium text-muted shadow-xl shadow-shadow/40 backdrop-blur">
         <Clock aria-hidden className="size-3.5 text-accent" />
         Look back
