@@ -16,8 +16,9 @@ The effect fades as a league ages, so everything is per PHASE of the league. A b
 own profile is shown only if it holds across leagues (`stability`); otherwise the pooled
 one.
 
-Baskets are `{mechanic: [item_id]}`; until config/mechanics.toml lands (workstream A),
-`PROVISIONAL` name rules stand in.
+Baskets are `{mechanic id: [item_id]}`, from config/mechanics.toml (`farming_baskets`:
+outputs plus legacy outputs, since this reads past leagues); the `PROVISIONAL` name rules
+stand in when the file is missing.
 
     python -m exiledbroker.analysis.hours          # the tables in finding 6
 """
@@ -30,7 +31,8 @@ import numpy as np
 import polars as pl
 
 from exiledbroker.analysis import backtest as bt
-from exiledbroker.config import get_settings
+from exiledbroker.config import Settings, get_settings
+from exiledbroker.normalize import mechanics as mechanics_config
 from exiledbroker.storage import db
 
 WINDOW = 25  # hours in the centred mean
@@ -96,6 +98,15 @@ def baskets(con, rules: dict[str, str] = PROVISIONAL) -> dict[str, list[str]]:
         )
         out[mechanic] = sorted(hit["item_id"].to_list())
     return out
+
+
+def farming_baskets(con, settings: Settings) -> dict[str, list[str]]:
+    """{mechanic id: item ids} from config/mechanics.toml, outputs plus legacy outputs;
+    the PROVISIONAL name rules if there's no file."""
+    mechanics = mechanics_config.load_mechanics(settings)
+    if not mechanics:
+        return baskets(con)
+    return {m.id: mechanics_config.output_ids(con, m, legacy=True) for m in mechanics}
 
 
 def phase_of(day: pl.Expr) -> pl.Expr:
@@ -456,12 +467,13 @@ def _effect(e: dict) -> str:
 
 
 def main() -> None:
-    con = db.connect(get_settings().db_path, read_only=True)
+    settings = get_settings()
+    con = db.connect(settings.db_path, read_only=True)
     leagues = bt.hourly_leagues(con)
     px = pl.concat([hourly(con, lg) for lg in leagues])
     dev = pl.concat([deviations(px.filter(pl.col("league") == lg)) for lg in leagues])
     dev_div = pl.concat([deviations(hourly(con, lg, "divine")) for lg in leagues])
-    rep = report(px, dev, dev_div, baskets(con))
+    rep = report(px, dev, dev_div, farming_baskets(con, settings))
     print("UTC hour:                     " + " ".join(f"{h:5d}" for h in range(24)))
     for name, r in rep.items():
         print(

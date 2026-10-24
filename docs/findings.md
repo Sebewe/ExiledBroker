@@ -179,18 +179,20 @@ The tables below are from the first version. The Market recap lists the latest h
 - **The Divine has its own, stronger cycle**: dear in Chaos at 22:00–01:00 and cheap at 10:00–13:00, by ±4% on days 2–7 and ±2% on days 7–14. Converting Chaos to Divines around noon UTC instead of midnight saves about 8% on days 2–7 and 4% on days 7–14. This is the largest effect that lasts into the second week.
 - **Don't convert Chaos prices to Divines to judge the Divine market.** Chaos price ÷ the Divine rate peaks at 12:00 (because the Divine is cheap then), but the Divine market's own prices peak in the evening like the Chaos market's, more weakly (correlation of the two 0.3 on days 2–7, 0.06 on days 7–14). The gap between them is a daily cycle in the Chaos↔Divine loops (finding 2), worth a look for loop timing later.
 - **Volume** is twice as high at 15:00–21:00 as at 02:00–07:00 (5.5% of the day an hour against 2.8%), the same on days 2–7, 7–14 and later. 38% of a day's Chaos trades in those 7 evening hours. So the best hours to sell are also the deepest: a stack moves the price least then (finding 7). On days 0–2 the share by hour is only launch-day growth (tenfold), so the page shows none.
-- **Mechanics differ.** Where a basket's own profile holds across leagues (stability ≥ 0.5) and beats its noise floor, it's much stronger than the pool, and not always in the evening. On workstream A's draft baskets (outputs plus legacy outputs, `farm-a` 8505eca, before the user's review):
+- **Mechanics differ.** Where a basket's own profile holds across leagues (stability ≥ 0.5) and beats its noise floor, it's much stronger than the pool, and not always in the evening. On the reviewed baskets (`config/mechanics.toml`, 23 mechanics; outputs plus legacy outputs, since this reads past leagues):
 
-  | Basket (items) | Days 0–2 | Days 2–7 | Days 7–14 |
+  | Basket (items traded) | Days 0–2 | Days 2–7 | Days 7–14 |
   |---|---|---|---|
-  | Essence (42) | +8.9% at 21:00 | **+9.2% at 23:00**, worst 06:00 (stability 0.90) | +4.2% at 22:00 (0.67) |
+  | Essence (59) | +9.8% at 21:00 | **+10.4% at 23:00**, worst 06:00 (stability 0.90) | +4.9% at 00:00 (0.71) |
   | Eldritch altars (12) | +11% at 00:00 | +5.8% at 22:00 (0.82) | |
   | Legion (16) | | **+12.9% at 11:00**, worst 02:00 (0.85) | |
+  | Boss rush (41) | | +3.0% at 18:00 (0.69) | +2.0% at 20:00 (0.59) |
+  | Beyond (9), Ritual (8) | | +4.7% at 14:00, +3.3% at 23:00 | |
   | Blight (10), Delve (29) | +20%, +13% at 22–23:00 | | |
   | Atlas memories (12), Necropolis (5) | | | +3.3% at 21:00, +5.9% at 11:00 |
   | Heist (3), Betrayal (3) | evening | evening (0.85, 0.76) | Betrayal +3.9% at 01:00 |
 
-  Breach, Delirium, Ritual, Runegrafts, Harvest, Harbinger, Expedition, Abyss, Deepwater and the divination cards don't hold across leagues: the page uses the pooled profile for them. Essence, Eldritch altars and Legion come out the same on the provisional name rules (`hours.PROVISIONAL`, which also counted each mechanic's scarabs); there Ultimatum and Abyss looked stable too, but that came from their scarabs, which A lists as inputs. Heist and Betrayal rest on 3 items each. The stable list must be rebuilt (`hours.report`) once the baskets are final.
+  The other mechanics (Breach, Delirium, Runegrafts, Harvest, Harbinger, Expedition, Abyss, Ultimatum, Tattoos, Sanctum and the divination cards) don't hold across leagues: the page uses the pooled profile for them. Essence, Eldritch altars and Legion come out the same on the draft baskets and on the earlier provisional name rules (`hours.PROVISIONAL`, which also counted each mechanic's scarabs: there Ultimatum and Abyss looked stable, but that came from their scarabs, which the config lists as inputs). Heist and Betrayal rest on 3 items each. `python -m exiledbroker.analysis.hours` reads the config (`hours.farming_baskets`), so the list follows any later basket change.
 - **Per item is noise.** Forecasting a league's item profiles from the same items in the other leagues does worse than forecasting no pattern in 3 of 5 leagues (mean squared error 28.5 vs 19.4 in Settlers, 31.3 vs 28.4 in Mercenaries, 39.5 vs 38.2 in Allflame, ×10⁻⁴); the pooled profile is about as good as nothing in all five (`hours.item_vs_pooled`).
 - **Day of week**: not separable here. Every league launches on a Friday, so in a launch fortnight the weekday is the league's day, and the launch-day surge swamps any weekly rhythm. A side note only; Allflame's later days (two weeks) are too few to say.
 
