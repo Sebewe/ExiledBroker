@@ -1,6 +1,15 @@
 import { Clock, Coins, Rocket, Sprout } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
-import type { Farming as FarmingData, FarmingHours, FarmingItem, FarmingMechanic, FarmingOutlook, HourEffect, OutlookWindowId } from '../api/farming'
+import type {
+  Farming as FarmingData,
+  FarmingHours,
+  FarmingImpact,
+  FarmingItem,
+  FarmingMechanic,
+  FarmingOutlook,
+  HourEffect,
+  OutlookWindowId,
+} from '../api/farming'
 import type { Upcoming } from '../api/client'
 import { useFarming, useServerNow, useStatus } from '../api/queries'
 import { Field, NumberField, Segmented, Select, Toolbar } from '../components/Controls'
@@ -8,8 +17,8 @@ import { FreshnessBanner } from '../components/Freshness'
 import { Notice } from '../components/Notice'
 import { Empty, Meter } from '../components/Opportunity'
 import { PageHeader } from '../components/Section'
-import { count, duration, pct, signedPct, tone, utcHour } from '../lib/format'
-import { bestHours, compareMarkets, localHour, localHours, profileFor, type MarketSale } from '../lib/impact'
+import { count, duration, pct, price, signedPct, tone, utcHour } from '../lib/format'
+import { busiestHours, DEFAULT_BANDS, localHour, profileFor, stackInMarkets, tradingTime, type ImpactBand, type MarketStack } from '../lib/impact'
 import { makeMoney, type Money } from '../lib/money'
 import { queryFallback } from '../lib/queryFallback'
 import { useLeague } from '../lib/useLeague'
@@ -17,7 +26,7 @@ import { useNumberParam, useParam } from '../lib/useParam'
 
 // The Farming page (docs/farming.md): which mechanics' drops are worth farming now, how
 // they did at past launches, and how to sell a stack. One cached response per loaded hour;
-// the sell helper's maths runs here (lib/impact), so a typed quantity costs no request.
+// the sell helper's sums run here (lib/impact), so a typed quantity costs no request.
 
 const WINDOWS: { id: OutlookWindowId; label: string; first: number; last: number }[] = [
   { id: 'day1', label: 'Day 1', first: 1, last: 1 },
@@ -324,6 +333,8 @@ function ShowAll({ all, onAll, total }: { all: boolean; onAll: (all: boolean) =>
 
 // --- Selling -------------------------------------------------------------------------
 
+const DEFAULT_NOTE = "Hourly prices swing more than a stack moves them, so this shows how much of the market's trading your stack is, not a price drop."
+
 function SellHelper({
   items,
   mechanics,
@@ -335,7 +346,7 @@ function SellHelper({
   items: FarmingItem[]
   mechanics: FarmingMechanic[]
   hours: FarmingHours | null
-  impact: FarmingData['impact']
+  impact: FarmingImpact | null
   money: Money
   divineChaos: number | null | undefined
 }) {
@@ -349,7 +360,7 @@ function SellHelper({
       id="sell"
       title="Selling a stack"
       icon={Coins}
-      note="Dumping a big stack at once pushes the price down. Pick an item and how many you have to see the expected drop in the Chaos and Divine markets, and which one fetches more."
+      note="Pick an item and how many you have to see how your stack compares with what each market trades in an hour, and whether to list it at once or spread it out."
     >
       {!item ? (
         <Empty>None of the mechanics' drops has a recent price yet.</Empty>
@@ -377,7 +388,7 @@ function SellHelper({
               <p className="pb-2 text-xs text-faint">Drops from {item.mechanics.map((id) => mechanicName.get(id) ?? id).join(', ')}</p>
             )}
           </Toolbar>
-          <Sale item={item} qty={qty} y={impact?.y ?? null} note={impact?.note ?? null} money={money} divineChaos={divineChaos} />
+          <Stack item={item} qty={qty} bands={impact?.bands ?? DEFAULT_BANDS} note={impact?.note ?? DEFAULT_NOTE} money={money} divineChaos={divineChaos} />
         </>
       )}
       <BestHours hours={hours} item={item} mechanicName={mechanicName} />
@@ -387,87 +398,130 @@ function SellHelper({
 
 const MARKET_NAME = { chaos: 'Chaos market', divine: 'Divine market' } as const
 
-function Sale({
+/** A band's edge in words: 0.25 → "15 minutes", 1 → "an hour". */
+function bandEdge(hours: number) {
+  if (hours === 1) return 'an hour'
+  return hours < 1 ? `${Math.round(hours * 60)} minutes` : `${count(hours, 1)} hours`
+}
+
+const LEAD: Record<ImpactBand, string> = {
+  low: 'it sells into the market as it is.',
+  medium: "a large part of the hour's trading, so it may take a while to sell at this price.",
+  high: "an hour's trading or more, so split it and list it over several hours.",
+}
+
+/** The stack as hours of each market's trading (finding 7): the Chaos market first, since
+ *  it carries most of an item's trading; the Divine market as its own hours. */
+function Stack({
   item,
   qty,
-  y,
+  bands,
   note,
   money,
   divineChaos,
 }: {
   item: FarmingItem
   qty: number
-  y: number | null
-  note: string | null
+  bands: FarmingImpact['bands']
+  note: string
   money: Money
   divineChaos: number | null | undefined
 }) {
-  if (y == null) return <Notice kind="info">The price-impact estimate isn't available yet.</Notice>
-  const { chaos, divine, better, gain } = compareMarkets(item, qty, y, divineChaos)
-  const why = !item.divine?.price
+  const { chaos, divine } = stackInMarkets(item, qty, divineChaos, bands)
+  const lead = chaos ?? divine
+  const longer = chaos && divine ? divine.hours / chaos.hours : null
+  const noDivine = !item.divine?.volume_h
     ? "It hasn't traded against Divines lately, so the Chaos market is the only one."
-    : !divineChaos
-      ? "There's no Divine price yet this league, so the Divine market can't be compared."
-      : null
+    : 'Too few Divine trades to judge by.'
   return (
     <div className="flex flex-col gap-3">
-      {better && (chaos || divine) && (
+      {lead && (
         <p className="text-sm" aria-live="polite">
-          Sell {count(qty)} {item.name} in the <span className="font-semibold text-accent-strong">{MARKET_NAME[better]}</span>
-          {gain != null && (
-            <>
-              : about <span className="num font-semibold text-positive">{money(gain)}</span> more than in the other
-            </>
-          )}
-          .
+          {count(qty)} {item.name} is <span className="num font-semibold">{tradingTime(lead.hours)}</span> of the {MARKET_NAME[lead.market]}'s trading:{' '}
+          {LEAD[lead.band]}
+          {longer != null && longer >= 1.5 && ` The Divine market trades less of it: the same stack is ${count(longer, longer < 10 ? 1 : 0)} times as long there.`}
         </p>
       )}
       <div className="grid gap-3 sm:grid-cols-2">
-        <MarketCard name={MARKET_NAME.chaos} sale={chaos} best={better === 'chaos'} money={money} missing="No recent Chaos trades to judge by." />
-        <MarketCard name={MARKET_NAME.divine} sale={divine} best={better === 'divine'} money={money} missing={why ?? 'Too few Divine trades to judge by.'} />
+        <MarketCard name={MARKET_NAME.chaos} stack={chaos} qty={qty} bands={bands} money={money} missing="No recent Chaos trades to judge by." />
+        <MarketCard name={MARKET_NAME.divine} stack={divine} qty={qty} bands={bands} money={money} missing={noDivine} />
       </div>
       <p className="text-xs text-faint">
-        An estimate from how much each market moves and trades in an hour (impact ≈ {y.toFixed(2)} × volatility × √(stack ÷ hourly volume)). Volumes are unsigned,
-        so it's a rough guide: splitting a big stack over a few hours usually fetches more.{note ? ` ${note}` : ''}
+        {note} Hours of trading: your stack over the units the market trades in a typical hour, last 3 days. Under {bandEdge(bands[0])} of trading it sells as it
+        is; from {bandEdge(bands[1])} on, split it. The typical hourly swing is how far the price moves in an hour anyway.
       </p>
     </div>
   )
 }
 
-const BAND_TEXT = { low: 'Small impact', medium: 'Noticeable impact', high: 'Big impact' } as const
+const BAND_TEXT: Record<ImpactBand, string> = {
+  low: 'Sells into the market as it is',
+  medium: "A large part of the hour's trading: list it a little at a time",
+  high: "An hour's trading or more: split it",
+}
+const BAND_STEPS: ImpactBand[] = ['low', 'medium', 'high']
 
-function MarketCard({ name, sale, best, money, missing }: { name: string; sale: MarketSale | null; best: boolean; money: Money; missing: string }) {
+function MarketCard({
+  name,
+  stack,
+  qty,
+  bands,
+  money,
+  missing,
+}: {
+  name: string
+  stack: MarketStack | null
+  qty: number
+  bands: FarmingImpact['bands']
+  money: Money
+  missing: string
+}) {
+  if (!stack)
+    return (
+      <section aria-label={name} className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-4">
+        <h3 className="font-semibold">{name}</h3>
+        <p className="text-sm text-muted">{missing}</p>
+      </section>
+    )
+  // The Divine market before there's a Divine rate: its own prices, in Divines. (A missing
+  // price alone isn't that: it shows as a dash.)
+  const inDivines = stack.market === 'divine' && stack.noRate
+  // Split across at least two hours: a stack of exactly an hour's trading is the top band.
+  const spread = stack.band === 'high' ? (stack.hours > 48 ? 'several days' : `at least ${Math.max(2, Math.ceil(stack.hours))} hours`) : null
   return (
-    <section
-      aria-label={name}
-      className={`flex flex-col gap-2 rounded-lg border p-4 ${best ? 'border-accent/60 bg-accent/5' : 'border-border bg-surface'}`}
-    >
+    <section aria-label={name} className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-4">
       <div className="flex items-baseline justify-between gap-2">
         <h3 className="font-semibold">{name}</h3>
-        {best && <span className="text-xs font-medium text-accent-strong">Better</span>}
+        <span className="num text-right text-xl font-semibold" title="Your stack, in this market's typical hours of trading">
+          {tradingTime(stack.hours)}
+        </span>
       </div>
-      {!sale ? (
-        <p className="text-sm text-muted">{missing}</p>
+      <div className="grid grid-cols-3 gap-1" role="img" aria-label={`Bands at ${bandEdge(bands[0])} and ${bandEdge(bands[1])} of trading: ${BAND_TEXT[stack.band]}`}>
+        {BAND_STEPS.map((b) => (
+          <span key={b} className={`h-1.5 rounded-full ${b === stack.band ? 'bg-accent' : 'bg-surface-2'}`} />
+        ))}
+      </div>
+      <p className="text-sm text-muted">
+        {BAND_TEXT[stack.band]}
+        {spread && `, and list it over ${spread}`}.
+        {stack.hoursTraded != null && stack.hoursTraded < 0.5 && ` It trades in only ${pct(stack.hoursTraded, 0)} of hours, so it may take a while to fill.`}
+      </p>
+      <dl className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 text-sm">
+        <dt className="text-muted">Trades an hour</dt>
+        <dd className="num text-right">{count(stack.volumeH, stack.volumeH < 10 ? 1 : 0)}</dd>
+        <dt className="text-muted">Price now</dt>
+        <dd className="num text-right">{stack.unit == null ? '–' : `${inDivines ? price(stack.unit, 'divine') : money(stack.unitChaos)} each`}</dd>
+        <dt className="text-muted">The stack at that price</dt>
+        <dd className="num text-right font-medium">
+          {inDivines ? price(stack.unit == null ? null : stack.unit * qty, 'divine') : money(stack.valueChaos)}
+        </dd>
+        <dt className="text-muted">Typical hourly swing</dt>
+        <dd className="num text-right">{stack.sigmaH == null ? '–' : `±${pct(stack.sigmaH, 0)}`}</dd>
+      </dl>
+      {stack.unit == null ? (
+        <p className="text-xs text-muted">No recent price here, so the stack can't be valued in this market.</p>
       ) : (
-        <>
-          <div className="flex items-baseline justify-between gap-2">
-            <span className="text-sm text-muted">Expected drop</span>
-            <span className="num text-2xl font-semibold text-negative">about {signedPct(-sale.impact, 0)}</span>
-          </div>
-          <dl className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 text-sm">
-            <dt className="text-muted">Price now</dt>
-            <dd className="num text-right">{money(sale.unitChaos)} each</dd>
-            <dt className="text-muted">The stack fetches</dt>
-            <dd className="num text-right font-medium">≈{money(sale.proceeds)}</dd>
-            <dt className="text-muted">Stack vs an hour's trades</dt>
-            <dd className="num text-right">{sale.hoursOfVolume < 0.1 ? 'a small part' : `${sale.hoursOfVolume.toFixed(1)}×`}</dd>
-          </dl>
-          <p className="text-xs text-muted">
-            {BAND_TEXT[sale.band]}
-            {sale.hoursTraded != null && sale.hoursTraded < 0.5 && `; trades in only ${pct(sale.hoursTraded, 0)} of hours, so it may take a while to fill`}
-            {sale.hoursOfVolume > 3 && `; more than ${Math.floor(sale.hoursOfVolume)} hours of its usual trades, so spread it out`}.
-          </p>
-        </>
+        inDivines && <p className="text-xs text-muted">There's no Divine price yet this league, so its prices are in Divines.</p>
       )}
     </section>
   )
@@ -476,77 +530,54 @@ function MarketCard({ name, sale, best, money, missing }: { name: string; sale: 
 // --- Best hours ----------------------------------------------------------------------
 
 const PHASE_TEXT: Record<FarmingHours['phase'], string> = { d0_2: 'days 0–2', d2_7: 'days 2–7', d7_14: 'days 7–14', later: 'later days' }
-type HourMarket = 'chaos' | 'divine'
 
-/** Finding 6's profiles (past leagues, for the league's phase): the item's own mechanic's
- *  where it holds across leagues, else the pooled one; and when Divines are cheapest. */
+/** Finding 6 in a sentence or two (past leagues, for the league's phase): the busiest
+ *  hours; the dearest ones when timing is worth it (the item's own mechanic's profile where
+ *  it holds across leagues, else the pooled one); and when Divines are cheapest. */
 function BestHours({ hours, item, mechanicName }: { hours: FarmingHours | null; item: FarmingItem | undefined; mechanicName: Map<string, string> }) {
-  const [marketParam, setMarket] = useParam<HourMarket>('hours', 'chaos')
-  const market: HourMarket = marketParam === 'divine' ? 'divine' : 'chaos'
-  const chosen = !hours
-    ? null
-    : market === 'divine'
-      ? { mechanic: null, price: hours.price_divine_market, effect: hours.effect_divine_market }
-      : profileFor(hours, item?.mechanics ?? [])
-  const bars = chosen && chosen.price.some((p) => p != null) ? localHours(chosen.price, market === 'chaos' ? hours!.volume : null) : []
-  const best = bestHours(bars)
-  const bestText = [...best].sort((a, b) => a.label.localeCompare(b.label)).map((b) => b.label).join(', ')
-  const max = Math.max(...bars.map((b) => Math.abs(b.price ?? 0)), 1e-9)
-  const e = chosen?.effect
-  const whose = chosen?.mechanic ? `${mechanicName.get(chosen.mechanic) ?? chosen.mechanic}'s drops sell` : 'Prices run'
+  const chosen = hours ? profileFor(hours, item?.mechanics ?? []) : null
+  const e = chosen && chosen.price.some((p) => p != null) ? chosen.effect : null
+  const busy = busiestHours(hours?.volume)
+  const own = chosen?.mechanic ? (mechanicName.get(chosen.mechanic) ?? chosen.mechanic) : null
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-4">
-      <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
-        <h3 className="flex items-center gap-2 font-semibold">
-          <Clock aria-hidden className="size-4 text-accent" /> Best time to sell
-        </h3>
-        {hours && <Segmented label="Market" value={market} options={['chaos', 'divine'] as const} onChange={setMarket} format={(m) => MARKET_NAME[m]} />}
-      </div>
-      {!bars.length || !e ? (
+      <h3 className="flex items-center gap-2 font-semibold">
+        <Clock aria-hidden className="size-4 text-accent" /> Best time to sell
+      </h3>
+      {busy && (
+        <p className="text-sm text-muted">
+          {busy.ratio < 1.2 ? (
+            'Trading is about as busy at every hour of the day.'
+          ) : busy.ratio === Infinity ? (
+            <>
+              Trading is busiest from <span className="num text-text">{localHour(busy.start)}</span> to <span className="num text-text">{localHour(busy.end)}</span>{' '}
+              your time: a big stack sells most easily then. Almost nothing trades from {localHour(busy.quietStart)} to {localHour(busy.quietEnd)}.
+            </>
+          ) : (
+            <>
+              Trading is busiest from <span className="num text-text">{localHour(busy.start)}</span> to <span className="num text-text">{localHour(busy.end)}</span>{' '}
+              your time, {count(busy.ratio, 1)} times as busy as from {localHour(busy.quietStart)} to {localHour(busy.quietEnd)}: a big stack sells most easily then.
+            </>
+          )}
+        </p>
+      )}
+      {!e || e.gain == null ? (
         <p className="text-sm text-muted">Not enough days of trades yet to tell which hours sell higher.</p>
+      ) : e.verdict === 'small' || e.best == null ? (
+        <p className="text-sm text-muted">
+          Time of day barely matters{own ? ` for ${own}'s drops` : ''} on {PHASE_TEXT[hours!.phase]}: the best hour beats the day's average by about {pct(e.gain, 1)}.
+          Sell whenever suits you.
+        </p>
       ) : (
-        <>
-          <p className="text-sm text-muted">
-            {e.verdict === 'small'
-              ? `Time of day barely matters on ${PHASE_TEXT[hours!.phase]}: the best hour beats the day's average by about ${pct(e.gain, 1)}. Sell whenever suits you.`
-              : `${whose} highest around ${bestText} your time: about ${pct(e.gain, 1)} over the day's average${
-                  e.gap != null && e.worst != null ? `, and ${pct(e.gap, 1)} over the lowest hour (${localHour(e.worst)})` : ''
-                }.`}
-          </p>
-          <div className="flex h-28 items-center gap-px" role="img" aria-label={`Price by hour of day, your time. Highest: ${bestText}`}>
-            {bars.map((b) => {
-              const h = ((Math.abs(b.price ?? 0) / max) * 50).toFixed(1)
-              const top = e.verdict === 'worth_it' && best.some((x) => x.utc === b.utc)
-              const up = (b.price ?? 0) >= 0
-              return (
-                <div
-                  key={b.utc}
-                  className="relative h-full flex-1"
-                  title={`${b.label}: ${b.price == null ? 'no data' : signedPct(b.price, 1)} vs the day's average${b.volume != null ? `, ${pct(b.volume, 1)} of the day's trades` : ''}`}
-                >
-                  <div className="absolute inset-x-0 top-1/2 h-px bg-border" />
-                  <div
-                    className={`absolute inset-x-0 rounded-sm ${top ? 'bg-accent-strong' : up ? 'bg-accent/50' : 'bg-faint/40'}`}
-                    style={up ? { bottom: '50%', height: `${h}%` } : { top: '50%', height: `${h}%` }}
-                  />
-                </div>
-              )
-            })}
-          </div>
-          <div className="flex gap-px text-[11px] text-faint" aria-hidden>
-            {bars.map((b, i) => (
-              <span key={b.utc} className="num flex-1 whitespace-nowrap">
-                {i % 6 === 0 ? b.label : ''}
-              </span>
-            ))}
-          </div>
-        </>
+        <p className="text-sm text-muted">
+          {own ? `${own}'s drops sell` : 'Prices run'} highest around <span className="num text-text">{localHour(e.best)}</span> your time: about {pct(e.gain, 1)} over
+          the day's average{e.gap != null && e.worst != null && `, and ${pct(e.gap, 1)} over the lowest hour (${localHour(e.worst)})`}.
+        </p>
       )}
       {hours && <ConvertHint e={hours.divine_effect} />}
       {hours && (
         <p className="text-xs text-faint">
-          Each bar: how far that hour's prices sit from their 24-hour average, in your time zone. From {count(hours.leagues)} past league
-          {hours.leagues === 1 ? '' : 's'}' {PHASE_TEXT[hours.phase]} ({count(hours.days)} league-days).
+          From {count(hours.leagues)} past league{hours.leagues === 1 ? '' : 's'}' {PHASE_TEXT[hours.phase]} ({count(hours.days)} league-days), in your time zone.
         </p>
       )}
     </div>

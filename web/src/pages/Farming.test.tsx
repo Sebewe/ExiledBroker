@@ -78,7 +78,8 @@ const HOURS: FarmingHours = {
   price: flat.map((_, h) => (h === 23 ? 0.021 : h === 6 ? -0.017 : 0)),
   price_divine_market: flat.map((_, h) => (h === 21 ? 0.017 : 0)),
   divine: flat.map((_, h) => (h === 23 ? 0.041 : h === 12 ? -0.04 : 0)),
-  volume: Array(24).fill(1 / 24),
+  // Busiest 17:00–21:00, twice as busy as 02:00–06:00.
+  volume: flat.map((_, h) => (h >= 17 && h < 21 ? 2 : h >= 2 && h < 6 ? 1 : 1.5) / 36),
   effect: effect(0.021, 23, 6),
   effect_divine_market: effect(0.003, 21, 8, 'small'),
   divine_effect: { ...effect(0.041, 23, 12), gap: 0.081 },
@@ -112,7 +113,7 @@ const FARMING: FarmingData = {
     },
   ],
   hours: HOURS,
-  impact: { y: 0.8, note: null },
+  impact: { y: null, bands: [0.25, 1], note: 'Hourly prices swing more than a stack moves them.' },
 }
 
 // Hour labels are local time: pin the clock's zone so they read as UTC.
@@ -191,50 +192,126 @@ describe('Farming', () => {
     expect(await cards()).toHaveLength(8)
   })
 
-  it('compares the two markets for a stack, and says which fetches more', async () => {
+  it("shows a stack as hours of each market's trading, the Chaos market first", async () => {
     serve({ '/api/status': status([league(iso(-80 * MIN))]), '/api/farming/Allflame': { body: FARMING } })
     renderFarming('/farming?item=currency:splinter-of-xoph&qty=10')
-    // 10 splinters: the Divine market pays 1.6c each and barely moves.
-    expect(await screen.findByText(/^Sell /)).toHaveTextContent('Sell 10 Splinter of Xoph in the Divine market')
-    expect(within(screen.getByRole('region', { name: 'Divine market' })).getByText('Better')).toBeInTheDocument()
-    // 5000 sink the thin Divine market.
-    fireEvent.change(screen.getByLabelText('How many'), { target: { value: '5000' } })
-    expect(screen.getByText(/^Sell /)).toHaveTextContent('Sell 5,000 Splinter of Xoph in the Chaos market')
+    // 10 splinters against 3200 an hour in Chaos and 40 in Divines.
+    const lead = await screen.findByText(/of the Chaos market's trading/)
+    expect(lead).toHaveTextContent("10 Splinter of Xoph is under a minute of the Chaos market's trading: it sells into the market as it is.")
+    expect(lead).toHaveTextContent('The Divine market trades less of it: the same stack is 80 times as long there.')
+    const chaos = within(screen.getByRole('region', { name: 'Chaos market' }))
+    expect(chaos.getByText('Sells into the market as it is.')).toBeInTheDocument()
+    expect(chaos.getByText('1.40c each')).toBeInTheDocument()
+    expect(chaos.getByText('14.0c')).toBeInTheDocument() // the stack at that price
+    expect(chaos.getByText('±3%')).toBeInTheDocument() // typical hourly swing, informative only
     const divine = within(screen.getByRole('region', { name: 'Divine market' }))
-    expect(divine.getByText('about −36%')).toBeInTheDocument()
-    expect(divine.getByText(/trades in only 21% of hours/)).toBeInTheDocument()
+    expect(divine.getByText('about 15 minutes')).toBeInTheDocument()
+    expect(divine.getByText(/A large part of the hour's trading/)).toBeInTheDocument()
+    expect(screen.getByText(/Hourly prices swing more than a stack moves them\. Hours of trading:/)).toBeInTheDocument()
+    // No price drop and no "which fetches more": finding 7 can't calibrate one.
+    expect(screen.queryByText(/Expected drop|Better|fetches more/)).not.toBeInTheDocument()
+
+    // 5000: more than either market trades in an hour.
+    fireEvent.change(screen.getByLabelText('How many'), { target: { value: '5000' } })
+    expect(screen.getByText(/of the Chaos market's trading/)).toHaveTextContent(
+      "5,000 Splinter of Xoph is 1.6 hours of the Chaos market's trading: an hour's trading or more, so split it and list it over several hours.",
+    )
+    expect(chaos.getByText(/split it, and list it over at least 2 hours/)).toBeInTheDocument()
+    expect(chaos.getByText('35.0div')).toBeInTheDocument() // 7,000c at 200c a Divine
+    expect(divine.getByText('5 days')).toBeInTheDocument()
+    expect(divine.getByText(/list it over several days\. It trades in only 21% of hours/)).toBeInTheDocument()
+  })
+
+  it('puts a stack of exactly an hour in the top band, and one just under it in minutes', async () => {
+    serve({ '/api/status': status([league(iso(-80 * MIN))]), '/api/farming/Allflame': { body: FARMING } })
+    renderFarming('/farming?item=currency:deafening-essence-of-greed&qty=50')
+    // 50 essences against 50 an hour.
+    expect(await screen.findByText(/of the Chaos market's trading/)).toHaveTextContent(
+      "50 Deafening Essence of Greed is an hour of the Chaos market's trading: an hour's trading or more, so split it and list it over several hours.",
+    )
+    const chaos = within(screen.getByRole('region', { name: 'Chaos market' }))
+    expect(chaos.getByText(/split it, and list it over at least 2 hours\./)).toBeInTheDocument()
+    expect(screen.queryByText(/at least 1 hours/)).not.toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('How many'), { target: { value: '49' } })
+    expect(screen.getByText(/of the Chaos market's trading/)).toHaveTextContent(
+      "49 Deafening Essence of Greed is about 59 minutes of the Chaos market's trading: a large part",
+    )
+  })
+
+  it('shows a missing price as a dash, without blaming the Divine rate', async () => {
+    const splinter = FARMING.items[0]!
+    const items = [{ ...splinter, chaos: { ...splinter.chaos!, price: null }, divine: { ...splinter.divine!, price: null } }]
+    serve({ '/api/status': status([league(iso(-80 * MIN))]), '/api/farming/Allflame': { body: { ...FARMING, items } } })
+    renderFarming('/farming?item=currency:splinter-of-xoph')
+    for (const name of ['Chaos market', 'Divine market']) {
+      const card = within(await screen.findByRole('region', { name }))
+      expect(card.getByText(/No recent price here/)).toBeInTheDocument()
+      expect(card.queryByText(/no Divine price yet/)).not.toBeInTheDocument()
+      expect(card.queryByText(/each/)).not.toBeInTheDocument()
+    }
   })
 
   it('says when an item has no Divine market', async () => {
     serve({ '/api/status': status([league(iso(-80 * MIN))]), '/api/farming/Allflame': { body: FARMING } })
     renderFarming('/farming?item=currency:deafening-essence-of-greed')
     expect(await screen.findByText(/hasn't traded against Divines lately/)).toBeInTheDocument()
-    expect(screen.getByText(/^Sell /)).toHaveTextContent('in the Chaos market.')
+    expect(screen.getByText(/of the Chaos market's trading/)).toHaveTextContent("100 Deafening Essence of Greed is 2.0 hours of the Chaos market's trading")
+    expect(screen.queryByText(/The Divine market trades less/)).not.toBeInTheDocument()
   })
 
-  it("can't compare the Divine market before there's a Divine price", async () => {
+  it("gives the Divine market's hours, in Divines, before there's a Divine price", async () => {
     serve({ '/api/status': status([league(iso(-80 * MIN), iso(-3 * 60 * MIN), null)]), '/api/farming/Allflame': { body: FARMING } })
     renderFarming('/farming?item=currency:splinter-of-xoph')
-    expect(await screen.findByText(/no Divine price yet/)).toBeInTheDocument()
+    const divine = within(await screen.findByRole('region', { name: 'Divine market' }))
+    expect(divine.getByText(/no Divine price yet/)).toBeInTheDocument()
+    expect(divine.getByText('2.5 hours')).toBeInTheDocument()
+    expect(divine.getByText('0.00800div each')).toBeInTheDocument()
+    expect(divine.getByText('0.800div')).toBeInTheDocument()
   })
 
-  it("names the best hours: the item's own mechanic's where it holds, the pooled ones otherwise", async () => {
+  it("names the busiest and dearest hours: the item's own mechanic's where it holds, the pooled ones otherwise", async () => {
     serve({ '/api/status': status([league(iso(-80 * MIN))]), '/api/farming/Allflame': { body: FARMING } })
     renderFarming('/farming?item=currency:splinter-of-xoph')
-    expect(await screen.findByText(/^Prices run highest/)).toHaveTextContent(
+    expect(await screen.findByText(/^Trading is busiest/)).toHaveTextContent(
+      'Trading is busiest from 17:00 to 21:00 your time, 2 times as busy as from 02:00 to 06:00: a big stack sells most easily then.',
+    )
+    expect(screen.getByText(/^Prices run highest/)).toHaveTextContent(
       "Prices run highest around 23:00 your time: about 2.1% over the day's average, and 4.2% over the lowest hour (06:00).",
     )
     expect(screen.getByText(/Converting to Divines/)).toHaveTextContent("They're cheapest in Chaos around 12:00 your time and dearest around 23:00: about 8.1% apart.")
-    expect(screen.getByText(/From 5 past leagues' days 2–7 \(30 league-days\)/)).toBeInTheDocument()
+    expect(screen.getByText(/From 5 past leagues' days 2–7 \(30 league-days\), in your time zone/)).toBeInTheDocument()
+    // A sentence, not a chart.
+    expect(screen.queryByRole('img', { name: /by hour of day/ })).not.toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('Item'), { target: { value: 'currency:deafening-essence-of-greed' } })
     expect(screen.getByText(/drops sell highest/)).toHaveTextContent("Essence's drops sell highest around 23:00 your time: about 9.2% over the day's average")
   })
 
-  it('says when time of day barely matters, as in the Divine market here', async () => {
-    serve({ '/api/status': status([league(iso(-80 * MIN))]), '/api/farming/Allflame': { body: FARMING } })
+  it('says when time of day barely matters, with no busiest hours on days 0–2', async () => {
+    const early = { ...HOURS, phase: 'd0_2', volume: null, effect: effect(0.006, 22, 7, 'small'), divine_effect: effect(0.02, 23, 12, 'small') }
+    serve({ '/api/status': status([league(iso(-80 * MIN))]), '/api/farming/Allflame': { body: { ...FARMING, hours: early } } })
+    renderFarming('/farming?item=currency:splinter-of-xoph')
+    expect(await screen.findByText(/Time of day barely matters/)).toHaveTextContent(
+      "Time of day barely matters on days 0–2: the best hour beats the day's average by about 0.6%. Sell whenever suits you.",
+    )
+    expect(screen.queryByText(/busiest/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Converting to Divines/)).not.toBeInTheDocument()
+  })
+
+  it('says when trading is about as busy at every hour', async () => {
+    const even = { ...HOURS, volume: Array(24).fill(1 / 24) }
+    serve({ '/api/status': status([league(iso(-80 * MIN))]), '/api/farming/Allflame': { body: { ...FARMING, hours: even } } })
     renderFarming()
-    fireEvent.click(await screen.findByRole('radio', { name: 'Divine market' }))
-    expect(screen.getByText(/Time of day barely matters/)).toHaveTextContent("on days 2–7: the best hour beats the day's average by about 0.3%")
+    expect(await screen.findByText('Trading is about as busy at every hour of the day.')).toBeInTheDocument()
+  })
+
+  it('says when almost nothing trades in the quiet hours, rather than calling it even', async () => {
+    const gap = { ...HOURS, volume: flat.map((_, h) => (h >= 2 && h < 6 ? 0 : h >= 17 && h < 21 ? 0.08 : 1 / 30)) }
+    serve({ '/api/status': status([league(iso(-80 * MIN))]), '/api/farming/Allflame': { body: { ...FARMING, hours: gap } } })
+    renderFarming()
+    expect(await screen.findByText(/^Trading is busiest/)).toHaveTextContent(
+      'Trading is busiest from 17:00 to 21:00 your time: a big stack sells most easily then. Almost nothing trades from 02:00 to 06:00.',
+    )
+    expect(screen.queryByText(/about as busy/)).not.toBeInTheDocument()
   })
 
   it('later in the league: no usual path after day 14, the outlook is for the next league', async () => {
@@ -252,6 +329,8 @@ describe('Farming', () => {
     expect(headings).toEqual(['What to farm', 'Selling a stack', "Next league's launch"])
     expect(screen.getByRole('radio', { name: 'Day 1' })).toHaveAttribute('aria-checked', 'true')
     expect(screen.getByText(/Not enough days of trades yet/)).toBeInTheDocument()
+    expect(screen.getByText(/^Trading is busiest/)).toBeInTheDocument()
+    expect(screen.queryByText(/Converting to Divines/)).not.toBeInTheDocument()
   })
 
   it('waits for the first trades, and warns about a stale feed', async () => {
