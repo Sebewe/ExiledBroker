@@ -24,7 +24,9 @@ def default_views() -> list[View]:
     trading = [lg.name for lg in leagues if lg.latest_hour]
     views = [deps.LEAGUE_NAMES, launch_picks_view(), backtest_view()]
     views += [missed_view(league) for league in trading]
-    views += [farming_view(league) for league in trading]
+    # The Farming page asks for every listed league, a new one before its first trades
+    # included (it leads with the launch outlook then).
+    views += [farming_view(lg.name) for lg in leagues]
     return views
 
 

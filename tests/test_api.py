@@ -157,6 +157,23 @@ def test_default_pages_are_precomputed(client, settings, monkeypatch):  # noqa: 
         assert not meter.queries, (path, [q.sql for q in meter.queries])
 
 
+def test_the_farming_page_is_precomputed_before_the_first_trades(client, settings, monkeypatch):  # noqa: F811
+    """A league is listed (and the Farming page asks for it) before its first trades,
+    when the page leads with the launch outlook: that view is warmed too."""
+    from exiledbroker.api import warm
+
+    update(settings, FakeExchange(PAGES, now=LAUNCH), 1)
+    status = client.get("/api/status").json()
+    assert status["leagues"][0]["name"] == LEAGUE and status["leagues"][0]["latest_hour"] is None
+    deps.reset()
+    warm.warm()
+    monkeypatch.setattr(deps, "VERSION_TTL", 60.0)
+    with db.metered() as meter:
+        r = client.get(f"/api/farming/{LEAGUE}")
+    assert r.status_code == 200 and r.json()["phase"] == "pre_launch"
+    assert not meter.queries, [q.sql for q in meter.queries]
+
+
 def test_cache_is_bounded():
     c = cache.ResultCache(max_entries=3)
     for i in range(10):
