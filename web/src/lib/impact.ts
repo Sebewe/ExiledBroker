@@ -1,4 +1,4 @@
-import type { FarmingHours, FarmingItem, FarmingMarket } from '../api/farming'
+import type { FarmingHours, FarmingItem, FarmingMarket, HourEffect, HourProfile } from '../api/farming'
 
 // The Farming page's sell helper, computed here so the typed quantity never reaches the
 // server (docs/farming.md, "The response contract"). The square-root rule
@@ -59,22 +59,35 @@ export function compareMarkets(item: FarmingItem, qty: number, y: number, divine
 
 export type HourBar = { utc: number; label: string; price: number | null; volume: number | null }
 
-/** The 24 UTC hours of a profile, relabelled and reordered in the viewer's time zone
- *  (or `timeZone`), starting from local midnight. */
-export function localHours(hours: Pick<FarmingHours, 'price' | 'volume'>, timeZone?: string): HourBar[] {
+/** A UTC hour as the viewer's (or `timeZone`'s) clock time: 23 → "01:00" in Paris. */
+export function localHour(utc: number, timeZone?: string): string {
   const fmt = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone })
   const day = new Date()
-  const bars = Array.from({ length: 24 }, (_, utc) => {
-    const label = fmt.format(new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), utc)))
-    return { utc, label, price: hours.price[utc] ?? null, volume: hours.volume[utc] ?? null }
-  })
+  return fmt.format(new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), utc)))
+}
+
+/** The 24 UTC hours of a profile, relabelled and reordered in the viewer's time zone
+ *  (or `timeZone`), starting from local midnight. */
+export function localHours(price: HourProfile, volume: HourProfile | null, timeZone?: string): HourBar[] {
+  const bars = Array.from({ length: 24 }, (_, utc) => ({ utc, label: localHour(utc, timeZone), price: price[utc] ?? null, volume: volume?.[utc] ?? null }))
   return bars.sort((a, b) => a.label.localeCompare(b.label))
 }
 
-/** The `n` hours that sold highest, best first. */
+/** The profile that applies to an item: its first mechanic's own, where that holds across
+ *  leagues, else the pooled one. */
+export function profileFor(hours: FarmingHours, mechanics: string[]): { mechanic: string | null; price: HourProfile; effect: HourEffect } {
+  const own = mechanics.find((m) => hours.mechanics[m] && hours.mechanics[m].shown !== false)
+  if (own) {
+    const { price, ...effect } = hours.mechanics[own]!
+    return { mechanic: own, price, effect }
+  }
+  return { mechanic: null, price: hours.price, effect: hours.effect }
+}
+
+/** The hours that sell highest, best first: up to `n`, and only those within a quarter of
+ *  the best hour's lift over the average, so a flat profile names just its peak. */
 export function bestHours(bars: HourBar[], n = 3): HourBar[] {
-  return bars
-    .filter((b) => b.price != null)
-    .sort((a, b) => b.price! - a.price!)
-    .slice(0, n)
+  const ranked = bars.filter((b) => b.price != null).sort((a, b) => b.price! - a.price!)
+  const top = ranked[0]?.price ?? 0
+  return ranked.filter((b, i) => i === 0 || (top > 0 && b.price! >= top * 0.75)).slice(0, n)
 }

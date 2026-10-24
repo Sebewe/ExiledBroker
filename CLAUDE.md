@@ -7,6 +7,7 @@ ExiledBroker is a Path of Exile 1 market tool: historical and live exchange data
 ## Be very polite to GGG and poe.ninja (non-negotiable)
 
 GGG's and poe.ninja's public endpoints are a courtesy, and both blacklist clients that get overzealous. Being blocked would kill the project: there is no other source for this data. Treat every request to their servers as a cost to avoid.
+- **GGG is the one to be careful with; poe.ninja tolerates more** (the user, 2026-10-24). Fetching poe.ninja's economy endpoints (new lists, a one-off batch) doesn't need asking first. It still goes through `PoliteClient`, conditionally where possible, and you say how many requests it made. Everything below stands for GGG as written.
 - **Never re-download what we already have.** Exchange hours are immutable: fetch each once, ever. Reference data goes through `reference.fetch_if_changed` (conditional requests, at most every `max_age`). Before writing anything that fetches, check how it decides what's missing. It must come from the database or a completed file, not "fetch the window again". A rebuild (`--force`, a `LOADER_VERSION` bump) reads pages already on disk and fetches only the missing ones (`fetch_page`). The hosted pipeline keeps the live window's pages in Postgres (`exchange_page`, `EB_EXCHANGE_PAGES=database`), so a rebuild there re-reads them. A new server is seeded from the local copy (`eb site seed --hosted`), never backfilled from GGG: `eb pipeline run` refuses an unseeded database.
 - **Every request goes through `ingest/http.PoliteClient`**, the internal rate limiter: one request at a time, at least `request_min_interval` (1 s) apart, exponential backoff with `Retry-After` honoured on 429/5xx, and a User-Agent naming the repo. Never call `httpx`/`urllib` directly, never parallelise requests (no threads, async fan-out or several clients at once), and never lower the interval to make something faster. Use one client per command, so spacing holds across the whole run.
 - **Poll no faster than the data changes:** one exchange hour per hour, a few minutes after it's published; poe.ninja no faster than its ~15-minute refresh. A 429 means slow down for good, not retry harder.
@@ -57,6 +58,7 @@ docker compose --profile worker up -d        # also the live worker (makes reque
 .venv/bin/eb exchange sync [-l Mirage]               # hourly GGG exchange, first 14 days per league
 .venv/bin/eb live sync|watch [-l Allflame]           # running league: launch fortnight + latest 14 days
 .venv/bin/eb launch picks                             # reduce past leagues to the Launch history, rank the picks (then `eb site seed`)
+.venv/bin/eb mechanics check                          # check config/mechanics.toml (Farming page baskets) against the local database
 .venv/bin/eb backtest run                             # replay the site's tools at fair and harsh prices for the Backtest page (then `eb site seed`)
 scripts/ingest.sh [exchange|dumps|all|live]          # unattended runner, logs to data/logs/latest.log
 EB_BACKUP_URL=… .venv/bin/eb site backup [-l Allflame]   # sync the site's database (or the local copy's league) to the off-site backup

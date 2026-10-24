@@ -29,6 +29,11 @@ def _default_core_pool() -> Path:
     return root / "config" / "core_pool.toml" if root else Path("config/core_pool.toml")
 
 
+def _default_mechanics() -> Path:
+    root = _repo_root()
+    return root / "config" / "mechanics.toml" if root else Path("config/mechanics.toml")
+
+
 class Settings(BaseSettings):
     """Runtime settings, overridable via EB_* environment variables or a .env file."""
 
@@ -37,6 +42,8 @@ class Settings(BaseSettings):
     data_dir: Path = Field(default_factory=_default_data_dir)
     # Manual include/exclude lists for the core drop pool (committed, edit by hand).
     core_pool_file: Path = Field(default_factory=_default_core_pool)
+    # What each league mechanic drops, for the Farming page (committed, edit by hand).
+    mechanics_file: Path = Field(default_factory=_default_mechanics)
     db_filename: str = "exiledbroker.duckdb"
     # The site's database (Railway's Postgres when hosted, the compose `db` service
     # locally). Unset: the site reads the local DuckDB file instead.

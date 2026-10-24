@@ -24,10 +24,24 @@ SOURCES = {
     "currency": ("Currency", "Fragment", "Oil"),
     "essence": ("Essence",),
     "scarab": ("Scarab",),
+    # The Farming page's mechanic outputs (config/mechanics.toml); no price-mapping
+    # group reads these, so they don't change what the other pages show.
+    "mechanics": (
+        "AllflameEmber",
+        "Artifact",
+        "Astrolabe",
+        "DeliriumOrb",
+        "EnshroudingCrystal",
+        "Fossil",
+        "Omen",
+        "Resonator",
+        "Runegraft",
+        "Tattoo",
+    ),
 }
 # Snapshot keys from before snapshots were per poe.ninja type (one per group, with
 # Catalysts left out of currency). Deleted on refresh so a stale list can't be read.
-LEGACY_KEYS = tuple(f"core_pool/{group_id}" for group_id in SOURCES)
+LEGACY_KEYS = tuple(f"core_pool/{group_id}" for group_id in ("currency", "essence", "scarab"))
 
 
 @dataclass
