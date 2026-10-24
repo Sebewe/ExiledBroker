@@ -510,6 +510,58 @@ def launch_picks_build() -> None:
     typer.echo(f"Ranked from {', '.join(leagues)}: {rows['launch_pick']} picks")
 
 
+mechanics_app = typer.Typer(
+    help="Mechanic baskets for the Farming page (config/mechanics.toml).", no_args_is_help=True
+)
+app.add_typer(mechanics_app, name="mechanics")
+
+
+@mechanics_app.command("check")
+def mechanics_check() -> None:
+    """Check config/mechanics.toml against the local database: names it doesn't know
+    (with what they probably meant), outputs the core pool doesn't show yet, and how
+    many outputs traded in each exchange league. Reads only; makes no requests."""
+    from exiledbroker.normalize import mechanics as mech
+
+    settings = get_settings()
+    try:
+        mechanics = mech.load_mechanics(settings)
+    except mech.MechanicsError as e:
+        typer.echo(f"Invalid: {e}")
+        raise typer.Exit(1) from e
+    if not mechanics:
+        typer.echo(f"No mechanics in {settings.mechanics_file}.")
+        raise typer.Exit(1)
+    with db.session(settings.db_path, read_only=True) as con:
+        results = mech.check(con, mechanics, core_pool.load_pool(con, settings))
+    leagues = list(results[0].traded)
+    typer.echo(f"{'':<22}{'outputs':>8}  traded in " + " ".join(f"{lg[:5]:>5}" for lg in leagues))
+    for r in results:
+        m = r.mechanic
+        size = len(m.outputs) + r.group_items
+        counts = " ".join(f"{r.traded[lg]:>5}" for lg in leagues)
+        typer.echo(f"{m.name[:21]:<22}{size:>8}  {'':10}{counts}")
+        if m.legacy:
+            legacy = " ".join(f"{r.legacy_traded[lg]:>5}" for lg in leagues)
+            typer.echo(f"{'  legacy':<22}{len(m.legacy):>8}  {'':10}{legacy}")
+    unknown = [(r.mechanic.id, name, s) for r in results for name, s in r.unknown]
+    outside = [(r.mechanic.id, name) for r in results for name in r.outside_pool]
+    if outside:
+        typer.echo(f"\n{len(outside)} outputs aren't in the core pool (not shown on the site):")
+        for mid in dict.fromkeys(mid for mid, _ in outside):
+            names = [n for m, n in outside if m == mid]
+            typer.echo(
+                f"  {mid}: {len(names)} ({', '.join(names[:3])}{', …' if len(names) > 3 else ''})"
+            )
+    if unknown:
+        typer.echo(f"\n{len(unknown)} names aren't in the database:")
+        for mid, name, suggestions in unknown:
+            hint = f" (did you mean {' or '.join(suggestions)}?)" if suggestions else ""
+            typer.echo(f"  {mid}: {name}{hint}")
+        raise typer.Exit(1)
+    typer.echo(f"\nAll {sum(len(r.mechanic.names()) for r in results)} names resolve.")
+
+
 backtest_app = typer.Typer(help="Would following the site's tools have paid?")
 app.add_typer(backtest_app, name="backtest")
 
