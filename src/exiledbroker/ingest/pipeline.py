@@ -186,8 +186,22 @@ def _pass(
         # Before a league switch drops the old league's hours: a finished league not
         # captured yet (a few small queries a pass; a capture about once a league).
         if mechanics.load_mechanics(settings):
-            result.farming_from = item_history.refresh(con, settings, live=name)
+            result.farming_from = _capture_farming(con, settings, name)
         else:  # without baskets it would "capture" leagues as empty, every pass
             result.no_baskets = str(settings.mechanics_file)
         result.dropped = site.drop_leagues(con, name)
     return result
+
+
+def _capture_farming(con, settings: Settings, live: str) -> list[str]:
+    """`item_history.refresh` in one transaction: a capture deletes a league's rows and
+    inserts them again, and a league with any rows counts as captured, so a pass killed
+    partway (a deploy, the cron's stop) must leave none, and the next pass captures it."""
+    con.execute("BEGIN TRANSACTION")
+    try:
+        captured = item_history.refresh(con, settings, live=live)
+        con.execute("COMMIT")
+    except BaseException:
+        con.execute("ROLLBACK")
+        raise
+    return captured

@@ -229,6 +229,35 @@ def test_a_finished_league_is_captured_into_the_farming_history_once(seeded):
         assert db.scalar(con, "SELECT count(*) FROM item_day_history") == rows
 
 
+def _killed_capture(monkeypatch):
+    """item_history.capture that writes the league's rows, then dies (a pass stopped
+    partway: a deploy, the cron's stop). Returns the real one, to put back."""
+    real = item_history.capture
+
+    def dies(con, league, item_ids):
+        assert real(con, league, item_ids) > 0
+        raise OSError("killed")
+
+    monkeypatch.setattr(item_history, "capture", dies)
+    return real
+
+
+def test_a_capture_cut_short_leaves_nothing_and_the_next_pass_retries(seeded, monkeypatch):
+    """A league with any rows counts as captured, so a half-written league would stay
+    half-written for good (and be backed up so): the capture is one transaction."""
+    s, server = seeded
+    with db.session(s.db_path) as con:
+        _past_league(con)
+    real = _killed_capture(monkeypatch)
+    with pytest.raises(OSError):
+        run(s, server, 8)
+    with db.session(s.db_path, read_only=True) as con:
+        assert db.scalar(con, "SELECT count(*) FROM item_day_history") == 0
+    monkeypatch.setattr(item_history, "capture", real)
+    again, _ = run(s, server, 8)
+    assert again.farming_from == ["Past"]
+
+
 def test_without_baskets_the_farming_history_waits(seeded):
     s, server = seeded
     with db.session(s.db_path) as con:
@@ -338,6 +367,29 @@ def test_a_failed_pass_leaves_the_site_as_it_was(local, pg, monkeypatch):
     monkeypatch.setattr(exchange_loader, "refresh_mappings", real)
     result, requests = run(hosted, server, 9)  # the next pass catches up
     assert result.live.hours_added == 3 and requests == []  # its pages were kept
+
+
+@needs_pg
+def test_a_hosted_capture_cut_short_leaves_nothing(local, pg, monkeypatch):
+    """The same on Postgres, through `site_writer`: the capture's DELETE (pushed down)
+    and its INSERTs are one Postgres transaction, so nothing of the league is left."""
+    import psycopg
+
+    s, server = local
+    _seed(s, pg["eb_site"])
+    with psycopg.connect(pg["eb_site"], autocommit=True) as con:
+        _past_league(con)
+    hosted = s.model_copy(update={"database_url": pg["eb_site"]})
+    real = _killed_capture(monkeypatch)
+    with pytest.raises(OSError):
+        run(hosted, server, 9)
+    with psycopg.connect(pg["eb_site"]) as con:
+        assert db.scalar(con, "SELECT count(*) FROM item_day_history") == 0
+    monkeypatch.setattr(item_history, "capture", real)
+    again, _ = run(hosted, server, 9)
+    assert again.farming_from == ["Past"]
+    with psycopg.connect(pg["eb_site"]) as con:
+        assert item_history.captured_leagues(con) == ["Past"]
 
 
 @needs_pg

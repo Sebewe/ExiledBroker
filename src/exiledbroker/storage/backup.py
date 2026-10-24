@@ -240,8 +240,9 @@ def _stamps(con) -> dict:
     """What changes when a table built from past leagues is rebuilt, read from both
     sides every pass: a few counts and build times (a few hundred bytes from the
     backup), never rows. item_day_history's is per league: its rows, hours and a
-    checksum of its prices and volumes in whole numbers (exact on both engines), so a
-    league recaptured with other baskets or a fixed reduction is sent again."""
+    checksum of every value column in whole numbers (exact on both engines; Divine
+    prices and moves are small, so to the millionth), so a league recaptured with
+    other baskets or a fixed reduction is sent again."""
     picks = db.rows(con, "SELECT max(built_at), count(*) FROM launch_window")[0]
     history = db.rows(con, "SELECT league, count(*) FROM launch_history GROUP BY league")
     out = {"launch tables": (tuple(picks), tuple(sorted(history)))}
@@ -252,7 +253,9 @@ def _stamps(con) -> dict:
         f"""
         SELECT league, count(*), sum(hours + day_hours),
                sum(CAST(floor(coalesce(chaos, 0) * 1000) AS BIGINT)),
-               sum(CAST(floor(coalesce(chaos_volume, 0)) AS BIGINT))
+               sum(CAST(floor(coalesce(chaos_volume, 0)) AS BIGINT)),
+               count(divine), sum(CAST(floor(coalesce(divine, 0) * 1000000) AS BIGINT)),
+               count(absret), sum(CAST(floor(coalesce(absret, 0) * 1000000) AS BIGINT))
         FROM {ITEM_HISTORY} GROUP BY league
         """,
     )

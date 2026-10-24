@@ -322,3 +322,12 @@ def test_the_farming_history_and_report_are_backed_up_incrementally(local, dbs, 
     assert _versions(dbs["eb_backup"], "Keepers") == set()
     assert_same(dbs["eb_site"], dbs["eb_backup"])
     assert not backup.back_up(hosted(s, dbs)).changed
+
+    # Recaptures that change only the small values: Divine prices (a fixed Divine rate),
+    # then the moves; each is sent, or a restore would bring back the old ones.
+    for fix in ("divine = divine * 1.001", "divine = NULL WHERE day = 0", "absret = absret * 2"):
+        with psycopg.connect(dbs["eb_site"], autocommit=True) as con:
+            where = "" if "WHERE" in fix else " WHERE true"
+            con.execute(f"UPDATE item_day_history SET {fix}{where} AND league = 'Mirage'")
+        assert backup.back_up(hosted(s, dbs)).tables == ["farming history (Mirage)"], fix
+        assert_same(dbs["eb_site"], dbs["eb_backup"])
