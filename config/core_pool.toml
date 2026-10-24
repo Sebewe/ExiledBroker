@@ -6,6 +6,9 @@
 #     from league mechanics that didn't go core, or removed from the game, drop out.
 #     Currency is poe.ninja's Currency (Catalysts included), Fragment and Oil lists.
 #   divination: the cards NeverSink's loot filter (FilterBlade) shows.
+#   mechanics: the Farming page's baskets (config/mechanics.toml), from poe.ninja's
+#     Delirium Orb, Fossil, Resonator, Omen, Tattoo, Runegraft, Allflame Ember,
+#     Enshrouding Crystal, Artifact and Astrolabe lists.
 #
 # When that isn't enough (e.g. the new league's own currency, which may or may not
 # go core), list items by their exact in-game name below, then re-run
@@ -21,3 +24,42 @@ currency = []
 essence = []
 scarab = []
 divination = []
+# Farming baskets: outputs that traded on the exchange in Allflame but are too thin for
+# poe.ninja's lists (checked 2026-10-24 with `eb mechanics check`).
+mechanics = [
+    "Shrieking Essence of Greed",
+    "Shrieking Essence of Hatred",
+    "Shrieking Essence of Misery",
+    "Shrieking Essence of Zeal",
+    "Screaming Essence of Anguish",
+    "Screaming Essence of Doubt",
+    "Screaming Essence of Dread",
+    "Screaming Essence of Envy",
+    "Screaming Essence of Fear",
+    "Screaming Essence of Hatred",
+    "Screaming Essence of Loathing",
+    "Screaming Essence of Misery",
+    "Screaming Essence of Scorn",
+    "Screaming Essence of Sorrow",
+    "Screaming Essence of Spite",
+    "Screaming Essence of Suffering",
+    "Screaming Essence of Torment",
+    "Screaming Essence of Woe",
+    "Screaming Essence of Zeal",
+    "Timeless Eternal Empire Splinter",
+    "Timeless Karui Splinter",
+    "Timeless Maraketh Splinter",
+    "Timeless Templar Splinter",
+    "Allflame Ember of the Wildwood",
+    "Ritual Splinter",
+    "Runegraft of Fury",
+    "Runegraft of Rotblood",
+    "Runegraft of the Angler",
+    "Journey Tattoo of the Body",
+    "Journey Tattoo of the Mind",
+    "Journey Tattoo of the Soul",
+    "Tattoo of the Kitava Heart Eater",
+    "Tattoo of the Kitava Shaman",
+    "Tattoo of the Rongokurai Brute",
+    "Tattoo of the Tukohama Brawler",
+]

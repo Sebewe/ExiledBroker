@@ -1,0 +1,368 @@
+# Mechanic baskets for the Farming page (docs/farming.md, workstream A).
+#
+# Each mechanic lists what farming it drops, by exact item name as ExiledBroker
+# stores it (the in-game name; a name RePoE gives to several items carries its
+# metadata name, e.g. "Fine Delirium Orb (CurrencyAfflictionOrbCurrency)").
+# Check the file against the local database with `eb mechanics check`.
+#
+#   outputs  what the mechanic drops: the basket whose prices are tracked and shown.
+#            Only items in the core drop pool are shown (config/core_pool.toml);
+#            `eb mechanics check` lists the outputs the pool doesn't have yet.
+#   groups   whole price-mapping groups as outputs (e.g. the followed divination cards).
+#   legacy   outputs removed from the game: used only for past leagues' curves, never shown.
+#   inputs   what running the mechanic costs (scarabs, astrolabes): context, not the basket.
+#   note     shown with the mechanic (optional).
+#
+# Uniques are left out on purpose: they aren't target-farmed by mechanic.
+# "Traded in" below is from the exchange history (Settlers, Mercenaries, Keepers,
+# Mirage, Allflame).
+
+[[mechanic]]
+id = "abyss"
+name = "Abyss"
+# The Zorath's Eyes traded only in Allflame.
+outputs = [
+    "Zorath's Eye of Authority", "Zorath's Eye of Malevolence", "Zorath's Eye of the Endless",
+    "Zorath's Eye of the Inevitable",
+]
+inputs = [
+    "Abyss Scarab", "Abyss Scarab of Crystals", "Abyss Scarab of Descending",
+    "Abyss Scarab of Multitudes", "Abyss Scarab of the Consort", "Lightless Astrolabe",
+]
+
+[[mechanic]]
+id = "betrayal"
+name = "Betrayal"
+outputs = ["Veiled Chaos Orb", "Veiled Exalted Orb", "Syndicate Medallion"]
+inputs = [
+    "Betrayal Scarab", "Betrayal Scarab of Reinforcements", "Betrayal Scarab of Unbreaking",
+    "Betrayal Scarab of the Allflame",
+]
+
+[[mechanic]]
+id = "blight"
+name = "Blight"
+outputs = [
+    "Clear Oil", "Sepia Oil", "Amber Oil", "Verdant Oil", "Teal Oil", "Azure Oil", "Indigo Oil",
+    "Violet Oil", "Crimson Oil", "Black Oil", "Opalescent Oil", "Silver Oil", "Golden Oil",
+    "Prismatic Oil", "Reflective Oil", "Tainted Oil",
+]
+inputs = [
+    "Blight Scarab", "Blight Scarab of Blooming", "Blight Scarab of Invigoration",
+    "Blight Scarab of the Blightheart", "Fungal Astrolabe",
+]
+
+[[mechanic]]
+id = "breach"
+name = "Breach"
+# Splinters, blessings and breachstones last traded in Keepers; from Mirage on,
+# Breach drops Flesh of Xesht and Hivebrain Gland (a boss key since Keepers).
+outputs = ["Flesh of Xesht", "Hivebrain Gland"]
+legacy = [
+    "Splinter of Chayula", "Splinter of Esh", "Splinter of Tul", "Splinter of Uul-Netol",
+    "Splinter of Xoph", "Blessing of Chayula", "Blessing of Esh", "Blessing of Tul",
+    "Blessing of Uul-Netol", "Blessing of Xoph", "Chayula's Breachstone",
+    "Chayula's Flawless Breachstone", "Esh's Breachstone", "Esh's Flawless Breachstone",
+    "Tul's Breachstone", "Tul's Flawless Breachstone", "Uul-Netol's Breachstone",
+    "Uul-Netol's Flawless Breachstone", "Xoph's Breachstone", "Xoph's Flawless Breachstone",
+]
+inputs = [
+    "Breach Scarab of Instability", "Breach Scarab of Resonant Cascade",
+    "Breach Scarab of the Hive", "Breach Scarab of the Incensed Swarm",
+    "Breach Scarab of the Marshal", "Grasping Astrolabe",
+]
+note = "Reworked in Mirage: splinters and breachstones are gone, so past leagues compare loosely."
+
+[[mechanic]]
+id = "delirium"
+name = "Delirium"
+outputs = [
+    "Armoursmith's Delirium Orb", "Blacksmith's Delirium Orb", "Blighted Delirium Orb",
+    "Cartographer's Delirium Orb", "Diviner's Delirium Orb",
+    "Fine Delirium Orb (CurrencyAfflictionOrbCurrency)", "Fragmented Delirium Orb",
+    "Jeweller's Delirium Orb", "Singular Delirium Orb", "Skittering Delirium Orb",
+    "Thaumaturge's Delirium Orb", "Whispering Delirium Orb", "Simulacrum", "Simulacrum Splinter",
+]
+legacy = [
+    "Abyssal Delirium Orb", "Fine Delirium Orb (CurrencyAfflictionOrbHarbinger)",
+    "Fossilised Delirium Orb", "Obscured Delirium Orb", "Timeless Delirium Orb",
+]
+inputs = [
+    "Delirium Scarab", "Delirium Scarab of Delusions", "Delirium Scarab of Mania",
+    "Delirium Scarab of Neuroses", "Delirium Scarab of Paranoia", "Deceptive Astrolabe",
+]
+
+[[mechanic]]
+id = "delve"
+name = "Delve"
+outputs = [
+    "Aberrant Fossil", "Aetheric Fossil", "Bloodstained Fossil", "Bound Fossil", "Corroded Fossil",
+    "Dense Fossil", "Deft Fossil", "Faceted Fossil", "Fractured Fossil", "Frigid Fossil",
+    "Fundamental Fossil", "Gilded Fossil", "Glyphic Fossil", "Hollow Fossil", "Jagged Fossil",
+    "Lucent Fossil", "Metallic Fossil", "Opulent Fossil", "Prismatic Fossil", "Pristine Fossil",
+    "Sanctified Fossil", "Scorched Fossil", "Serrated Fossil", "Shuddering Fossil",
+    "Tangled Fossil",
+    "Primitive Chaotic Resonator (DelveStackableSocketableCurrencyReroll1)",
+    "Potent Chaotic Resonator (DelveStackableSocketableCurrencyReroll2)",
+    "Powerful Chaotic Resonator (DelveStackableSocketableCurrencyReroll3)",
+    "Prime Chaotic Resonator (DelveStackableSocketableCurrencyReroll4)",
+]
+inputs = ["Sulphite Scarab", "Sulphite Scarab of Fumes"]
+
+[[mechanic]]
+id = "divination"
+name = "Divination cards"
+# Every card the loot filter shows (the divination price-mapping group).
+groups = ["divination"]
+outputs = ["Stacked Deck"]
+inputs = [
+    "Divination Scarab of Pilfering", "Divination Scarab of Plenty",
+    "Divination Scarab of The Cloister",
+]
+
+[[mechanic]]
+id = "eldritch"
+name = "Eldritch altars"
+outputs = [
+    "Lesser Eldritch Ichor", "Greater Eldritch Ichor", "Grand Eldritch Ichor",
+    "Exceptional Eldritch Ichor", "Lesser Eldritch Ember", "Greater Eldritch Ember",
+    "Grand Eldritch Ember", "Exceptional Eldritch Ember", "Eldritch Chaos Orb",
+    "Eldritch Exalted Orb", "Eldritch Orb of Annulment", "Orb of Conflict",
+]
+
+[[mechanic]]
+id = "essence"
+name = "Essence"
+# Screaming and up, plus the four special essences; lower tiers are worth little.
+outputs = [
+    "Deafening Essence of Anger", "Deafening Essence of Anguish", "Deafening Essence of Contempt",
+    "Deafening Essence of Doubt", "Deafening Essence of Dread", "Deafening Essence of Envy",
+    "Deafening Essence of Fear", "Deafening Essence of Greed", "Deafening Essence of Hatred",
+    "Deafening Essence of Loathing", "Deafening Essence of Misery", "Deafening Essence of Rage",
+    "Deafening Essence of Scorn", "Deafening Essence of Sorrow", "Deafening Essence of Spite",
+    "Deafening Essence of Suffering", "Deafening Essence of Torment", "Deafening Essence of Woe",
+    "Deafening Essence of Wrath", "Deafening Essence of Zeal",
+    "Shrieking Essence of Anger", "Shrieking Essence of Anguish", "Shrieking Essence of Contempt",
+    "Shrieking Essence of Doubt", "Shrieking Essence of Dread", "Shrieking Essence of Envy",
+    "Shrieking Essence of Fear", "Shrieking Essence of Greed", "Shrieking Essence of Hatred",
+    "Shrieking Essence of Loathing", "Shrieking Essence of Misery", "Shrieking Essence of Rage",
+    "Shrieking Essence of Scorn", "Shrieking Essence of Sorrow", "Shrieking Essence of Spite",
+    "Shrieking Essence of Suffering", "Shrieking Essence of Torment", "Shrieking Essence of Woe",
+    "Shrieking Essence of Wrath", "Shrieking Essence of Zeal",
+    "Screaming Essence of Anger", "Screaming Essence of Anguish", "Screaming Essence of Contempt",
+    "Screaming Essence of Doubt", "Screaming Essence of Dread", "Screaming Essence of Envy",
+    "Screaming Essence of Fear", "Screaming Essence of Greed", "Screaming Essence of Hatred",
+    "Screaming Essence of Loathing", "Screaming Essence of Misery", "Screaming Essence of Rage",
+    "Screaming Essence of Scorn", "Screaming Essence of Sorrow", "Screaming Essence of Spite",
+    "Screaming Essence of Suffering", "Screaming Essence of Torment", "Screaming Essence of Woe",
+    "Screaming Essence of Wrath", "Screaming Essence of Zeal",
+    "Essence of Delirium", "Essence of Horror", "Essence of Hysteria", "Essence of Insanity",
+]
+legacy = ["Remnant of Corruption"]
+inputs = [
+    "Essence Scarab", "Essence Scarab of Adaptation", "Essence Scarab of Ascent",
+    "Essence Scarab of Calcification", "Essence Scarab of Stability",
+]
+
+[[mechanic]]
+id = "expedition"
+name = "Expedition"
+outputs = ["Exotic Coinage", "Scrap Metal", "Astragali", "Burial Medallion"]
+inputs = [
+    "Expedition Scarab", "Expedition Scarab of Archaeology", "Expedition Scarab of Infusion",
+    "Expedition Scarab of Runefinding", "Expedition Scarab of Verisium Powder", "Runic Astrolabe",
+]
+
+[[mechanic]]
+id = "harbinger"
+name = "Harbinger"
+# Harbinger's shards last traded in Keepers; Fracturing Orbs and shards remain.
+outputs = ["Fracturing Orb", "Fracturing Shard"]
+legacy = [
+    "Ancient Shard", "Annulment Shard", "Binding Shard", "Chaos Shard", "Engineer's Orb",
+    "Engineer's Shard", "Exalted Shard", "Harbinger's Orb", "Harbinger's Shard", "Horizon Shard",
+    "Orb of Horizons", "Regal Shard",
+]
+
+[[mechanic]]
+id = "harvest"
+name = "Harvest"
+outputs = [
+    "Primal Crystallised Lifeforce", "Vivid Crystallised Lifeforce", "Wild Crystallised Lifeforce",
+    "Sacred Crystallised Lifeforce", "Crystallised Rancour", "Sacred Blossom",
+]
+inputs = [
+    "Harvest Scarab", "Harvest Scarab of Cornucopia", "Harvest Scarab of Doubling",
+    "Fruiting Astrolabe",
+]
+
+[[mechanic]]
+id = "heist"
+name = "Heist"
+outputs = ["Rogue's Marker", "Tailoring Orb", "Tempering Orb"]
+
+[[mechanic]]
+id = "legion"
+name = "Legion"
+outputs = [
+    "Timeless Eternal Emblem", "Timeless Karui Emblem", "Timeless Maraketh Emblem",
+    "Timeless Templar Emblem", "Timeless Vaal Emblem",
+    "Timeless Eternal Empire Splinter", "Timeless Karui Splinter", "Timeless Maraketh Splinter",
+    "Timeless Templar Splinter", "Timeless Vaal Splinter",
+    "Imperial Enshrouding Crystal", "Karui Enshrouding Crystal", "Maraketh Enshrouding Crystal",
+    "Templar Enshrouding Crystal", "Vaal Enshrouding Crystal",
+]
+legacy = [
+    "Unrelenting Timeless Eternal Emblem", "Unrelenting Timeless Karui Emblem",
+    "Unrelenting Timeless Maraketh Emblem", "Unrelenting Timeless Templar Emblem",
+    "Unrelenting Timeless Vaal Emblem",
+]
+inputs = [
+    "Legion Scarab", "Legion Scarab of Eternal Conflict", "Legion Scarab of Officers",
+    "Legion Scarab of Treasures", "Timeless Astrolabe",
+]
+
+[[mechanic]]
+id = "memories"
+name = "Atlas memories"
+# Zana's memories: traded since Mercenaries (the Memory threads since Mirage).
+outputs = [
+    "Orb of Intention", "Orb of Remembrance", "Orb of Unravelling",
+    "Memory of Loneliness", "Memory of Reverence", "Memory of Trauma",
+    "Echo of Loneliness", "Echo of Reverence", "Echo of Trauma",
+    "Lonely Fragment", "Reverent Fragment", "Traumatic Fragment",
+]
+
+[[mechanic]]
+id = "necropolis"
+name = "Necropolis"
+# Allflame Embers: traded since Mercenaries.
+outputs = [
+    "Allflame Ember of Flesh", "Allflame Ember of Kulemak", "Allflame Ember of Propagation",
+    "Allflame Ember of Resplendence", "Allflame Ember of the Ethereal",
+    "Allflame Ember of the Gilded", "Allflame Ember of the Wildwood", "Allflame Ember of Toads",
+]
+
+[[mechanic]]
+id = "ritual"
+name = "Ritual"
+outputs = [
+    "Ritual Vessel", "Ritual Splinter", "An Audience With The King",
+    "Omen of Adrenaline", "Omen of Amelioration", "Omen of Brilliance", "Omen of Connections",
+    "Omen of Death's Door", "Omen of Death-dancing", "Omen of Fortune", "Omen of Refreshment",
+    "Omen of Return", "Omen of the Jeweller", "Omen of the Soul Devourer",
+    "Omen of Trichromatism",
+]
+inputs = [
+    "Ritual Scarab of Abundance", "Ritual Scarab of Corpses", "Ritual Scarab of Selectiveness",
+    "Ritual Scarab of Wisps", "Nameless Astrolabe",
+]
+
+[[mechanic]]
+id = "runegrafts"
+name = "Runegrafts"
+# Kalguur (Kingsmarch) content. Traded since Mercenaries, a few only since Mirage.
+outputs = [
+    "Runegraft of Bellows", "Runegraft of Blasphemy", "Runegraft of Connection",
+    "Runegraft of Consecration", "Runegraft of Fury", "Runegraft of Gemcraft",
+    "Runegraft of Loyalty", "Runegraft of Quaffing", "Runegraft of Rallying",
+    "Runegraft of Refraction", "Runegraft of Restitching", "Runegraft of Resurgence",
+    "Runegraft of Rotblood", "Runegraft of Stability", "Runegraft of Suffering",
+    "Runegraft of the Agile", "Runegraft of the Angler", "Runegraft of the Bound",
+    "Runegraft of the Combatant", "Runegraft of the Fortress", "Runegraft of the Imbued",
+    "Runegraft of the Jeweller", "Runegraft of the Novamark", "Runegraft of the River",
+    "Runegraft of the Sinistral", "Runegraft of the Soulwick", "Runegraft of the Spellbound",
+    "Runegraft of the Warp", "Runegraft of the Witchmark", "Runegraft of Time",
+    "Runegraft of Treachery",
+]
+inputs = [
+    "Kalguuran Scarab", "Kalguuran Scarab of Enriching", "Kalguuran Scarab of Guarded Riches",
+    "Kalguuran Scarab of Refinement",
+]
+
+[[mechanic]]
+id = "ultimatum"
+name = "Ultimatum"
+# Catalysts are Ultimatum's only stackable output.
+outputs = [
+    "Abrasive Catalyst", "Accelerating Catalyst", "Fertile Catalyst", "Imbued Catalyst",
+    "Intrinsic Catalyst", "Noxious Catalyst", "Prismatic Catalyst", "Tainted Catalyst",
+    "Tempering Catalyst", "Turbulent Catalyst", "Unstable Catalyst",
+]
+inputs = [
+    "Ultimatum Scarab", "Ultimatum Scarab of Bribing", "Ultimatum Scarab of Catalysing",
+    "Ultimatum Scarab of Dueling", "Ultimatum Scarab of Inscription", "Chaotic Astrolabe",
+]
+
+[[mechanic]]
+id = "tattoos"
+name = "Tattoos"
+outputs = [
+    "Journey Tattoo of the Body", "Journey Tattoo of the Mind", "Journey Tattoo of the Soul",
+    "Tattoo of the Arohongui Moonwarden", "Tattoo of the Arohongui Scout",
+    "Tattoo of the Arohongui Shaman", "Tattoo of the Arohongui Warmonger",
+    "Tattoo of the Arohongui Warrior", "Tattoo of the Hinekora Deathwarden",
+    "Tattoo of the Hinekora Shaman", "Tattoo of the Hinekora Storyteller",
+    "Tattoo of the Hinekora Warmonger", "Tattoo of the Hinekora Warrior",
+    "Tattoo of the Kitava Blood Drinker", "Tattoo of the Kitava Heart Eater",
+    "Tattoo of the Kitava Rebel", "Tattoo of the Kitava Shaman", "Tattoo of the Kitava Warrior",
+    "Tattoo of the Ngamahu Firewalker", "Tattoo of the Ngamahu Shaman",
+    "Tattoo of the Ngamahu Warmonger", "Tattoo of the Ngamahu Warrior",
+    "Tattoo of the Ngamahu Woodcarver", "Tattoo of the Ramako Archer",
+    "Tattoo of the Ramako Fleetfoot", "Tattoo of the Ramako Scout", "Tattoo of the Ramako Shaman",
+    "Tattoo of the Ramako Sniper", "Tattoo of the Rongokurai Brute",
+    "Tattoo of the Rongokurai Goliath", "Tattoo of the Rongokurai Guard",
+    "Tattoo of the Rongokurai Turtle", "Tattoo of the Rongokurai Warrior",
+    "Tattoo of the Tasalio Bladedancer", "Tattoo of the Tasalio Scout",
+    "Tattoo of the Tasalio Shaman", "Tattoo of the Tasalio Tideshifter",
+    "Tattoo of the Tasalio Warrior", "Tattoo of the Tawhoa Herbalist",
+    "Tattoo of the Tawhoa Naturalist", "Tattoo of the Tawhoa Scout", "Tattoo of the Tawhoa Shaman",
+    "Tattoo of the Tawhoa Warrior", "Tattoo of the Tukohama Brawler",
+    "Tattoo of the Tukohama Shaman", "Tattoo of the Tukohama Warcaller",
+    "Tattoo of the Tukohama Warmonger", "Tattoo of the Tukohama Warrior",
+    "Tattoo of the Valako Scout", "Tattoo of the Valako Shaman", "Tattoo of the Valako Shieldbearer",
+    "Tattoo of the Valako Stormrider", "Tattoo of the Valako Warrior",
+]
+
+[[mechanic]]
+id = "boss_rush"
+name = "Boss rush"
+# Pinnacle fragments and influenced exalts: dropped by the bosses of influenced maps,
+# or by the pinnacle bosses fought with the fragments.
+outputs = [
+    "Fragment of the Chimera", "Fragment of the Hydra", "Fragment of the Minotaur",
+    "Fragment of the Phoenix", "Fragment of Constriction", "Fragment of Enslavement",
+    "Fragment of Eradication", "Fragment of Purification", "Fragment of Emptiness",
+    "Fragment of Knowledge", "Fragment of Shape", "Fragment of Terror",
+    "Al-Hezmin's Crest", "Baran's Crest", "Drox's Crest", "Veritania's Crest",
+    "The Maven's Writ", "Crescent Splinter",
+    "Sacrifice at Dawn", "Sacrifice at Dusk", "Sacrifice at Midnight", "Sacrifice at Noon",
+    "Mortal Grief", "Mortal Hope", "Mortal Ignorance", "Mortal Rage",
+    "Awakening Fragment", "Blazing Fragment", "Cosmic Fragment", "Decaying Fragment",
+    "Devouring Fragment", "Reality Fragment", "Synthesising Fragment",
+    "Crusader's Exalted Orb", "Hunter's Exalted Orb", "Redeemer's Exalted Orb",
+    "Warlord's Exalted Orb", "Shaper's Exalted Orb", "Elder's Exalted Orb", "Awakener's Orb",
+    "Orb of Dominance",
+]
+inputs = [
+    "Influencing Scarab of Hordes", "Influencing Scarab of Interference",
+    "Influencing Scarab of the Elder", "Influencing Scarab of the Shaper",
+]
+
+[[mechanic]]
+id = "beyond"
+name = "Beyond"
+outputs = [
+    "Tainted Armourer's Scrap", "Tainted Blacksmith's Whetstone", "Tainted Chaos Orb",
+    "Tainted Chromatic Orb", "Tainted Divine Teardrop", "Tainted Exalted Orb",
+    "Tainted Jeweller's Orb", "Tainted Mythic Orb", "Tainted Orb of Fusing",
+]
+inputs = [
+    "Beyond Scarab", "Beyond Scarab of Haemophilia", "Beyond Scarab of Resurgence",
+    "Beyond Scarab of the Invasion",
+]
+
+[[mechanic]]
+id = "sanctum"
+name = "Sanctum"
+outputs = ["Volatile Vaal Orb"]
