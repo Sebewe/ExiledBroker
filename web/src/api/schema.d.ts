@@ -25,6 +25,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/farming/{league}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Farming Page
+         * @description Mechanics ranked on their trend against past leagues' usual path, the launch
+         *     outlook and Easy to sell; the basket items' recent trading in each market; the hour
+         *     of day and stack-impact constants. Before the league's first trades, the outlook
+         *     only. Prices in Chaos (Divines for the Divine market): convert with `/api/status`.
+         */
+        get: operations["farming_page_api_farming__league__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -336,10 +359,171 @@ export interface components {
             /** Persistence */
             persistence: components["schemas"]["BacktestPersistence"][];
         };
+        /** Farming */
+        Farming: {
+            /** Day Offset */
+            day_offset: number | null;
+            hours: components["schemas"]["FarmingHours"] | null;
+            impact: components["schemas"]["FarmingImpact"] | null;
+            /** Items */
+            items: components["schemas"]["FarmingItem"][];
+            /** Latest Hour */
+            latest_hour: string | null;
+            /** League */
+            league: string;
+            /** Mechanics */
+            mechanics: components["schemas"]["FarmingMechanic"][];
+            /** Outlook */
+            outlook: components["schemas"]["FarmingOutlook"][];
+            /**
+             * Phase
+             * @enum {string}
+             */
+            phase: "pre_launch" | "launch" | "later";
+        };
+        /**
+         * FarmingHours
+         * @description Hour-of-day profiles from past leagues for the league's phase (a constant): 24
+         *     values each by UTC hour, a price's fraction over its centred 24-hour average.
+         */
+        FarmingHours: {
+            /** Days */
+            days: number;
+            /** Divine */
+            divine: (number | null)[];
+            divine_effect: components["schemas"]["HourEffect"];
+            effect: components["schemas"]["HourEffect"];
+            effect_divine_market: components["schemas"]["HourEffect"];
+            /** Leagues */
+            leagues: number;
+            /** Mechanics */
+            mechanics: {
+                [key: string]: components["schemas"]["MechanicHours"];
+            };
+            /**
+             * Phase
+             * @enum {string}
+             */
+            phase: "d0_2" | "d2_7" | "d7_14" | "later";
+            /** Price */
+            price: (number | null)[];
+            /** Price Divine Market */
+            price_divine_market: (number | null)[];
+            /** Volume */
+            volume: (number | null)[] | null;
+        };
+        /**
+         * FarmingImpact
+         * @description Finding 7: no calibrated price drop (`y` null); a stack is shown as hours of the
+         *     market's trading (Q / volume_h), banded at `bands`.
+         */
+        FarmingImpact: {
+            /** Bands */
+            bands: number[];
+            /** Note */
+            note: string | null;
+            /** Y */
+            y: number | null;
+        };
+        /** FarmingItem */
+        FarmingItem: {
+            chaos: components["schemas"]["FarmingMarket"] | null;
+            divine: components["schemas"]["FarmingMarket"] | null;
+            /** Item Id */
+            item_id: string;
+            /** Mechanics */
+            mechanics: string[];
+            /** Name */
+            name: string;
+        };
+        /**
+         * FarmingMarket
+         * @description One market's recent trading for an item: `price` in that market's currency
+         *     (Chaos, or Divines in the Divine market; median, latest 24 hours), units traded an
+         *     hour, the typical hourly swing (informative only) and the share of hours traded
+         *     (latest 3 days).
+         */
+        FarmingMarket: {
+            /** Hours Traded */
+            hours_traded: number | null;
+            /** Price */
+            price: number | null;
+            /** Sigma H */
+            sigma_h: number | null;
+            /** Volume H */
+            volume_h: number | null;
+        };
+        /**
+         * FarmingMechanic
+         * @description A mechanic's basket now (finding 8). The index is in Divines, over the basket's
+         *     day-0 prices; `usual` and its range are past leagues' at the same day of the league
+         *     (null after day 13 or with fewer than 2 past leagues).
+         */
+        FarmingMechanic: {
+            /** Change 24H */
+            change_24h: number | null;
+            /** Change 7D */
+            change_7d: number | null;
+            /** Chaos Volume H */
+            chaos_volume_h: number | null;
+            /** Id */
+            id: string;
+            /** Index */
+            index: number | null;
+            /** Items */
+            items: number;
+            /** Liquidity */
+            liquidity: number | null;
+            /** Name */
+            name: string;
+            /** Priced Items */
+            priced_items: number;
+            /** Score */
+            score: number | null;
+            /** Usual */
+            usual: number | null;
+            /** Usual High */
+            usual_high: number | null;
+            /** Usual Low */
+            usual_low: number | null;
+        };
+        /** FarmingOutlook */
+        FarmingOutlook: {
+            /** Id */
+            id: string;
+            /** Leagues */
+            leagues: number;
+            /** Name */
+            name: string;
+            windows: components["schemas"]["OutlookWindows"];
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /**
+         * HourEffect
+         * @description What timing is worth in a price profile (finding 6), as fractions of the price:
+         *     best hour over the 24-hour average (`gain`) and over the worst (`gap`), UTC hours,
+         *     the noise floor (`null95`); "small" means time of day barely matters.
+         */
+        HourEffect: {
+            /** Best */
+            best: number | null;
+            /** Gain */
+            gain: number | null;
+            /** Gap */
+            gap: number | null;
+            /** Null95 */
+            null95: number | null;
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "small" | "worth_it";
+            /** Worst */
+            worst: number | null;
         };
         /** LaunchPick */
         LaunchPick: {
@@ -419,6 +603,30 @@ export interface components {
             launched_at: string | null;
             /** Name */
             name: string;
+        };
+        /** MechanicHours */
+        MechanicHours: {
+            /** Best */
+            best: number | null;
+            /** Gain */
+            gain: number | null;
+            /** Gap */
+            gap: number | null;
+            /** Items */
+            items: number;
+            /** Null95 */
+            null95: number | null;
+            /** Price */
+            price: (number | null)[];
+            /** Stability */
+            stability: number | null;
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "small" | "worth_it";
+            /** Worst */
+            worst: number | null;
         };
         /** MissedCard */
         MissedCard: {
@@ -592,6 +800,23 @@ export interface components {
             /** Volume */
             volume: number;
         };
+        /**
+         * OutlookWindow
+         * @description The launch premium in a window: its median Divine price over days 12–14's,
+         *     recency-weighted over past leagues (`premium`), and the lowest league's (`worst`).
+         */
+        OutlookWindow: {
+            /** Premium */
+            premium: number | null;
+            /** Worst */
+            worst: number | null;
+        };
+        /** OutlookWindows */
+        OutlookWindows: {
+            day1?: components["schemas"]["OutlookWindow"] | null;
+            days2_4?: components["schemas"]["OutlookWindow"] | null;
+            days5_10?: components["schemas"]["OutlookWindow"] | null;
+        };
         /** Status */
         Status: {
             /** Data Version */
@@ -678,6 +903,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BacktestReport"][];
+                };
+            };
+        };
+    };
+    farming_page_api_farming__league__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                league: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Farming"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

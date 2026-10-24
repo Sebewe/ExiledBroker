@@ -39,6 +39,7 @@ def endpoints(league: str) -> list[str]:
         f"/api/missed/{league}",
         "/api/launch/picks",
         "/api/backtest",
+        f"/api/farming/{league}",
     ]
 
 
@@ -76,10 +77,23 @@ def test_every_endpoint_as_a_league_arrives(client, settings):  # noqa: F811
         assert status["leagues"][0]["name"] == LEAGUE
         assert status["leagues"][0]["hours"] == hours_in
 
+        farming = client.get(f"/api/farming/{LEAGUE}").json()
+        assert farming["outlook"] == [] and farming["hours"] is None  # no past leagues here
+        if status["leagues"][0]["latest_hour"] is None:  # the first hour had no trades
+            assert farming["phase"] == "pre_launch" and not farming["mechanics"]
+            continue
+        assert farming["phase"] == "launch" and farming["latest_hour"].endswith("Z")
+        assert 0 <= farming["day_offset"] < 2
+        assert all(m["usual"] is None for m in farming["mechanics"])
+
     # After 30 hours there is something to recap, timed in UTC explicitly.
     recap = client.get(f"/api/missed/{LEAGUE}").json()
     assert recap and any(w["rising"] or w["falling"] or w["volatile"] for w in recap)
     assert recap[0]["latest_hour"].endswith("Z")
+    # And basket items to sell (the replay has too few per basket for an index).
+    farming = client.get(f"/api/farming/{LEAGUE}").json()
+    assert farming["mechanics"] and farming["items"]
+    assert all(i["chaos"]["price"] > 0 for i in farming["items"])
 
 
 def test_tables_are_computed_once_per_data_version(client, settings, monkeypatch):  # noqa: F811
@@ -127,7 +141,7 @@ def test_default_pages_are_precomputed(client, settings, monkeypatch):  # noqa: 
     from exiledbroker.api import warm
 
     update(settings, FakeExchange(PAGES, now=LAUNCH), 30)
-    assert warm.warm() >= 4  # league names, launch picks, backtest, the recap
+    assert warm.warm() >= 5  # league names, launch picks, backtest, the recap, farming
     monkeypatch.setattr(deps, "VERSION_TTL", 60.0)
     # Exactly the requests the frontend makes on first load (web/src/api/queries.ts).
     page_loads = [
@@ -135,6 +149,7 @@ def test_default_pages_are_precomputed(client, settings, monkeypatch):  # noqa: 
         f"/api/missed/{LEAGUE}",
         "/api/launch/picks",
         "/api/backtest",
+        f"/api/farming/{LEAGUE}",
     ]
     for path in page_loads:
         with db.metered() as meter:
@@ -153,16 +168,23 @@ def test_cache_is_bounded():
 def test_validation(client, settings):  # noqa: F811
     update(settings, FakeExchange(PAGES, now=LAUNCH), 3)
     assert client.get("/api/missed/Nowhere").status_code == 404
+    assert client.get("/api/farming/Nowhere").status_code == 404
 
 
 def test_only_what_the_pages_request_is_served(client, settings):  # noqa: F811
     """No endpoint takes free-form arguments: each would be computed from the
     database for every new combination, and on Supabase that's billed egress any
-    visitor could run up. The API is exactly the site's four requests."""
+    visitor could run up. The API is exactly the site's five requests."""
     from exiledbroker.api import app as app_module
 
     paths = set(app_module.create_app().openapi()["paths"]) - {"/api/health"}
-    assert paths == {"/api/status", "/api/missed/{league}", "/api/launch/picks", "/api/backtest"}
+    assert paths == {
+        "/api/status",
+        "/api/missed/{league}",
+        "/api/launch/picks",
+        "/api/backtest",
+        "/api/farming/{league}",
+    }
     update(settings, FakeExchange(PAGES, now=LAUNCH), 3)
     for gone in (f"/api/live/{LEAGUE}/loops", f"/api/market/{LEAGUE}/hourly", "/api/leagues"):
         assert client.get(gone).status_code == 404

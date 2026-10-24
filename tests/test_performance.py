@@ -156,3 +156,22 @@ def test_one_league_endpoints_do_not_grow_with_history(loaded, path):
     after, _ = endpoint_reads(path)
     allowed = 4 * PER_LEAGUE_ROWS
     assert after.rows <= before.rows + allowed, f"{before.rows} → {after.rows}: {describe(after)}"
+
+
+# The Farming page (/api/farming/{league}), per league, once per loaded hour. The live
+# league comes back reduced in SQL (day 0, the latest 3 days, 24-hour medians), so its
+# reads don't grow with the league's hours or other leagues' hourly rows. Past leagues
+# are read from the reduced history (item_day_history): about 9k rows a captured league
+# (Allflame from a copy of the local database: 42k rows, 36k of them history; 132 ms;
+# 22 KB gzipped). The replay has no history, so this measures the live part.
+FARMING_BUDGET = (300, 12_000)  # 67 rows, 2.6 KB at 30 hours
+
+
+def test_farming_page_reads_stay_small(loaded):
+    max_rows, max_bytes = FARMING_BUDGET
+    meter, size = endpoint_reads("/api/farming/{league}")
+    assert meter.rows <= max_rows, describe(meter)
+    assert size <= max_bytes, size
+    _add_past_leagues(loaded, 4)  # other leagues' hours: never read
+    after, _ = endpoint_reads("/api/farming/{league}")
+    assert after.rows <= meter.rows + 4 * PER_LEAGUE_ROWS, describe(after)
