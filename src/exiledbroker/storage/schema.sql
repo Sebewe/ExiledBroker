@@ -305,3 +305,13 @@ CREATE TABLE IF NOT EXISTS item_day_history (
     day_hours     INTEGER NOT NULL,   -- hours of that day with any trade at all
     PRIMARY KEY (league, item_id, day)
 );
+
+-- The Farming page's constants (services/farming.py, `eb farming build`): finding 6's
+-- hour-of-day profiles per phase and finding 7's impact bands, as one JSON document built
+-- locally from past leagues (analysis/hours.py needs numpy, which the site doesn't have)
+-- and copied to the site whole, like backtest_report.
+CREATE TABLE IF NOT EXISTS farming_report (
+    id        VARCHAR PRIMARY KEY,
+    built_at  TIMESTAMP NOT NULL,
+    body      VARCHAR NOT NULL
+);
