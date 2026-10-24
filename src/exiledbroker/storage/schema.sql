@@ -288,3 +288,20 @@ CREATE TABLE IF NOT EXISTS backtest_report (
     built_at  TIMESTAMP NOT NULL,
     body      VARCHAR NOT NULL
 );
+
+-- The Farming page's reduced history (services/item_history.py): each finished league's
+-- launch fortnight as one row per basket item and day, so the server ranks mechanics
+-- against past leagues without keeping their hours. From cross_market_hour (Chaos leg).
+CREATE TABLE IF NOT EXISTS item_day_history (
+    league        VARCHAR NOT NULL,
+    league_start  TIMESTAMP NOT NULL,
+    item_id       VARCHAR NOT NULL,
+    day           INTEGER NOT NULL,   -- 0 = the league's first 24 hours
+    chaos         DOUBLE PRECISION,   -- median hourly Chaos price
+    divine        DOUBLE PRECISION,   -- median hourly Divine price, at the same hour's rate
+    chaos_volume  DOUBLE PRECISION,   -- Chaos traded
+    hours         INTEGER NOT NULL,   -- hours it traded
+    absret        DOUBLE PRECISION,   -- median |log change| between consecutive traded hours
+    day_hours     INTEGER NOT NULL,   -- hours of that day with any trade at all
+    PRIMARY KEY (league, item_id, day)
+);

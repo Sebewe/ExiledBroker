@@ -562,6 +562,32 @@ def mechanics_check() -> None:
     typer.echo(f"\nAll {sum(len(r.mechanic.names()) for r in results)} names resolve.")
 
 
+farming_app = typer.Typer(help="The Farming page's data.", no_args_is_help=True)
+app.add_typer(farming_app, name="farming")
+
+
+@farming_app.command("history")
+def farming_history() -> None:
+    """Reduce every league with a complete launch fortnight to one row per basket item
+    and day (item_day_history), in the local database; re-run after editing
+    config/mechanics.toml, then copy it to the site with `eb site seed`. Reads only
+    what's loaded; makes no requests."""
+    from exiledbroker.services import item_history, launch_picks
+
+    settings = get_settings()
+    with db.session(settings.db_path) as con:
+        db.init_schema(con)
+        items = item_history.basket_items(con, settings)
+        leagues = launch_picks.complete_leagues(con)
+        counts = {lg: item_history.capture(con, lg, items) for lg in leagues}
+    if not leagues:
+        typer.echo("No league with a complete launch fortnight loaded yet.")
+        raise typer.Exit(1)
+    typer.echo(f"{len(items)} basket items:")
+    for league, n in counts.items():
+        typer.echo(f"  {league}: {n:,} rows")
+
+
 backtest_app = typer.Typer(help="Would following the site's tools have paid?")
 app.add_typer(backtest_app, name="backtest")
 
