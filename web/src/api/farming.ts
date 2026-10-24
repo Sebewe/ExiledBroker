@@ -12,9 +12,9 @@ export type FarmingMechanic = {
   name: string
   items: number
   priced_items: number
-  /** Basket index: geometric mean of item price over its day-1 median. */
+  /** Basket index, in Divines: geometric mean of each item's last-24h median over its day-0 median. */
   index: number | null
-  /** Median past-league index at this day_offset (null after day 14 or with no history). */
+  /** Past leagues' index on this day (recency-weighted; null after day 13 or with < 2 leagues). */
   usual: number | null
   usual_low: number | null
   usual_high: number | null
@@ -42,7 +42,7 @@ export type FarmingOutlook = {
 
 /** One market's recent trading for an item: `price` in that market's currency (Chaos, or
  *  Divines for the Divine market), `volume_h` in units of the item an hour, `sigma_h` the
- *  hourly log-price volatility and `hours_traded` the share of hours with trades. */
+ *  typical hourly swing (informative only) and `hours_traded` the share of hours with trades. */
 export type FarmingMarket = {
   price: number | null
   volume_h: number | null
@@ -102,6 +102,17 @@ export type FarmingHours = {
   mechanics: Record<string, MechanicHours>
 }
 
+/** Finding 7: no calibrated price drop. A stack is shown as hours of the market's trading
+ *  (Q / volume_h), banded: under `bands[0]` it sells into the market as it is, from
+ *  `bands[0]` to `bands[1]` it's a large part of the hour's trading, and from `bands[1]` on
+ *  it's more than the market trades in an hour. `y` stays null (the square-root law can't
+ *  be fitted on hourly data); `note` is the copy that says why. */
+export type FarmingImpact = {
+  y: number | null
+  bands: [number, number]
+  note: string | null
+}
+
 export type Farming = {
   league: string
   latest_hour: string | null
@@ -111,7 +122,7 @@ export type Farming = {
   outlook: FarmingOutlook[]
   items: FarmingItem[]
   hours: FarmingHours | null
-  impact: { y: number; note: string | null } | null
+  impact: FarmingImpact | null
 }
 
 /** GET /api/farming/{league}, or an ApiError carrying the API's `detail` (503: no data). */
