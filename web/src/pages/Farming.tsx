@@ -256,8 +256,8 @@ function Outlook({ outlook, phase, dayOffset }: { outlook: FarmingOutlook[]; pha
   const current = phase === 'launch' ? windowAt(dayOffset) : undefined
   const [picked, setPicked] = useParam<OutlookWindowId>('window', current ?? 'day1')
   const w = WINDOWS.find((x) => x.id === picked) ?? WINDOWS[0]!
-  const growth = (o: FarmingOutlook) => o.windows[w.id]?.growth ?? null
-  const ranked = outlook.filter((o) => growth(o) != null).sort((a, b) => growth(b)! - growth(a)! || a.name.localeCompare(b.name))
+  const premium = (o: FarmingOutlook) => o.windows[w.id]?.premium ?? null
+  const ranked = outlook.filter((o) => premium(o) != null).sort((a, b) => premium(b)! - premium(a)! || a.name.localeCompare(b.name))
   const title = phase === 'later' ? "Next league's launch" : 'Launch outlook'
   const [all, setAll] = useState(false)
   return (
@@ -265,7 +265,7 @@ function Outlook({ outlook, phase, dayOffset }: { outlook: FarmingOutlook[]; pha
       id="outlook"
       title={title}
       icon={Rocket}
-      note="How much each mechanic's drops gained over each launch window in past leagues: the typical gain and the worst league's. Prices move fastest in the first days, so what pays on day 1 isn't what pays a week later."
+      note="What each mechanic's drops were worth in each launch window against their price once the market settled (days 12–14), in past leagues: typically and in the worst league. ×3 means three times as much. Some drops are dearest at launch, others gain value later."
     >
       {outlook.length === 0 ? (
         <Empty>No past league has been captured yet. The outlook appears once one league's launch fortnight is in the history.</Empty>
@@ -298,8 +298,8 @@ function Outlook({ outlook, phase, dayOffset }: { outlook: FarmingOutlook[]; pha
                     <span className="num w-24 text-right text-xs text-muted" title="The worst past league's result">
                       worst <span className={tone(x.worst == null ? null : x.worst - 1)}>{times(x.worst)}</span>
                     </span>
-                    <span className={`num w-14 text-right font-semibold ${tone(x.growth! - 1)}`} title="Typical gain over the window">
-                      {times(x.growth)}
+                    <span className={`num w-14 text-right font-semibold ${tone(x.premium! - 1)}`} title="Typically worth this much against the settled price">
+                      {times(x.premium)}
                     </span>
                   </li>
                 )

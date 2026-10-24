@@ -59,7 +59,7 @@ const outlook = (id: string, name: string, day1: number, days5_10: number): Farm
   id,
   name,
   leagues: 4,
-  windows: { day1: { growth: day1, worst: 0.9 }, days2_4: { growth: 1.2, worst: 1.0 }, days5_10: { growth: days5_10, worst: 1.01 } },
+  windows: { day1: { premium: day1, worst: 0.9 }, days2_4: { premium: 1.2, worst: 1.0 }, days5_10: { premium: days5_10, worst: 1.01 } },
 })
 const flat = Array(24).fill(0)
 const effect = (gain: number, best: number, worst: number, verdict: 'small' | 'worth_it' = 'worth_it'): HourEffect => ({
