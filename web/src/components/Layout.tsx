@@ -1,4 +1,4 @@
-import { BookOpen, CandlestickChart, FlaskConical, Hourglass, Moon, Network, Sun } from 'lucide-react'
+import { BookOpen, CandlestickChart, FlaskConical, Hourglass, Moon, Network, Pickaxe, Sun } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { NavLink } from 'react-router'
 import { useRememberedSettings } from '../lib/rememberSettings'
@@ -11,6 +11,7 @@ const NAV = [
   { to: '/', label: 'Market recap', icon: Hourglass, end: true, featured: true },
   { to: '/backtest', label: 'Backtest', icon: FlaskConical, featured: true },
   { to: '/launch', label: 'Launch market', icon: CandlestickChart },
+  { to: '/farming', label: 'Farming', icon: Pickaxe },
   { to: '/conversions', label: 'Multi-layered conversions', icon: Network },
   { to: '/about', label: 'About', icon: BookOpen },
 ]
