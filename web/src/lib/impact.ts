@@ -19,7 +19,8 @@ export function hoursOfTrading(m: FarmingMarket | null | undefined, qty: number)
 }
 
 /** low: sells into the market as it is; medium: a large part of the hour's trading;
- *  high: more than the market trades in an hour. */
+ *  high: as much as the market trades in an hour, or more (the contract's
+ *  low < bands[0] <= medium < bands[1] <= high). */
 export function impactBand(hours: number, bands: FarmingImpact['bands'] = DEFAULT_BANDS): ImpactBand {
   return hours < bands[0] ? 'low' : hours < bands[1] ? 'medium' : 'high'
 }
@@ -32,8 +33,11 @@ export type MarketStack = {
   /** Units traded in a typical hour. */
   volumeH: number
   /** One unit's price now, in Chaos (the Divine market's at the latest Divine rate); null
-   *  for the Divine market before there's a rate. */
+   *  without a recent price, or for the Divine market before there's a rate. */
   unitChaos: number | null
+  /** The Divine market before there's a Divine rate: its prices can only be given in
+   *  Divines. Never set for the Chaos market, nor by a missing price alone. */
+  noRate: boolean
   /** One unit's price in the market's own currency (Chaos, or Divines). */
   unit: number | null
   /** The stack's value at that price, in Chaos (null as `unitChaos`). */
@@ -53,6 +57,7 @@ function stack(market: MarketId, m: FarmingMarket | null, qty: number, bands: Fa
     band: impactBand(hours, bands),
     volumeH: m.volume_h!,
     unitChaos,
+    noRate: rate == null,
     unit: m.price,
     valueChaos: unitChaos == null ? null : qty * unitChaos,
     sigmaH: m.sigma_h,
@@ -69,12 +74,14 @@ export function stackInMarkets(item: FarmingItem, qty: number, divineChaos: numb
   return { chaos, divine }
 }
 
-/** A stack's hours of trading in words: "about 2 minutes", "1.5 hours", "3 days". */
+/** A stack's hours of trading in words: "about 2 minutes", "1.5 hours", "3 days". Under an
+ *  hour always reads in minutes (at most 59), so it never says "an hour" for a stack that
+ *  is still below the top band's edge. */
 export function tradingTime(hours: number): string {
   const minutes = hours * 60
   if (minutes < 1) return 'under a minute'
-  if (minutes < 59.5) {
-    const m = Math.round(minutes)
+  if (hours < 1) {
+    const m = Math.min(59, Math.round(minutes))
     return `about ${m} minute${m === 1 ? '' : 's'}`
   }
   if (hours < 9.95) return hours.toFixed(1) === '1.0' ? 'an hour' : `${hours.toFixed(1)} hours`
@@ -101,14 +108,16 @@ export function profileFor(hours: FarmingHours, mechanics: string[]): { mechanic
 }
 
 /** The busiest and quietest `span` consecutive UTC hours of a day's volume shares (wrapping
- *  past midnight), and how many times busier the one is than the other. Null without at
- *  least one full day of shares. */
+ *  past midnight), and how many times busier the one is than the other: Infinity when
+ *  nothing trades in the quiet hours. Null without a full day of shares, or with no trades
+ *  at all. */
 export function busiestHours(volume: HourProfile | null | undefined, span = 4) {
   if (!volume || volume.length !== 24 || volume.some((v) => v == null)) return null
   const sums = Array.from({ length: 24 }, (_, start) => Array.from({ length: span }, (_, i) => volume[(start + i) % 24]!).reduce((a, b) => a + b, 0))
   const busiest = sums.indexOf(Math.max(...sums))
   const quietest = sums.indexOf(Math.min(...sums))
   const share = sums[busiest]!
-  const ratio = sums[quietest]! > 0 ? share / sums[quietest]! : null
+  if (!(share > 0)) return null
+  const ratio = sums[quietest]! > 0 ? share / sums[quietest]! : Infinity
   return { start: busiest, end: (busiest + span) % 24, share, quietStart: quietest, quietEnd: (quietest + span) % 24, ratio }
 }

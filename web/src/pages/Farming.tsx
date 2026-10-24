@@ -407,7 +407,7 @@ function bandEdge(hours: number) {
 const LEAD: Record<ImpactBand, string> = {
   low: 'it sells into the market as it is.',
   medium: "a large part of the hour's trading, so it may take a while to sell at this price.",
-  high: 'more than the market trades in an hour, so split it and list it over several hours.',
+  high: "an hour's trading or more, so split it and list it over several hours.",
 }
 
 /** The stack as hours of each market's trading (finding 7): the Chaos market first, since
@@ -448,7 +448,7 @@ function Stack({
       </div>
       <p className="text-xs text-faint">
         {note} Hours of trading: your stack over the units the market trades in a typical hour, last 3 days. Under {bandEdge(bands[0])} of trading it sells as it
-        is; over {bandEdge(bands[1])}, split it. The typical hourly swing is how far the price moves in an hour anyway.
+        is; from {bandEdge(bands[1])} on, split it. The typical hourly swing is how far the price moves in an hour anyway.
       </p>
     </div>
   )
@@ -457,7 +457,7 @@ function Stack({
 const BAND_TEXT: Record<ImpactBand, string> = {
   low: 'Sells into the market as it is',
   medium: "A large part of the hour's trading: list it a little at a time",
-  high: 'More than the market trades in an hour: split it',
+  high: "An hour's trading or more: split it",
 }
 const BAND_STEPS: ImpactBand[] = ['low', 'medium', 'high']
 
@@ -483,9 +483,11 @@ function MarketCard({
         <p className="text-sm text-muted">{missing}</p>
       </section>
     )
-  // The Divine market before there's a Divine rate: its own prices, in Divines.
-  const inDivines = stack.unitChaos == null
-  const spread = stack.band === 'high' ? (stack.hours > 48 ? 'several days' : `at least ${Math.ceil(stack.hours)} hours`) : null
+  // The Divine market before there's a Divine rate: its own prices, in Divines. (A missing
+  // price alone isn't that: it shows as a dash.)
+  const inDivines = stack.market === 'divine' && stack.noRate
+  // Split across at least two hours: a stack of exactly an hour's trading is the top band.
+  const spread = stack.band === 'high' ? (stack.hours > 48 ? 'several days' : `at least ${Math.max(2, Math.ceil(stack.hours))} hours`) : null
   return (
     <section aria-label={name} className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-4">
       <div className="flex items-baseline justify-between gap-2">
@@ -508,7 +510,7 @@ function MarketCard({
         <dt className="text-muted">Trades an hour</dt>
         <dd className="num text-right">{count(stack.volumeH, stack.volumeH < 10 ? 1 : 0)}</dd>
         <dt className="text-muted">Price now</dt>
-        <dd className="num text-right">{inDivines ? price(stack.unit, 'divine') : money(stack.unitChaos)} each</dd>
+        <dd className="num text-right">{stack.unit == null ? '–' : `${inDivines ? price(stack.unit, 'divine') : money(stack.unitChaos)} each`}</dd>
         <dt className="text-muted">The stack at that price</dt>
         <dd className="num text-right font-medium">
           {inDivines ? price(stack.unit == null ? null : stack.unit * qty, 'divine') : money(stack.valueChaos)}
@@ -516,7 +518,11 @@ function MarketCard({
         <dt className="text-muted">Typical hourly swing</dt>
         <dd className="num text-right">{stack.sigmaH == null ? '–' : `±${pct(stack.sigmaH, 0)}`}</dd>
       </dl>
-      {inDivines && <p className="text-xs text-muted">There's no Divine price yet this league, so its prices are in Divines.</p>}
+      {stack.unit == null ? (
+        <p className="text-xs text-muted">No recent price here, so the stack can't be valued in this market.</p>
+      ) : (
+        inDivines && <p className="text-xs text-muted">There's no Divine price yet this league, so its prices are in Divines.</p>
+      )}
     </section>
   )
 }
@@ -540,8 +546,13 @@ function BestHours({ hours, item, mechanicName }: { hours: FarmingHours | null; 
       </h3>
       {busy && (
         <p className="text-sm text-muted">
-          {busy.ratio == null || busy.ratio < 1.2 ? (
+          {busy.ratio < 1.2 ? (
             'Trading is about as busy at every hour of the day.'
+          ) : busy.ratio === Infinity ? (
+            <>
+              Trading is busiest from <span className="num text-text">{localHour(busy.start)}</span> to <span className="num text-text">{localHour(busy.end)}</span>{' '}
+              your time: a big stack sells most easily then. Almost nothing trades from {localHour(busy.quietStart)} to {localHour(busy.quietEnd)}.
+            </>
           ) : (
             <>
               Trading is busiest from <span className="num text-text">{localHour(busy.start)}</span> to <span className="num text-text">{localHour(busy.end)}</span>{' '}

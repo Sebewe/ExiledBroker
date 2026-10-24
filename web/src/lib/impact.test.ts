@@ -52,17 +52,26 @@ describe('stackInMarkets', () => {
   it('has no Divine market without its trades, and no Chaos value for it without a rate', () => {
     expect(stackInMarkets(item(null), 10, 200).divine).toBeNull()
     const noRate = stackInMarkets(item({ price: 0.008, volume_h: 40, sigma_h: 0.05, hours_traded: 0.2 }), 10, null).divine
-    expect(noRate).toMatchObject({ hours: 0.25, band: 'medium', unit: 0.008, unitChaos: null, valueChaos: null })
+    expect(noRate).toMatchObject({ hours: 0.25, band: 'medium', unit: 0.008, unitChaos: null, valueChaos: null, noRate: true })
+  })
+
+  it('tells a missing price from a missing Divine rate', () => {
+    const noPrice = { ...item({ price: null, volume_h: 40, sigma_h: 0.05, hours_traded: 0.2 }), chaos: { price: null, volume_h: 3200, sigma_h: 0.03, hours_traded: 0.9 } }
+    const { chaos, divine } = stackInMarkets(noPrice, 3200, 200)
+    expect(chaos).toMatchObject({ hours: 1, band: 'high', unit: null, unitChaos: null, valueChaos: null, noRate: false })
+    expect(divine).toMatchObject({ unit: null, unitChaos: null, noRate: false })
   })
 })
 
 describe('tradingTime', () => {
   it('reads as minutes, hours or days', () => {
-    expect([0.01, 1 / 60, 0.03, 0.5, 1, 1.25, 12.4, 125].map(tradingTime)).toEqual([
+    expect([0.01, 1 / 60, 0.03, 0.5, 0.995, 1, 1.04, 1.25, 12.4, 125].map(tradingTime)).toEqual([
       'under a minute',
       'about 1 minute',
       'about 2 minutes',
       'about 30 minutes',
+      'about 59 minutes', // below the top band's edge: never "an hour"
+      'an hour',
       'an hour',
       '1.3 hours',
       '12 hours',
@@ -78,7 +87,13 @@ describe('busiestHours', () => {
     expect(busiestHours(evening)).toMatchObject({ start: 22, end: 2, quietStart: 10, quietEnd: 14, ratio: 4 })
   })
 
-  it('needs a full day of shares', () => {
+  it('is endlessly busier when nothing trades in the quiet hours', () => {
+    const gap = Array.from({ length: 24 }, (_, h) => (h >= 2 && h < 6 ? 0 : 1 / 20))
+    expect(busiestHours(gap)).toMatchObject({ quietStart: 2, quietEnd: 6, ratio: Infinity })
+  })
+
+  it('needs a full day of shares, with some trades', () => {
+    expect(busiestHours(Array(24).fill(0))).toBeNull()
     expect(busiestHours(null)).toBeNull()
     expect(busiestHours([...Array(23).fill(1 / 24), null])).toBeNull()
   })
