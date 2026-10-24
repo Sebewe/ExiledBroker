@@ -2,10 +2,11 @@
 outlook, and the sell helper's inputs, for one league, as the contract's one document.
 
 Every number reuses a definition already decided in research (findings 6–8):
-- **Past leagues** come from the reduced history (`item_history.history`, the leagues
-  captured before the one served), read through `analysis/mechanics`: `index` and
-  `usual` for the usual path and its range, `premiums` and `outlook` for the launch
-  outlook, `liquidity` and `easy_to_sell` for Easy to sell before the league has 3 days.
+- **Past leagues** come from the reduced history (`past_history`: item_day_history's
+  leagues that started before the one served), read through `analysis/mechanics`:
+  `index` and `usual` for the usual path and its range, `premiums` and `outlook` for the
+  launch outlook, `liquidity` and `easy_to_sell` for Easy to sell before the league has
+  3 days.
 - **The live league** is reduced in SQL to small frames of the same shape
   (`item_history.league_days` over its day 0 and over its latest 3 days, plus medians
   over the latest 24 hours), so no hourly row reaches Python. Its index is
@@ -29,11 +30,13 @@ from exiledbroker.analysis import mechanics as mx
 from exiledbroker.config import Settings, get_settings
 from exiledbroker.ingest.core_pool import load_pool
 from exiledbroker.normalize import mechanics as basket_config
+from exiledbroker.normalize.tracked import currency_item_id
 from exiledbroker.services import item_history
 from exiledbroker.services.scoring import rank_score
 from exiledbroker.storage import db
 
 REPORT = "farming_report"
+CARDS = "divination"  # the followed cards' price-mapping group (normalize/tracked.py)
 LAUNCH_DAYS = mx.LAUNCH_DAYS
 PRICE_HOURS = 24  # an item's price is its median over the latest 24 published hours
 RECENT_HOURS = mx.RECENT_DAYS * 24  # volumes, swings, hours traded, Easy to sell
@@ -132,28 +135,79 @@ def _hours(doc: dict | None, day_offset: float | None) -> dict | None:
 # --- Baskets -----------------------------------------------------------------------
 
 
-def baskets(con, settings: Settings) -> tuple[mx.Baskets, mx.Baskets]:
-    """config/mechanics.toml as item ids: the current outputs (what the page shows) and
-    the outputs plus legacy ones (past leagues' curves), in two queries for all
-    mechanics together."""
+def _resolve(con, settings: Settings):
+    """config/mechanics.toml as item ids (current outputs, outputs plus legacy ones) and
+    the current outputs' names, without the site's `item` table.
+
+    On the hosted site `item` and `tracked_item` hold only the items the live league
+    traded (`storage/site.py`), so filtering by them would drop legacy outputs and cards
+    that traded only in past leagues from past leagues' curves, and outputs the live
+    league hasn't traded yet from the page, and the hosted page would disagree with the
+    local one. Instead:
+    - a named output's id is its name's (`currency_item_id`), which is how
+      item_day_history's and cross_market_hour's rows carry it (an id nothing traded
+      under matches no row), and its name is the configured one;
+    - a group's items are its `tracked_item` rows plus, for the followed cards, every
+      followed card in `divination_card` (seeded whole on the site; `followed` is the
+      same rule, `pool.allows("divination", name)`, over every card rather than only
+      the items stored), named from there. Only the price pages' `tracked_item` knows
+      the other groups, so a basket built from one of them sees only the live league's
+      items on the hosted site."""
     mechanics = basket_config.load_mechanics(settings)
-    names = sorted({n for m in mechanics for n in m.outputs + m.legacy})
-    known = basket_config.resolve(con, names)
     groups = sorted({g for m in mechanics for g in m.groups})
-    in_group = {g: basket_config.group_items(con, (g,)) for g in groups}
+    in_group = {g: set(basket_config.group_items(con, (g,))) for g in groups}
+    names = {currency_item_id(n): n for m in mechanics for n in m.outputs}
+    if CARDS in in_group:
+        cards = dict(db.rows(con, "SELECT item_id, name FROM divination_card WHERE followed"))
+        in_group[CARDS] |= set(cards)
+        names |= cards
 
     def ids(m, legacy: bool) -> list[str]:
         named = m.outputs + (m.legacy if legacy else ())
-        out = {known[n] for n in named if n in known}
+        out = {currency_item_id(n) for n in named}
         return sorted(out.union(*(in_group[g] for g in m.groups)))
 
     current = {m.id: (m.name, ids(m, False)) for m in mechanics}
     every = {m.id: (m.name, ids(m, True)) for m in mechanics}
+    unnamed = sorted(set(_item_ids(current)) - set(names))  # other groups' items
+    return current, every, names | item_names(con, unnamed)
+
+
+def baskets(con, settings: Settings) -> tuple[mx.Baskets, mx.Baskets]:
+    """The current outputs (what the page shows) and the outputs plus legacy ones (past
+    leagues' curves), as item ids (`_resolve`)."""
+    current, every, _ = _resolve(con, settings)
     return current, every
 
 
 def _item_ids(bks: mx.Baskets) -> list[str]:
     return sorted({i for _, ids in bks.values() for i in ids})
+
+
+# --- Past leagues ----------------------------------------------------------------------
+
+
+def past_history(con, league: str, start_at: datetime | None) -> pl.DataFrame:
+    """`item_history.history`'s rows for the captured leagues that started before the
+    one served (every other captured league while its start isn't known), filtered in
+    SQL, so a newer league's rows are never read when an older league is served. About
+    9k rows a captured league: the page's biggest read, once per data version."""
+    where, params = "league <> ?", [league]
+    if start_at is not None:
+        where, params = f"{where} AND league_start < ?", [*params, start_at]
+    return db.frame(
+        con,
+        f"SELECT * FROM {item_history.HISTORY} WHERE {where} ORDER BY league, item_id, day",
+        params,
+    )
+
+
+def past_leagues(hist: pl.DataFrame) -> list[str]:
+    """The leagues in `hist`, newest first (as `item_history.captured_leagues`)."""
+    if hist.is_empty():
+        return []
+    starts = hist.group_by("league").agg(pl.col("league_start").max())
+    return starts.sort(["league_start", "league"], descending=True)["league"].to_list()
 
 
 # --- The live league, reduced in SQL -------------------------------------------------
@@ -542,16 +596,12 @@ def farming(con, league: str, settings: Settings | None = None) -> dict:
     contract). Before the league's first trades only the outlook (and the first phase's
     hour profiles) are there."""
     settings = settings or get_settings()
-    current, every = baskets(con, settings)
+    current, every, names = _resolve(con, settings)
     state = league_state(con, league)
     latest, day_offset = state["latest"], state["day_offset"]
 
-    captured = [lg for lg in item_history.captured_leagues(con) if lg != league]
-    hist = item_history.history(con, captured) if captured else pl.DataFrame()
-    if not hist.is_empty() and state["start_at"] is not None:
-        hist = hist.filter(pl.col("league_start") < state["start_at"])  # past leagues only
-    kept = set(hist["league"]) if not hist.is_empty() else set()
-    past = [lg for lg in captured if lg in kept]  # newest first
+    hist = past_history(con, league, state["start_at"])
+    past = past_leagues(hist)
     outlook = pl.DataFrame()
     if past:
         outlook = mx.outlook(mx.premiums(hist, every), past)
@@ -563,7 +613,6 @@ def farming(con, league: str, settings: Settings | None = None) -> dict:
 
     mechanics, items = [], []
     if latest is not None:
-        names = item_names(con, _item_ids(current))
         pool = load_pool(con, settings)
         shown = {  # what the page shows: the core drop pool's (CLAUDE.md, scope rules)
             mid: [

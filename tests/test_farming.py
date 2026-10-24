@@ -27,6 +27,13 @@ SHARED = "Shared Orb"  # in both baskets
 NO_DIVINE = "Alpha Stone"  # never trades against Divines
 BASE = {name: 10.0 * (i + 1) for i, name in enumerate([*ALPHA, *BETA, SHARED])}
 RATE = 100.0  # Chaos per Divine
+# A third basket for what only past leagues traded: a legacy output and a followed card
+# that never trade in the live league (so the hosted site's `item` table lacks them).
+GAMMA = ["Gamma Bead", "Gamma Coin", "Gamma Pearl"]
+RELIC = "Gamma Relic"  # a legacy output
+CARD = "The Gamma"  # a followed divination card
+GAMMA_BASE = {name: 5.0 * (i + 1) for i, name in enumerate(GAMMA)}
+PAST_ONLY = {RELIC: 7.0, CARD: 9.0}
 
 
 def ids(names: list[str]) -> list[str]:
@@ -43,6 +50,17 @@ def settings(tmp_path):
         )
     )
     return s
+
+
+@pytest.fixture
+def gamma_settings(settings):
+    """`settings` plus Gamma: three outputs, a legacy one and the followed cards."""
+    with settings.mechanics_file.open("a") as f:
+        f.write(
+            f'[[mechanic]]\nid = "gamma"\nname = "Gamma"\noutputs = {json.dumps(GAMMA)}\n'
+            f'legacy = {json.dumps([RELIC])}\ngroups = ["divination"]\n'
+        )
+    return settings
 
 
 def report_doc() -> dict:
@@ -80,7 +98,7 @@ def report_doc() -> dict:
 
 def chaos_price(name: str, hour: int) -> float:
     """Every item doubles in price after its first day; Beta's halve again on day 3."""
-    p = BASE[name] * (2.0 if hour >= 24 else 1.0)
+    p = (BASE | GAMMA_BASE)[name] * (2.0 if hour >= 24 else 1.0)
     return p / 2 if name in BETA and hour >= 72 else p
 
 
@@ -91,9 +109,15 @@ def build(
     rate: bool = True,
     past: bool = True,
     report: bool = True,
+    gamma: bool = False,
+    hosted: bool = False,
 ) -> None:
     """The world on `con` (DuckDB or Postgres): the live league with `hours` loaded
-    hours, the past leagues' history and the report."""
+    hours, the past leagues' history and the report. With `gamma`, also Gamma's items,
+    and its legacy output and card in past leagues only; `hosted` stores `item` and
+    `tracked_item` as `eb site seed` does, with only the items the live league traded."""
+    live = BASE | (GAMMA_BASE if gamma else {})
+    everything = live | (PAST_ONLY if gamma else {})
     db.init_schema(con)
     db.execute(
         con,
@@ -101,14 +125,27 @@ def build(
         "VALUES ('poe1-live', 'poe1', ?, ?, ?, 'challenge', TRUE)",
         [LIVE, LAUNCHED - timedelta(hours=22), LAUNCHED],
     )
-    for name in BASE:
+    for name in live if hosted else everything:
         db.execute(
             con,
             "INSERT INTO item (id, game, canonical_name, category) VALUES (?, 'poe1', ?, 'currency')",
             [currency_item_id(name), name],
         )
+    if gamma:
+        db.execute(
+            con,
+            "INSERT INTO divination_card (item_id, name, followed) VALUES (?, ?, TRUE)",
+            [currency_item_id(CARD), CARD],
+        )
+        if not hosted:
+            db.execute(
+                con,
+                "INSERT INTO tracked_item (item_id, group_id, group_label, sort_order) "
+                "VALUES (?, 'divination', 'Divination cards', 4)",
+                [currency_item_id(CARD)],
+            )
     for h in range(hours):
-        for name in BASE:
+        for name in live:
             p = chaos_price(name, h)
             divine = None if name == NO_DIVINE else p / RATE * 1.02
             db.execute(
@@ -130,10 +167,11 @@ def build(
     if past:
         for league, before in PAST.items():
             start = LAUNCHED - timedelta(days=before)
-            for name, base in BASE.items():
+            for name, base in everything.items():
                 for day in range(14):
-                    # Every past league's index is 1 + day, alike in each basket.
-                    p = base * (1 + day)
+                    # Every past league's index is 1 + day, alike in each basket; the
+                    # items only past leagues traded rise three times as fast.
+                    p = base * (1 + (3 if name in PAST_ONLY else 1) * day)
                     db.execute(
                         con,
                         f"INSERT INTO {ih.HISTORY} ({', '.join(ih.COLUMNS)}) "
@@ -250,6 +288,24 @@ def test_after_the_launch_fortnight(tmp_path, settings):
     assert doc["hours"]["phase"] == "later" and doc["hours"]["volume"]
 
 
+def test_past_leagues_keep_what_only_they_traded(tmp_path, settings, gamma_settings):
+    """A legacy output and a followed card that traded only in past leagues stay in
+    Gamma's past curves on the hosted site too, whose `item` and `tracked_item` hold only
+    the live league's items: the usual path and the outlook match the local page's."""
+    local = serve(tmp_path, gamma_settings, 48, gamma=True)
+    gamma_settings.db_path.unlink()
+    hosted = serve(tmp_path, gamma_settings, 48, gamma=True, hosted=True)
+    gamma = by_id(local["mechanics"])["gamma"]
+    # Day 1 of past leagues: three outputs at 2, the relic and the card at 4.
+    assert gamma["usual"] == pytest.approx((2**3 * 4**2) ** (1 / 5))
+    assert by_id(local["outlook"])["gamma"]["windows"]["day1"]["premium"] != pytest.approx(
+        by_id(local["outlook"])["alpha"]["windows"]["day1"]["premium"]
+    )  # the relic and the card count in the outlook too
+    # The basket counts the followed card the live league hasn't traded (yet).
+    assert gamma["items"] == 4 and gamma["priced_items"] == 3
+    _same(local, hosted)
+
+
 def test_the_page_reads_small_results(tmp_path, settings):
     """No hourly rows reach Python: the live league comes back reduced to days and
     24-hour medians, however many hours are loaded."""
@@ -308,7 +364,10 @@ def _same(a, b, path=""):
 
 @pytest.mark.skipif(not PG_URL, reason="EB_TEST_POSTGRES_URL is not set")
 @pytest.mark.parametrize("hours", [0, 1, 48, 15 * 24])
-def test_postgres_gives_the_same_page(tmp_path, settings, hours):
+def test_postgres_gives_the_same_page(tmp_path, gamma_settings, hours):
+    """The same page from a local database and from Postgres seeded as the hosted site
+    is (`item` and `tracked_item` with the live league's items only)."""
+    settings = gamma_settings
     import psycopg
     from psycopg.conninfo import conninfo_to_dict, make_conninfo
 
@@ -317,9 +376,9 @@ def test_postgres_gives_the_same_page(tmp_path, settings, hours):
         admin.execute("CREATE DATABASE eb_farming_test")
     url = make_conninfo(**(conninfo_to_dict(PG_URL) | {"dbname": "eb_farming_test"}))
     with db.session(settings.db_path) as con:
-        build(con, hours)
+        build(con, hours, gamma=True)
     with psycopg.connect(url, autocommit=True) as pg:
-        build(pg, hours)
+        build(pg, hours, gamma=True, hosted=True)
     with db.session(settings.db_path, read_only=True) as con:
         expected = farming.farming(con, LIVE, settings)
     with psycopg.connect(url) as pg:

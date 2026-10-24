@@ -129,6 +129,7 @@ def _cases(duck) -> dict:
         "farming.prices": lambda c: farming.prices(c, LEAGUE, latest, basket),
         "farming.markets": lambda c: farming.markets(c, LEAGUE, latest, basket),
         "farming.report": lambda c: farming.report(c),
+        "farming.past_history": lambda c: farming.past_history(c, LEAGUE, latest),
         "farming.farming": lambda c: _rounded(farming.farming(c, LEAGUE)),
     }
 
