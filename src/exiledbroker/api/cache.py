@@ -36,6 +36,14 @@ class ResultCache:
                 self._entries.popitem(last=False)
         return value
 
+    def keep_only(self, keep: Callable[[Hashable], bool]) -> int:
+        """Drop every entry whose key `keep` rejects; returns how many were dropped."""
+        with self._lock:
+            gone = [k for k in self._entries if not keep(k)]
+            for k in gone:
+                del self._entries[k]
+        return len(gone)
+
     def __len__(self) -> int:
         return len(self._entries)
 

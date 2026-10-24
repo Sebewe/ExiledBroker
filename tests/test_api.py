@@ -122,6 +122,9 @@ def test_tables_are_computed_once_per_data_version(client, settings, monkeypatch
     with db.metered() as fresh:
         r4 = client.get(path, headers={"If-None-Match": r1.headers["etag"]})
     assert fresh.queries and r4.status_code == 200 and r4.headers["etag"] != r1.headers["etag"]
+    # The old version's results are dropped, not left to the LRU (hosting.md: memory).
+    assert {key[-1] for key in cache.results._entries} == {deps.data_version()}
+    assert [key[0] for key in cache.results._entries].count("missed") == 1
 
 
 def test_a_deploy_invalidates_browser_caches(client, settings, monkeypatch):  # noqa: F811
