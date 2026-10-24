@@ -6,6 +6,7 @@ stand-in follows GGG's rules. The simulation itself runs with run.py, not here."
 import gzip
 import json
 import random
+import re
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -80,6 +81,31 @@ def test_visits_follow_the_daily_model():
     assert all(v[3][0] == "missed" for v in visits)  # every visit lands on the landing page
     hours = [datetime.fromtimestamp(v[1], UTC).hour for v in visits]
     assert hours.count(19) > 2 * hours.count(3)  # evenings busier than nights
+
+
+def test_visitors_ask_only_for_what_the_api_serves():
+    """Each page a visitor views makes the request the built page makes, on a route the
+    API has: the Farming page included, for a league before its first trades too."""
+    from exiledbroker.api.app import create_app
+
+    routes = list(create_app().openapi()["paths"])
+
+    def served(url: str) -> bool:
+        path = url.split("?")[0]
+        return any(re.fullmatch(re.sub(r"\{[^}]+\}", "[^/]+", route), path) for route in routes)
+
+    site = loadgen.Site(None, loadgen.Stats(), immutable_assets=True)
+    b = loadgen.Browser(jitter=0)
+    b.status = {
+        "leagues": [{"name": "Next", "latest_hour": None}, {"name": "Allflame", "latest_hour": "x"}]
+    }
+    asks = {page: site.endpoint(page, b) for page in ["missed", *loadgen.OTHER_PAGES]}
+    assert asks["farming"] == ("farming", "/api/farming/Next")  # the newest listed league
+    assert asks["loops"] == asks["cards"] == asks["missed"] == ("missed", "/api/missed/Allflame")
+    assert asks["conversions"] is None and asks["about"] is None  # static pages
+    assert all(served(url) for kind, url in filter(None, asks.values())), asks
+    b.status = {"leagues": []}  # nothing loaded yet: only the Launch picks and the Backtest
+    assert {p for p in asks if site.endpoint(p, b)} == {"launch", "backtest"}
 
 
 # --- Railway's bill -------------------------------------------------------------------
@@ -160,3 +186,30 @@ def test_the_stand_in_can_serve_unrecorded_hours_as_empty(upstream):
     page = client.get("/api/currency-exchange/3600").json()
     assert page == {"next_change_id": 7200, "markets": []}
     assert up.counts["exchange_empty"] == 1
+
+
+def test_an_unstored_list_is_refused_not_a_server_error(upstream):
+    """A 500 would be retried with backoff (PoliteClient) and fail the pass."""
+    client, up = upstream
+    r = client.get("/ninja/poe1/api/economy/exchange/current/overview?league=A&type=Fossil")
+    assert r.status_code == 404 and up.counts == {"ninja_missing": 1}
+
+
+def test_the_seed_makes_up_the_pool_lists_the_copy_lacks():
+    """A copy whose core pool predates a new poe.ninja list (the Farming page's): the
+    stand-in serves every basket output, so a pass's pool check succeeds and the pool
+    still shows the baskets."""
+    import seed_server
+
+    from exiledbroker.config import Settings
+    from exiledbroker.ingest import core_pool
+    from exiledbroker.normalize import mechanics
+
+    reference = {core_pool.snapshot_key("Currency"): {"names": ["Chaos Orb"]}}
+    made = seed_server.stand_in_lists(reference, Settings())
+    every = {t for types in core_pool.SOURCES.values() for t in types}
+    assert set(made) == every - {"Currency"} and "Fossil" in made
+    assert reference[core_pool.snapshot_key("Currency")] == {"names": ["Chaos Orb"]}  # kept
+    listed = {n for t in made for n in reference[core_pool.snapshot_key(t)]["names"]}
+    outputs = {n for m in mechanics.load_mechanics(Settings()) for n in m.outputs}
+    assert listed == outputs

@@ -29,6 +29,8 @@ import duckdb
 import psycopg
 
 from exiledbroker.config import Settings
+from exiledbroker.ingest import core_pool
+from exiledbroker.normalize import mechanics
 from exiledbroker.services import item_history, launch_picks
 from exiledbroker.storage import db, site
 
@@ -49,6 +51,24 @@ def sim_url(key: str, league: str) -> str | None:
             f"{UPSTREAM}/ninja/poe1/api/economy/exchange/current/overview?league={league}&type={t}"
         )
     return None
+
+
+def stand_in_lists(reference: dict, settings: Settings) -> list[str]:
+    """poe.ninja lists the pool checks (core_pool.SOURCES) that the copy never stored,
+    such as the Farming page's lists in a copy whose pool predates them. The real
+    poe.ninja would answer them, so the stand-in does too: every basket output
+    (config/mechanics.toml) under the first missing list, the others empty. The pool
+    reads their union, so the Farming page shows its baskets as it would hosted.
+    Returns the lists made up."""
+    missing = [
+        t
+        for t in sorted({t for types in core_pool.SOURCES.values() for t in types})
+        if core_pool.snapshot_key(t) not in reference
+    ]
+    outputs = sorted({n for m in mechanics.load_mechanics(settings) for n in m.outputs})
+    for i, t in enumerate(missing):
+        reference[core_pool.snapshot_key(t)] = {"names": outputs if i == 0 else []}
+    return missing
 
 
 def main() -> None:
@@ -98,6 +118,7 @@ def main() -> None:
         reference[key] = json.loads(content)
         if url := sim_url(key, args.league):
             con.execute("UPDATE reference_data SET source_url = ? WHERE key = ?", [url, key])
+    made_up = stand_in_lists(reference, local)
     CACHE.mkdir(exist_ok=True)
     (CACHE / "reference.json").write_text(json.dumps(reference))
 
@@ -109,7 +130,8 @@ def main() -> None:
     print(
         f"seeded: {args.league} {hours} hours before {start:%Y-%m-%d %H:%M}, "
         f"{result.rows.get('exchange_page', 0)} pages, picks from {', '.join(refs)}, "
-        f"Farming history of {', '.join(farmed) or 'no league'}"
+        f"Farming history of {', '.join(farmed) or 'no league'}; poe.ninja lists made up "
+        f"for the stand-in: {', '.join(made_up) or 'none'}"
     )
 
 
