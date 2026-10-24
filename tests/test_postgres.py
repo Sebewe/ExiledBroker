@@ -17,13 +17,15 @@ from polars.testing import assert_frame_equal
 
 from exiledbroker.analysis import backtest
 from exiledbroker.analysis import launch_patterns as lp
-from exiledbroker.config import Settings
+from exiledbroker.config import Settings, get_settings
 from exiledbroker.ingest import currency_exchange as cx
 from exiledbroker.ingest.live import sync_live
 from exiledbroker.services import backtest as services_backtest
 from exiledbroker.services import (
     cross_market,
     divination,
+    farming,
+    item_history,
     launch_picks,
     live,
     market,
@@ -76,6 +78,9 @@ def _cases(duck) -> dict:
     )
     item_ids = sorted(i for (i,) in items)
     names = prices.item_names(duck, [LEAGUE])
+    latest = live.latest_hour(duck, LEAGUE)
+    _, every = farming.baskets(duck, get_settings())
+    basket = sorted({i for _, ids in every.values() for i in ids})
     since = live.latest_hour(duck, LEAGUE) - timedelta(hours=6)
     leagues = [LEAGUE]
     weights = {LEAGUE: 1.0}
@@ -117,7 +122,26 @@ def _cases(duck) -> dict:
         "launch_picks.launch_board": lambda c: launch_picks.launch_board(c),
         "missed.missed": lambda c: missed.missed(c, LEAGUE),
         "backtest.report": lambda c: services_backtest.report(c),
+        "item_history.league_days(hours)": lambda c: item_history.league_days(
+            c, LEAGUE, basket, hours=(latest - timedelta(hours=71), latest + timedelta(hours=1))
+        ),
+        "farming.league_state": lambda c: farming.league_state(c, LEAGUE),
+        "farming.prices": lambda c: farming.prices(c, LEAGUE, latest, basket),
+        "farming.markets": lambda c: farming.markets(c, LEAGUE, latest, basket),
+        "farming.report": lambda c: farming.report(c),
+        "farming.farming": lambda c: _rounded(farming.farming(c, LEAGUE)),
     }
+
+
+def _rounded(value):
+    """A document's floats to 9 significant digits: the engines' last bits may differ."""
+    if isinstance(value, dict):
+        return {k: _rounded(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_rounded(v) for v in value]
+    if isinstance(value, float):
+        return float(f"{value:.9g}")
+    return value
 
 
 def _normalized(df: pl.DataFrame) -> pl.DataFrame:
@@ -164,6 +188,7 @@ LIVE_QUERIES = [
     "divination.hourly_turn_ins(since)",
     "cross_market.hourly(since)",
     "missed.missed",
+    "farming.farming",
 ]
 
 

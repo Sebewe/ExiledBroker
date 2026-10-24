@@ -588,6 +588,50 @@ def farming_history() -> None:
         typer.echo(f"  {league}: {n:,} rows")
 
 
+@farming_app.command("build")
+def farming_build() -> None:
+    """Build the Farming page's constants from past leagues' hours: the hour-of-day
+    profiles per phase of the league (finding 6) and the stack-impact bands (finding 7),
+    kept as one report in the local database (copy it to the site with `eb site seed`).
+    Reads only what's loaded; makes no requests."""
+    import math
+
+    import polars as pl
+
+    from exiledbroker.analysis import backtest as bt
+    from exiledbroker.analysis import hours
+    from exiledbroker.services import farming
+
+    settings = get_settings()
+    started = time.perf_counter()
+    with db.session(settings.db_path) as con:
+        db.init_schema(con)
+        leagues = bt.hourly_leagues(con)
+        if not leagues:
+            typer.echo("No league with hourly exchange data loaded yet.")
+            raise typer.Exit(1)
+        # As `analysis/hours.main`: every league's hours, their deviations, the report.
+        px = pl.concat([hours.hourly(con, lg) for lg in leagues])
+        dev = pl.concat([hours.deviations(px.filter(pl.col("league") == lg)) for lg in leagues])
+        dev_div = pl.concat([hours.deviations(hours.hourly(con, lg, "divine")) for lg in leagues])
+        rep = hours.report(px, dev, dev_div, hours.farming_baskets(con, settings))
+        doc = {
+            "leagues": leagues,
+            "phases": [[n, lo, None if math.isinf(hi) else hi] for n, lo, hi in hours.PHASES],
+            "hours": rep,
+            "impact": farming.IMPACT,
+        }
+        farming.store_report(con, doc)
+    typer.echo(f"Built from {', '.join(leagues)} in {time.perf_counter() - started:.0f} s.")
+    for name, r in rep.items():
+        e = r["effect"]
+        shown = [m for m, v in r["mechanics"].items() if v["shown"]]
+        typer.echo(
+            f"  {name}: {r['leagues']} leagues, {r['days']} days; best hour "
+            f"{e['best']} UTC ({e['verdict']}); own profiles: {', '.join(shown) or 'none'}"
+        )
+
+
 backtest_app = typer.Typer(help="Would following the site's tools have paid?")
 app.add_typer(backtest_app, name="backtest")
 
