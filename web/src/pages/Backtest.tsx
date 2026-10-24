@@ -439,7 +439,7 @@ function LimitSection({ limits }: { limits: BacktestLimit[] }) {
   return (
     <Section
       title="Limit orders"
-      description="The recap's top card turn-ins and loops again, with orders priced from the recap's own hour instead of whatever the next hour asks. Divines an hour: on top if any trade past the order fills it, below if the hour's average has to cross it. Unsold items count as lost; orders that don't fill cost nothing."
+      description="The recap's top card turn-ins and loops again, with orders priced from the recap's own hour instead of whatever the next hour asks, placed as the exchange takes them: whole Chaos or Divines for whole numbers of items (21c for 2, 1 Divine for 1926), filled lot by lot. Divines an hour: on top if any trade past the order fills it, below if the hour's average has to cross it. Unsold items count as lost; orders that don't fill cost nothing."
     >
       <div className="overflow-x-auto rounded-lg border border-border">
         <table className="w-full min-w-[48rem] text-sm">
@@ -504,9 +504,9 @@ function LimitSection({ limits }: { limits: BacktestLimit[] }) {
           ), and were the only orders that still made money when the hour's average had to cross them ({range(launchHours(limits, loopsMid, 'strict'), signed)}).
         </Finding>
         <Finding icon={<FlaskConical aria-hidden className="size-4 text-accent" />} title="Whether the orders fill is the open question">
-          Hourly data shows each hour's range, not the queue at each price, so the two figures bracket it. The mid-range loop orders were picked from a grid of
-          bid and ask levels on Mirage and Allflame, then checked on the other leagues, where they held up but earned less. Cards' best settings didn't beat the
-          simple ones.
+          Hourly data shows each hour's range, not the queue at each price, so the two figures bracket it. Whole-number orders cost the loops most: selling a
+          cheap item for Divines takes a lot of hundreds or thousands of items, more than one hour's share often covers. The mid-range loop orders were picked
+          from a grid on Mirage and Allflame (before whole lots), then checked on the other leagues.
         </Finding>
       </div>
     </Section>

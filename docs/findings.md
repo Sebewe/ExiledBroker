@@ -103,6 +103,16 @@ A dummy trader with 100 Divines does only what the site said at the time. Hourly
 - **Thin markets flattered the first run.** Before the volume floor, many recap loops were markets with an edge over 1,000% from a couple of items traded; their few fills made acting on every loop look break-even. With the floor (now on the page too), it loses a little. The landing page was renamed from Missed opportunities to Market recap, without the "sat on the table" totals, and words its picks as options to check.
 - **Caveats:** no order book, so real fills sit between fair and harsh; one trader at small sizes; today's core pool and loot-filter card list (a small head start); five leagues, the first ones with few earlier leagues to rank picks from.
 
+- **Whole-number orders (2026-10-23).** Exchange orders are whole numbers on both sides and fill in whole lots (`missed.whole`: the smallest lot within 1% of the target, up to 20 items for an item worth a currency unit or more, up to 50 units for one worth less: 21c for 2, 5c for 64 Orbs of Alteration, 1 Divine for 1,926). With the loop and card limit orders placed that way and filled lot by lot, the results above shrink, the loops most: selling a cheap item for Divines takes a lot of hundreds or thousands of items, more than one hour's share often covers.
+
+  | Div/h, first 14 days, touch / strict fill | Fractional orders | Whole lots (on the page now) |
+  |---|---|---|
+  | Cards, limit orders | +0.51 to +0.97 / −0.02 to +0.01 | +0.37 to +0.68 / −0.02 to +0.01 |
+  | Loops, limit orders at the low | +0.04 to +0.29 / −0.01 to +0.02 | +0.01 to +0.22 / −0.01 to +0.02 |
+  | Loops, mid-range orders | +0.20 to +0.78 / +0.01 to +0.32 | +0.03 to +0.47 / 0.00 to +0.25 (fills halve) |
+
+  Allflame's latest 14 days, mid-range loops: +0.37 / +0.07. The mid-range levels were tuned before whole lots; a re-tune might find better ones.
+
 ## 5. Patient flips on volatile items: real only if GGG's hourly lows and highs are real trades
 
 *`analysis/flips.py` (`python -m exiledbroker.analysis.flips`; on the Backtest page via `backtest.flip_results`: Chaos market, whole-Chaos lots, bid 10%, ask 75%, cut 1% an hour). Settlers, Mercenaries, Keepers, Mirage and Allflame, first 14 days each, built 2026-10-23.*

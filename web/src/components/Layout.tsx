@@ -1,7 +1,8 @@
-import { BookOpen, CandlestickChart, FlaskConical, Hourglass, Network } from 'lucide-react'
+import { BookOpen, CandlestickChart, FlaskConical, Hourglass, Moon, Network, Sun } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { NavLink } from 'react-router'
 import { useRememberedSettings } from '../lib/rememberSettings'
+import { useTheme } from '../lib/theme'
 import { FreshnessBadge } from './Freshness'
 
 // `featured`: the two pages to start from, lit up in the bar.
@@ -15,6 +16,7 @@ const NAV = [
 
 export function Layout({ children }: { children: ReactNode }) {
   const linkTo = useRememberedSettings()
+  const [theme, toggleTheme] = useTheme()
   return (
     <div className="min-h-dvh">
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:rounded focus:bg-surface focus:px-3 focus:py-2">
@@ -48,8 +50,17 @@ export function Layout({ children }: { children: ReactNode }) {
               </NavLink>
             ))}
           </nav>
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-3">
             <FreshnessBadge />
+            <button
+              type="button"
+              onClick={toggleTheme}
+              aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+              title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+              className="grid size-8 cursor-pointer place-items-center rounded-full border border-border text-muted transition-colors hover:border-accent/50 hover:text-accent"
+            >
+              {theme === 'dark' ? <Sun aria-hidden className="size-4" /> : <Moon aria-hidden className="size-4" />}
+            </button>
           </div>
         </div>
       </header>

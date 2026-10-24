@@ -48,3 +48,15 @@ describe('remembered settings', () => {
     expect(screen.getByTestId('where').textContent).toBe('/launch?window=days5_10')
   })
 })
+
+describe('theme', () => {
+  it('opens dark, switches to light and remembers it', () => {
+    renderAt('/')
+    expect(document.documentElement.dataset.theme).toBe('dark')
+    fireEvent.click(screen.getByRole('button', { name: 'Switch to light mode' }))
+    expect(document.documentElement.dataset.theme).toBe('light')
+    expect(localStorage.getItem('eb-theme')).toBe('light')
+    fireEvent.click(screen.getByRole('button', { name: 'Switch to dark mode' }))
+    expect(document.documentElement.dataset.theme).toBe('dark')
+  })
+})

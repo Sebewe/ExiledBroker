@@ -1,28 +1,58 @@
 @import 'tailwindcss';
-@import '@fontsource/fira-sans/400.css';
-@import '@fontsource/fira-sans/500.css';
-@import '@fontsource/fira-sans/600.css';
-@import '@fontsource/fira-code/500.css';
+@import '@fontsource/fraunces/500.css';
+@import '@fontsource/fraunces/600.css';
+@import '@fontsource/nunito-sans/400.css';
+@import '@fontsource/nunito-sans/500.css';
+@import '@fontsource/nunito-sans/600.css';
+@import '@fontsource/nunito-sans/700.css';
 
-/* Design tokens. Dark only: traders keep this open next to the game. Green and red mean
-   profit and loss and nothing else; gold is the brand accent (links, focus, selection). */
+/* Design tokens. Two themes: Dusk (dark, the default: traders keep this open next to the
+   game) and Parchment (light), chosen in the header and remembered per browser
+   (lib/theme.ts; index.html applies it before the first paint). Green and red mean profit
+   and loss and nothing else; the accent (apricot / copper) is the brand: links, focus,
+   selection. Fraunces for page and section titles, Nunito Sans for everything else. */
 @theme {
-  --font-sans: 'Fira Sans', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'Fira Code', ui-monospace, monospace;
+  --font-sans: 'Nunito Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Fraunces', ui-serif, Georgia, serif;
+  --font-mono: ui-monospace, monospace;
 
-  --color-bg: #0b1120;
-  --color-surface: #111a2e;
-  --color-surface-2: #17223a;
-  --color-border: #24314d;
-  --color-text: #e6ebf4;
-  --color-muted: #94a3b8;
-  --color-faint: #64748b;
-  --color-accent: #d4a657;
-  --color-accent-strong: #e8bd6c;
-  --color-positive: #34d399;
-  --color-negative: #f87171;
-  --color-warning: #fbbf24;
-  --color-info: #60a5fa;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+
+  /* Dusk */
+  --color-bg: #1d2028;
+  --color-surface: #252933;
+  --color-surface-2: #2d323e;
+  --color-border: #3a404e;
+  --color-text: #e8eaf0;
+  --color-muted: #a9afbd;
+  --color-faint: #7c8293;
+  --color-accent: #e3ac72;
+  --color-accent-strong: #f0c393;
+  --color-positive: #82d8ad;
+  --color-negative: #f2a0a0;
+  --color-warning: #f0c674;
+  --color-info: #93b8f5;
+  --color-shadow: #000000;
+}
+
+/* Parchment */
+:root[data-theme='light'] {
+  --color-bg: #f6f2ea;
+  --color-surface: #fffdf8;
+  --color-surface-2: #f1ebdf;
+  --color-border: #e3d9c6;
+  --color-text: #2b2620;
+  --color-muted: #6f6556;
+  --color-faint: #9a8f7e;
+  --color-accent: #b4651f;
+  --color-accent-strong: #8f4c12;
+  --color-positive: #2f855a;
+  --color-negative: #c0392b;
+  --color-warning: #a8661a;
+  --color-info: #2b6cb0;
+  --color-shadow: #5a4630;
+  color-scheme: light;
 }
 
 @layer base {
@@ -30,8 +60,15 @@
     background: var(--color-bg);
     color: var(--color-text);
     font-family: var(--font-sans);
+    color-scheme: dark;
     font-size: 15px;
     -webkit-font-smoothing: antialiased;
+  }
+  h1,
+  h2 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: -0.01em;
   }
   /* Numbers line up in columns. */
   table,
@@ -80,4 +117,10 @@
   .ticker-track {
     animation: none;
   }
+}
+
+/* The Market recap's look-back is pinned to the bottom of the screen: leave room for it
+   below the footer, so scrolling to the end never leaves the disclaimer under it. */
+body:has([data-look-back]) footer {
+  padding-bottom: 5.5rem;
 }

@@ -282,6 +282,15 @@ def _level(lo: str, hi: str, at: float) -> pl.Expr:
     return pl.col(lo) + at * (pl.col(hi) - pl.col(lo))
 
 
+def _whole_orders(sig: pl.DataFrame) -> pl.DataFrame:
+    """The bid and ask as the exchange takes them (`missed.whole`): whole currency units
+    for whole numbers of items, the bid rounded down and the ask up. `sell_lot`: the
+    items each sale needs."""
+    buy_lot, buy_total = missed.whole(pl.col("bid"), "buy")
+    sell_lot, sell_total = missed.whole(pl.col("ask"), "sell")
+    return sig.with_columns(bid=buy_total / buy_lot, ask=sell_total / sell_lot, sell_lot=sell_lot)
+
+
 def card_limit_trades(
     con,
     prices: pl.DataFrame,
@@ -290,6 +299,7 @@ def card_limit_trades(
     fill: str,
     bid_at: float = 0.0,
     ask_at: float | None = None,
+    whole_lots: bool = False,
 ) -> pl.DataFrame:
     """The recap's top card turn-ins, bought and sold with prices set from its hour:
     - market: buy at the next hour's highest card price, sell at the worst (harsh);
@@ -333,6 +343,7 @@ def card_limit_trades(
             ask=pl.col("rp") if ask_at is None else _level("reward_lo", "rhi", ask_at),
         )
     )
+    sig = _whole_orders(sig) if whole_lots else sig.with_columns(sell_lot=pl.lit(1))
     nxt = c.select(
         "item_id",
         observed_at=pl.col("observed_at") - H,
@@ -389,6 +400,10 @@ def card_limit_trades(
         .otherwise(0)
         .fill_null(0),
     )
+    # The rewards sell in whole lots: fewer sets than make one lot can't be sold.
+    t = t.with_columns(
+        k=pl.when(pl.col("k") * pl.col("q") >= pl.col("sell_lot")).then("k").otherwise(0)
+    )
     cost = pl.col("k") * pl.col("n") * pl.col("buy")
     value = (pl.col("k") * pl.col("q") * pl.col("sell")).fill_null(0)  # never sold: lost
     return t.with_columns(
@@ -424,6 +439,7 @@ def loop_limit_trades(
     fill: str,
     bid_at: float = 0.0,
     ask_at: float | None = None,
+    whole_lots: bool = False,
 ) -> pl.DataFrame:
     """The recap's top loops, the item bought in the next hour and sold the hour after
     (the first hour within SELL_WITHIN it traded in both markets), Divines converted at
@@ -455,13 +471,14 @@ def loop_limit_trades(
         bid=pick["lo"] + bid_at * (pick["hi"] - pick["lo"]),
         ask=other["p"] if ask_at is None else other["lo"] + ask_at * (other["hi"] - other["lo"]),
     )
+    sig = _whole_orders(sig) if whole_lots else sig.with_columns(sell_lot=pl.lit(1))
     sig = sig.with_columns(
         # The loop from the bid, at the recap hour's worst sale and conversion.
         guard_ret=pl.when(chaos_first)
         .then(pl.col("dlo") * pl.col("rlo") / pl.col("bid"))
         .otherwise(pl.col("clo") / (pl.col("bid") * pl.col("rhi")))
         - 1,
-    ).select("observed_at", "item_id", "direction", "bid", "ask", "guard_ret")
+    ).select("observed_at", "item_id", "direction", "bid", "ask", "sell_lot", "guard_ret")
     # The next hour's prices, renamed so the buy leg can be picked per direction.
     nxt = cross.select(
         "item_id",
@@ -534,6 +551,8 @@ def loop_limit_trades(
         .otherwise(0)
         .fill_null(0),
     )
+    # The item sells in whole lots (1 Divine for 1926 Orbs of Alteration): only whole lots.
+    t = t.with_columns(k=(pl.col("k") / pl.col("sell_lot")).floor() * pl.col("sell_lot"))
     return t.with_columns(
         pnl=pl.when(pl.col("k") >= 1)
         .then(pl.col("k") * (pl.col("value") - pl.col("cost").fill_null(0)) / pl.col("rate"))
@@ -658,11 +677,13 @@ def hourly_results(con, league: str) -> tuple[list[dict], list[dict], list[dict]
     limits = {}
     for strategy, orders in LIMIT_ORDERS.items():
         for name, (method, bid_at, ask_at) in orders.items():
+            # Limit orders as the exchange takes them: whole currency for whole lots.
+            whole = method != "market"
             for fill in FILLS if method != "market" else FILLS[:1]:
                 if strategy == "cards":
-                    t = card_limit_trades(con, prices, rate, method, fill, bid_at, ask_at)
+                    t = card_limit_trades(con, prices, rate, method, fill, bid_at, ask_at, whole)
                 else:
-                    t = loop_limit_trades(loops, cross, rate, method, fill, bid_at, ask_at)
+                    t = loop_limit_trades(loops, cross, rate, method, fill, bid_at, ask_at, whole)
                 limits[strategy, name, fill] = t
     for rule in RULES:
         for scenario in SCENARIOS:

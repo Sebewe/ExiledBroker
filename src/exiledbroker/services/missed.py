@@ -72,20 +72,35 @@ FLIP_SELL_HOURS = 6  # the estimate's window to sell in (at the first, uncut ask
 # both sides (so many Chaos for so many items) and fill in whole lots, so a price is
 # reached with the smallest lot of up to LOT_MAX items whose whole-Chaos total is within
 # LOT_TOLERANCE of it (`whole`).
-LOT_MAX = 20
+LOT_MAX = 20  # items in a lot, for an item worth a currency unit or more
+UNITS_MAX = 50  # currency units in a lot, for an item worth less than one
 LOT_TOLERANCE = 0.01
 
 
 def whole(target: pl.Expr, side: str) -> tuple[pl.Expr, pl.Expr]:
-    """(lot, whole-Chaos total) for an order at `target` Chaos an item: the smallest lot
-    whose total is within LOT_TOLERANCE, rounded down for a bid and up for an ask, so the
-    order never pays more or asks less than the target."""
-    rnd = (lambda x: x.floor()) if side == "buy" else (lambda x: x.ceil())
+    """(items, currency units) for an order at `target` units an item, in whole numbers
+    on both sides as the exchange takes them, the smallest lot within LOT_TOLERANCE of the
+    target: rounded down for a bid and up for an ask, so the order never pays more or
+    asks less. An item worth a unit or more goes in lots of up to LOT_MAX items (50c for
+    3); one worth less, in lots of up to UNITS_MAX units (5c for 64 Orbs of Alteration,
+    1 Divine for 1926)."""
+    buy = side == "buy"
+    rnd = (lambda x: x.floor()) if buy else (lambda x: x.ceil())
     lot = pl.lit(LOT_MAX)
     for n in range(LOT_MAX - 1, 0, -1):
         close = (rnd(target * n) / n - target).abs() <= LOT_TOLERANCE * target
         lot = pl.when(close).then(n).otherwise(lot)
-    return lot, rnd(target * lot)
+    # Under a unit an item: so many items for each whole number of units.
+    items = (lambda m: (m / target).ceil()) if buy else (lambda m: (m / target).floor())
+    units = pl.lit(UNITS_MAX)
+    for m in range(UNITS_MAX - 1, 0, -1):
+        close = (m / items(m) - target).abs() <= LOT_TOLERANCE * target
+        units = pl.when(close).then(m).otherwise(units)
+    cheap = target < 1
+    return (
+        pl.when(cheap).then(items(units)).otherwise(lot).cast(pl.Int64),
+        pl.when(cheap).then(units.cast(pl.Float64)).otherwise(rnd(target * lot)),
+    )
 
 
 def paying_loops(loops: pl.DataFrame) -> pl.DataFrame:
