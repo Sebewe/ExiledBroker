@@ -73,7 +73,7 @@ def baskets(con, path: Path | None = None, legacy: bool = True) -> Baskets:
     """Workstream A's baskets as item ids (outputs and groups, plus legacy outputs)."""
     from exiledbroker.normalize import mechanics as mx
 
-    ms = mx.load(path or getattr(get_settings(), "mechanics_file", Path("config/mechanics.toml")))
+    ms = mx.load(path or get_settings().mechanics_file)
     return {m.id: (m.name, mx.output_ids(con, m, legacy=legacy)) for m in ms}
 
 
