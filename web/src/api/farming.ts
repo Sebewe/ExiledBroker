@@ -28,7 +28,10 @@ export type FarmingMechanic = {
   score: number | null
 }
 
-export type OutlookWindow = { growth: number | null; worst: number | null }
+/** A mechanic's launch premium in a window (finding 8): its drops' median Divine price then
+ *  over their price once the market settled (days 12–14), typical across past leagues
+ *  (`premium`) and the lowest league's (`worst`). Above 1: worth more then than later. */
+export type OutlookWindow = { premium: number | null; worst: number | null }
 
 export type FarmingOutlook = {
   id: string
