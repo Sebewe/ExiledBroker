@@ -178,8 +178,9 @@ describe('Farming', () => {
     expect(names()).toEqual(['Essence', 'Breach', 'Delirium'])
     fireEvent.click(screen.getByRole('radio', { name: 'Above usual' }))
     expect(names()).toEqual(['Breach', 'Essence', 'Delirium'])
-    expect(screen.getAllByText('+20%')[0]).toBeInTheDocument() // 1.32 against a usual 1.1
-    expect(screen.getByText('−25%')).toBeInTheDocument() // Delirium: 0.9 against 1.2
+    // Unsigned, since the word says which way: not "−25% below".
+    expect(screen.getAllByText('20%')[0]!.parentElement).toHaveTextContent('20% above where it usually is by now') // 1.32 against a usual 1.1
+    expect(screen.getByText('25%').parentElement).toHaveTextContent('25% below where it usually is by now') // Delirium: 0.9 against 1.2
   })
 
   it('shows the top six mechanics until asked for all', async () => {
@@ -214,7 +215,7 @@ describe('Farming', () => {
     // 5000: more than either market trades in an hour.
     fireEvent.change(screen.getByLabelText('How many'), { target: { value: '5000' } })
     expect(screen.getByText(/of the Chaos market's trading/)).toHaveTextContent(
-      "5,000 Splinter of Xoph is 1.6 hours of the Chaos market's trading: an hour's trading or more, so split it and list it over several hours.",
+      "5,000 Splinter of Xoph is 1.6 hours of the Chaos market's trading: an hour's trading or more, so split it and list it over at least 2 hours.",
     )
     expect(chaos.getByText(/split it, and list it over at least 2 hours/)).toBeInTheDocument()
     expect(chaos.getByText('35.0div')).toBeInTheDocument() // 7,000c at 200c a Divine
@@ -222,12 +223,49 @@ describe('Farming', () => {
     expect(divine.getByText(/list it over several days\. It trades in only 21% of hours/)).toBeInTheDocument()
   })
 
+  it('opens on the most traded item, listed by mechanic', async () => {
+    serve({ '/api/status': status([league(iso(-80 * MIN))]), '/api/farming/Allflame': { body: FARMING } })
+    renderFarming()
+    // Splinters: 1.4c × 3,200 an hour, against essences' 3c × 50.
+    expect(await screen.findByText(/of the Chaos market's trading/)).toHaveTextContent(/^100 Splinter of Xoph is/)
+    const select = screen.getByLabelText('Item')
+    expect(within(select).getByRole('group', { name: 'Breach' })).toHaveTextContent('Splinter of Xoph')
+    expect(within(select).getByRole('group', { name: 'Essence' })).toHaveTextContent('Deafening Essence of Greed')
+  })
+
+  it('says when the Divine market takes a stack faster, and spreads a very long one over days', async () => {
+    const deck = {
+      item_id: 'currency:stacked-deck',
+      name: 'Stacked Deck',
+      mechanics: ['divination'],
+      chaos: { price: 5.75, volume_h: 4600, sigma_h: 0.8, hours_traded: 1 },
+      divine: { price: 0.017, volume_h: 46000, sigma_h: 0.029, hours_traded: 1 },
+    }
+    const card = {
+      ...deck,
+      item_id: 'currency:a-chilling-wind',
+      name: 'A Chilling Wind',
+      chaos: { price: 57, volume_h: 0.01, sigma_h: null, hours_traded: 0.03 },
+      divine: null,
+    }
+    serve({ '/api/status': status([league(iso(-80 * MIN))]), '/api/farming/Allflame': { body: { ...FARMING, items: [deck, card] } } })
+    renderFarming('/farming?item=currency:stacked-deck&qty=1000')
+    expect(await screen.findByText(/of the Chaos market's trading/)).toHaveTextContent(
+      "1,000 Stacked Deck is about 13 minutes of the Chaos market's trading: it sells into the market as it is. The Divine market trades 10 times as much of it, so it sells faster there.",
+    )
+    // A log swing of 0.8 is ×2.2 or ÷2.2, not ±80%.
+    expect(within(screen.getByRole('region', { name: 'Chaos market' })).getByText('×2.2 either way')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Item'), { target: { value: 'currency:a-chilling-wind' } })
+    expect(screen.getByText(/of the Chaos market's trading/)).toHaveTextContent('so split it and list it over several days.')
+    expect(within(screen.getByRole('region', { name: 'Chaos market' })).getByText('under 0.1')).toBeInTheDocument()
+  })
+
   it('puts a stack of exactly an hour in the top band, and one just under it in minutes', async () => {
     serve({ '/api/status': status([league(iso(-80 * MIN))]), '/api/farming/Allflame': { body: FARMING } })
     renderFarming('/farming?item=currency:deafening-essence-of-greed&qty=50')
     // 50 essences against 50 an hour.
     expect(await screen.findByText(/of the Chaos market's trading/)).toHaveTextContent(
-      "50 Deafening Essence of Greed is an hour of the Chaos market's trading: an hour's trading or more, so split it and list it over several hours.",
+      "50 Deafening Essence of Greed is an hour of the Chaos market's trading: an hour's trading or more, so split it and list it over at least 2 hours.",
     )
     const chaos = within(screen.getByRole('region', { name: 'Chaos market' }))
     expect(chaos.getByText(/split it, and list it over at least 2 hours\./)).toBeInTheDocument()
@@ -320,7 +358,7 @@ describe('Farming', () => {
       day_offset: 40,
       phase: 'later',
       mechanics: FARMING.mechanics.map((m) => ({ ...m, usual: null, usual_low: null, usual_high: null })),
-      hours: { ...HOURS, price: Array(24).fill(null), divine_effect: effect(0.004, 23, 12, 'small'), mechanics: {} },
+      hours: { ...HOURS, phase: 'later', leagues: 1, price: Array(24).fill(null), divine_effect: effect(0.004, 23, 12, 'small'), mechanics: {} },
     }
     serve({ '/api/status': status([league(iso(-80 * MIN))]), '/api/farming/Allflame': { body: later } })
     renderFarming()
@@ -329,6 +367,7 @@ describe('Farming', () => {
     expect(headings).toEqual(['What to farm', 'Selling a stack', "Next league's launch"])
     expect(screen.getByRole('radio', { name: 'Day 1' })).toHaveAttribute('aria-checked', 'true')
     expect(screen.getByText(/Not enough days of trades yet/)).toBeInTheDocument()
+    expect(screen.getByText(/From 1 past league's later days \(30 league-days\)/)).toBeInTheDocument()
     expect(screen.getByText(/^Trading is busiest/)).toBeInTheDocument()
     expect(screen.queryByText(/Converting to Divines/)).not.toBeInTheDocument()
   })

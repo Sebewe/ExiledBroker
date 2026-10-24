@@ -134,3 +134,32 @@ export function busiestHours(volume: HourProfile | null | undefined, span = 4) {
   const ratio = sums[quietest]! > 0 ? share / sums[quietest]! : Infinity
   return { start: busiest, end: (busiest + span) % 24, share, quietStart: quietest, quietEnd: (quietest + span) % 24, ratio }
 }
+
+/** The sell helper's first item: the one with the most Chaos traded an hour (what a farmer
+ *  most likely holds a stack of), else the first. */
+export function defaultItem<T extends FarmingItem>(items: T[]): T | undefined {
+  const traded = (x: FarmingItem) => (x.chaos?.price ?? 0) * (x.chaos?.volume_h ?? 0)
+  return items.reduce<T | undefined>((best, x) => (best === undefined || traded(x) > traded(best) ? x : best), undefined)
+}
+
+/** How long to spread a stack in the top band over: its hours of trading rounded up, at
+ *  least two (a stack of exactly an hour's trading is the top band), days past two days. */
+export function spreadOver(hours: number): string {
+  return hours > 48 ? 'several days' : `at least ${Math.max(2, Math.ceil(hours))} hours`
+}
+
+/** A typical hourly swing, the standard deviation of hourly log changes, in words: "±12%"
+ *  while that reads right; from 0.3 on as a factor either way, since a log change of 0.8 is
+ *  ×2.2 or ÷2.2 (+120% or −55%), not ±80%. */
+export function swing(sigma: number | null | undefined): string {
+  if (sigma == null) return '–'
+  if (sigma < 0.3) return `±${Math.round(sigma * 100)}%`
+  const f = Math.exp(sigma)
+  return `×${f < 9.95 ? f.toFixed(1) : f.toFixed(0)} either way`
+}
+
+/** Units traded an hour: one decimal under 10, and "under 0.1" rather than "0". */
+export function perHour(volume: number): string {
+  if (volume < 0.05) return 'under 0.1'
+  return volume.toLocaleString('en-US', { maximumFractionDigits: volume < 10 ? 1 : 0 })
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { FarmingItem } from '../api/client'
-import { bandsOf, busiestHours, hoursOfTrading, impactBand, localHour, profileFor, stackInMarkets, tradingTime } from './impact'
+import { bandsOf, busiestHours, defaultItem, hoursOfTrading, impactBand, localHour, perHour, profileFor, spreadOver, stackInMarkets, swing, tradingTime } from './impact'
 
 const item = (divine: FarmingItem['divine']): FarmingItem => ({
   item_id: 'currency:splinter-of-xoph',
@@ -84,6 +84,29 @@ describe('tradingTime', () => {
       '12 hours',
       '5 days',
     ])
+  })
+})
+
+describe('the sell helper in words', () => {
+  it('gives a small swing in percent and a large one as a factor', () => {
+    expect([null, 0.031, 0.29, 0.3, 0.8, 2.3].map(swing)).toEqual(['–', '±3%', '±29%', '×1.3 either way', '×2.2 either way', '×10 either way'])
+  })
+
+  it('never reads a trickle as no trades', () => {
+    expect([0.01, 0.07, 3.25, 46000].map(perHour)).toEqual(['under 0.1', '0.1', '3.3', '46,000'])
+  })
+
+  it('spreads a top-band stack over at least two hours, days past two days', () => {
+    expect([1, 1.6, 7.2, 48, 49].map(spreadOver)).toEqual(['at least 2 hours', 'at least 2 hours', 'at least 8 hours', 'at least 48 hours', 'several days'])
+  })
+
+  it('opens on the item with the most Chaos traded an hour', () => {
+    const cheap = { ...item(null), item_id: 'a', chaos: { price: 0.1, volume_h: 1000, sigma_h: null, hours_traded: 1 } }
+    const dear = { ...item(null), item_id: 'b', chaos: { price: 50, volume_h: 10, sigma_h: null, hours_traded: 1 } }
+    const unpriced = { ...item(null), item_id: 'c', chaos: null }
+    expect(defaultItem([unpriced, cheap, dear])?.item_id).toBe('b')
+    expect(defaultItem([unpriced])?.item_id).toBe('c')
+    expect(defaultItem([])).toBeUndefined()
   })
 })
 
