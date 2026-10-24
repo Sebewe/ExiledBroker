@@ -135,17 +135,19 @@ def records(df: pl.DataFrame) -> list[dict]:
 class View:
     name: str
     args: tuple
-    compute: Callable[[Any], pl.DataFrame | list[dict]]  # given a connection
-    model: Any  # the response model of one row
+    compute: Callable[[Any], pl.DataFrame | list[dict] | dict]  # given a connection
+    model: Any  # the response model of one row (of the whole response when `one`)
     # For a view that changes less often than the data (e.g. a report rebuilt locally):
     # a cheap query of what it depends on. While the stamp is unchanged, a new data
     # version reuses the cached response (and its ETag) instead of reading it again.
     stamp: Callable[[Any], Any] | None = None
+    # A response that is one document (compute returns a dict), not a list of rows.
+    one: bool = False
 
 
 @dataclass(frozen=True)
 class Payload:
-    rows: list  # the validated rows, for code that needs the data itself
+    rows: list  # the validated rows (one item for a one-document view), for code that needs them
     body: bytes
     gzipped: bytes
     etag: str
@@ -154,10 +156,10 @@ class Payload:
 _adapters: dict[Any, TypeAdapter] = {}
 
 
-def _adapter(model) -> TypeAdapter:
-    if model not in _adapters:
-        _adapters[model] = TypeAdapter(list[model])
-    return _adapters[model]
+def _adapter(model, one: bool = False) -> TypeAdapter:
+    if (model, one) not in _adapters:
+        _adapters[(model, one)] = TypeAdapter(model if one else list[model])
+    return _adapters[(model, one)]
 
 
 def payload(view: View) -> Payload:
@@ -172,9 +174,11 @@ def payload(view: View) -> Payload:
                 return kept[1]
             out = view.compute(con)
         rows = records(out) if isinstance(out, pl.DataFrame) else out
-        adapter = _adapter(view.model)
+        adapter = _adapter(view.model, view.one)
         checked = adapter.validate_python(rows)
         body = adapter.dump_json(checked)
+        if view.one:
+            checked = [checked]
         tagged = ("stamp", stamp) if view.stamp else version
         tag = hashlib.sha1(repr((CODE_VERSION, view.name, view.args, tagged)).encode()).hexdigest()[
             :20

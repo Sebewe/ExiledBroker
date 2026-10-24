@@ -46,12 +46,19 @@ def basket_items(con, settings: Settings) -> list[str]:
     return sorted(ids)
 
 
-def league_days(con, league: str, item_ids: list[str]) -> pl.DataFrame:
+def league_days(con, league: str, item_ids: list[str], *, hours=None) -> pl.DataFrame:
     """One row per item and day of the launch fortnight (0 = the first 24 hours), from
-    the league's hours in `cross_market_hour`. Plain SQL, so it runs on Postgres too."""
+    the league's hours in `cross_market_hour`. Plain SQL, so it runs on Postgres too.
+    The Farming page reads the live league the same way over other `hours`, a
+    [first, end) pair of times (its day 0, its latest hours): the rows are then that
+    span's days of the league. A time span seeks the (league, time) index."""
     if not item_ids:
         return pl.DataFrame()
     marks = ", ".join("?" for _ in item_ids)
+    if hours is None:
+        window, args = "day_offset >= 0 AND day_offset < ?", [LAUNCH_DAYS]
+    else:
+        window, args = "observed_at >= ? AND observed_at < ?", list(hours)
     return db.frame(
         con,
         f"""
@@ -61,7 +68,7 @@ def league_days(con, league: str, item_ids: list[str]) -> pl.DataFrame:
                    chaos_price / nullif(divine_rate, 0) AS pd
             FROM cross_market_hour
             WHERE league_id = (SELECT id FROM league WHERE name = ?)
-              AND day_offset >= 0 AND day_offset < ?
+              AND {window}
               AND chaos_price > 0 AND chaos_volume > 0 AND item_id IN ({marks})
         ),
         r AS (
@@ -75,7 +82,7 @@ def league_days(con, league: str, item_ids: list[str]) -> pl.DataFrame:
                    count(DISTINCT observed_at) AS day_hours
             FROM cross_market_hour
             WHERE league_id = (SELECT id FROM league WHERE name = ?)
-              AND day_offset >= 0 AND day_offset < ?
+              AND {window}
             GROUP BY 1
         )
         SELECT r.item_id, r.day,
@@ -87,7 +94,7 @@ def league_days(con, league: str, item_ids: list[str]) -> pl.DataFrame:
         FROM r JOIN dh ON dh.day = r.day
         GROUP BY r.item_id, r.day
         """,
-        [league, LAUNCH_DAYS, *item_ids, league, LAUNCH_DAYS],
+        [league, *args, *item_ids, league, *args],
     )
 
 

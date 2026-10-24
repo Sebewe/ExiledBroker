@@ -4,6 +4,7 @@ browser. Prices are chaos unless the endpoint takes a `unit`. Nulls are real: at
 league's launch most values are missing for a while."""
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -316,3 +317,124 @@ class BacktestFlip(BaseModel):
 
 
 BacktestReport.model_rebuild()
+
+
+# --- The Farming page (docs/farming.md, the response contract) ---------------------
+
+
+class FarmingMechanic(BaseModel):
+    """A mechanic's basket now (finding 8). The index is in Divines, over the basket's
+    day-0 prices; `usual` and its range are past leagues' at the same day of the league
+    (null after day 13 or with fewer than 2 past leagues)."""
+
+    id: str
+    name: str
+    items: int  # basket outputs the page shows (core drop pool)
+    priced_items: int  # of those, the ones with a price in the latest 24 hours
+    index: float | None
+    usual: float | None
+    usual_low: float | None
+    usual_high: float | None
+    change_24h: float | None  # fractional: 0.04 = +4%
+    change_7d: float | None
+    chaos_volume_h: float | None  # Chaos traded an hour across the basket, last 3 days
+    liquidity: float | None  # Easy to sell: percentile among mechanics, 0–1
+    score: float | None
+
+
+class OutlookWindow(BaseModel):
+    """The launch premium in a window: its median Divine price over days 12–14's,
+    recency-weighted over past leagues (`premium`), and the lowest league's (`worst`)."""
+
+    premium: float | None
+    worst: float | None
+
+
+class OutlookWindows(BaseModel):
+    day1: OutlookWindow | None = None
+    days2_4: OutlookWindow | None = None
+    days5_10: OutlookWindow | None = None
+
+
+class FarmingOutlook(BaseModel):
+    id: str
+    name: str
+    leagues: int
+    windows: OutlookWindows
+
+
+class FarmingMarket(BaseModel):
+    """One market's recent trading for an item: `price` in that market's currency
+    (Chaos, or Divines in the Divine market; median, latest 24 hours), units traded an
+    hour, the typical hourly swing (informative only) and the share of hours traded
+    (latest 3 days)."""
+
+    price: float | None
+    volume_h: float | None
+    sigma_h: float | None
+    hours_traded: float | None
+
+
+class FarmingItem(BaseModel):
+    item_id: str
+    name: str
+    mechanics: list[str]
+    chaos: FarmingMarket | None
+    divine: FarmingMarket | None  # null when it didn't trade against Divines
+
+
+class HourEffect(BaseModel):
+    """What timing is worth in a price profile (finding 6), as fractions of the price:
+    best hour over the 24-hour average (`gain`) and over the worst (`gap`), UTC hours,
+    the noise floor (`null95`); "small" means time of day barely matters."""
+
+    gain: float | None
+    gap: float | None
+    best: int | None
+    worst: int | None
+    null95: float | None
+    verdict: Literal["small", "worth_it"]
+
+
+class MechanicHours(HourEffect):
+    price: list[float | None]  # 24 values by UTC hour
+    items: int
+    stability: float | None
+
+
+class FarmingHours(BaseModel):
+    """Hour-of-day profiles from past leagues for the league's phase (a constant): 24
+    values each by UTC hour, a price's fraction over its centred 24-hour average."""
+
+    phase: Literal["d0_2", "d2_7", "d7_14", "later"]
+    leagues: int
+    days: int
+    price: list[float | None]  # the Chaos market
+    price_divine_market: list[float | None]
+    divine: list[float | None]  # the Divine's Chaos price: when to convert
+    volume: list[float | None] | None  # share of the day's Chaos traded; null on days 0–2
+    effect: HourEffect
+    effect_divine_market: HourEffect
+    divine_effect: HourEffect
+    mechanics: dict[str, MechanicHours]  # only baskets whose own profile holds
+
+
+class FarmingImpact(BaseModel):
+    """Finding 7: no calibrated price drop (`y` null); a stack is shown as hours of the
+    market's trading (Q / volume_h), banded at `bands`."""
+
+    y: float | None
+    bands: list[float]
+    note: str | None
+
+
+class Farming(BaseModel):
+    league: str
+    latest_hour: datetime | None  # null before the first trades
+    day_offset: float | None
+    phase: Literal["pre_launch", "launch", "later"]
+    mechanics: list[FarmingMechanic]  # best first; empty before the first trades
+    outlook: list[FarmingOutlook]
+    items: list[FarmingItem]
+    hours: FarmingHours | None  # null until `eb farming build` has been run and seeded
+    impact: FarmingImpact | None
