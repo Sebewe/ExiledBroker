@@ -200,6 +200,36 @@ The tables below are from the first version. The Market recap lists the latest h
 - **From past leagues, per phase, shipped as a constant** (built locally like the backtest report), not from the live league's recent days. Forecasting days 7–14 from the league's own days 4–7 (`hours.recent_vs_past`) does worse than predicting nothing in 3 of 4 leagues (Keepers 1.12 vs 0.24, Allflame 0.99 vs 0.22 ×10⁻⁴), because the effect shrinks after the first week; earlier leagues' days 7–14 are about as good as nothing, which is the right size. The page picks the phase from the live league's `day_offset`; before launch it shows days 0–2. The later phase rests on one league and stays "small" until a second league has later days.
 - **The contract's `hours` grew** (in [farming.md](farming.md#the-response-contract-fixed-first-so-f-g-and-h-work-in-parallel)): the phase, the Divine market's profile, the Divine's own cycle (when to convert), and the stable baskets' profiles. Fractions, not log points.
 
+## 7. Stack impact can't be measured from hourly data; show a stack as hours of the market's trading, and don't load the stock fields
+
+*`analysis/impact.py` (`python -m exiledbroker.analysis.impact`), from the pages already on disk (no requests). Settlers, Mercenaries, Keepers, Mirage and Allflame: every loaded hour's Chaos and Divine markets, traded or not (2.0 million market-hours; items priced at least 1c), 1.37 million hour-to-hour moves. Built 2026-10-24. Workstream C.*
+
+**What the page wanted.** The square-root law, impact ≈ y · σ_h · √(Q / V): dumping Q units into a market that trades V an hour moves the price by a multiple of its hourly volatility. The plan was to calibrate y from how much further prices move in busier hours.
+
+**Busier hours move less, not more.** Mean |hourly move| in units of the item's σ, by units traded over its typical (median) hour:
+
+| Volume / typical hour | < 0.25 | 0.25–0.5 | 0.5–1 | 1–2 | 2–4 | 4–8 | ≥ 8 |
+|---|---|---|---|---|---|---|---|
+| Chaos market, all items | 1.04 | 0.77 | 0.65 | 0.55 | 0.50 | 0.45 | 0.35 |
+| Liquid items only (460) | 1.15 | 0.80 | 0.63 | 0.52 | 0.41 | 0.39 | 0.35 |
+| Liquid, over two hours (raw \|Δ\|) | 22% | 13% | 9.3% | 7.9% | 9.0% | 9.8% | 7.6% |
+
+The fitted y is negative in every league (−0.15 to −0.39) and every phase, in both markets. The reason is the data, not the market: an hour's price is the average of whatever traded, so a quiet hour's price rests on one or two trades and lands anywhere, and the next hour undoes it (**consecutive moves correlate −0.36 to −0.39 in every league**). That noise is several times any impact a stack makes, and GGG's volumes are unsigned (no buyer or seller side), so a busy hour of selling can't be told from a busy hour of buying. Over two hours, which lets the bounce cancel, the move stops shrinking at about the typical volume but never grows with it. No trade-level data, no y.
+
+**σ_h is noisy too.** Close-to-close (std of hourly log changes) has a median of 21% an hour in the Chaos market (27% for 1–10c items, 11% above 100c), inflated by that bounce. Parkinson (from each hour's lowest and highest trade) is twice that (47%), inflated by whole-number ratios and single odd trades, and the two rank items differently (rank correlation 0.23 in the Chaos market, 0.09 in the Divine). Neither is a volatility a trader would recognise.
+
+**Stock fields: don't load them.** `lowest_stock` / `highest_stock` are each side's units on offer in the market at its thinnest and fullest moment of the hour: never decreasing from lowest to highest, very persistent (hour-to-hour correlation 0.99, typical change 10%), and about one hour's trading deep (the median hour trades 0.95 of the highest stock; 48% of hours trade more than it, so the book refills within the hour). The two sides hold similar value (median about 1.2–1.3k Chaos each). But they add nothing here:
+- Volume over stock explains moves no better than volume alone (flat 0.75 → 0.61 σ; correlation −0.06).
+- The bid/offer imbalance doesn't predict the next hour. At the previous hour's price it seemed to (quintiles −2.2% to +2.6%), but that was the bounce: a high last price reads as a weak bid. Valued at the item's median price and with the last move held fixed, its correlation with the next move is −0.02 to −0.06 in every league, the wrong way round, against −0.38 for the reversal alone.
+- Cost: 4 integers a leg, two legs a row, 64 bytes per `cross_market_hour` row: 28 MB for Allflame's window (439k rows), about a tenth of the hosted window, for no use the page has.
+
+**Chaos against Divine market.** For the 3,349 item-leagues with both markets, the Divine market carries a median 12% of an item's value traded and trades in 38% as many hours, its hourly price is 1.18× as jumpy as the same item's in Chaos, and it has 1.6× as much of the item on offer: listings that sit. The Chaos market takes a stack better for nearly every item.
+
+**Decided (for the Farming page):**
+- **No "about −7%".** The sell helper shows the stack as **hours of the market's typical trading**, Q / volume_h, per market, in bands: under a quarter of an hour sells into the market as it is; a quarter to one hour is a large part of the hour's trading; over an hour is more than the market trades in an hour, so split it and list over several hours. The copy says why: hourly prices swing more than a stack moves them, so a percentage would be invented.
+- **Chaos market by default**; the Divine market is shown only as its own hours of trading, which are usually several times more.
+- **E doesn't load the stock fields.** `items[].sigma_h` stays only as an informative "typical hourly swing" (close-to-close, Chaos market, last 3 days), not an input to impact. The contract's `impact` changes accordingly ([farming.md](farming.md#the-response-contract-fixed-first-so-f-g-and-h-work-in-parallel)).
+
 ## Still to do
 
 Run the tools across all four exchange-era leagues and write up the patterns that repeat.
