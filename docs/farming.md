@@ -16,7 +16,7 @@ Deadline: the next league launches in about a month, in parallel with [go-live](
   - Being above usual lasts (0.9 three days on) without predicting the next move: it means farm it now, not hold.
   - The launch premium carries over: ranking correlation 0.80 / 0.72 / 0.58 for day 1 / days 2–4 / days 5–10. Expedition, Essence, Beyond and Legion drops are worth 2–5× their settled price on day 1; Delirium, Heist and Betrayal drops are cheapest at launch.
   - Easy to sell is stable from league to league (0.86).
-- **Data (E):** the page reads `cross_market_hour`, which holds every traded item, so the keep rule and loader don't change and no rebuild is needed. Past leagues come from `item_day_history`: 46,679 rows, about 10 MB on Postgres.
+- **Data (E):** the page reads `cross_market_hour`, which holds every traded item, so the keep rule and loader don't change and no rebuild is needed. Past leagues come from `item_day_history`: 46,679 rows, about 10 MB on Postgres. It was captured on the 23-mechanic baskets: the dropped mechanics' rows are never read, and `eb farming history` trims them.
 
 **What still needs doing, in order:**
 1. **F, services** (`services/farming.py`), the critical path. Build every contract field from the definitions already in code, not new ones:
@@ -37,14 +37,13 @@ Deadline: the next league launches in about a month, in parallel with [go-live](
 5. **J, docs:** README, decisions, data.md (`item_day_history`), hosting.md.
 
 **Open questions for the user:**
-- Sanctum (1 current output), Breach and Harbinger (2) are below the 3 items an index needs; 2 proved too noisy (finding 8). They're ranked only on the outlook and Easy to sell until their baskets grow. Is that acceptable, or should they get more outputs?
 - `main` is ahead of `origin/main`: push when ready.
 
 ## What we're building, and why
 
 The site so far serves traders. This page serves **farmers**, players who mostly play and want to turn their drops into currency well. It answers three questions:
 
-1. **What to farm.** About 15–20 mechanics (Breach, Delirium, Essence, Expedition…), each a curated basket of what it drops, ranked on three signals:
+1. **What to farm.** About 15–20 mechanics (Delirium, Essence, Expedition, Legion…), each a curated basket of what it drops, ranked on three signals:
    - **Trend vs usual path:** is the basket's price index above or below where that mechanic usually sits at this point in a league?
    - **Launch outlook** (pre-league and launch week): which mechanics' outputs paid most in week 1 of past leagues, and on which days (day 1, days 2–4, days 5–10, as the Launch picks).
    - **Easy to sell:** baskets whose outputs trade thinly are ranked down, since a farmer can't turn them into currency.
@@ -121,7 +120,7 @@ There's one new endpoint, **`GET /api/farming/{league}`**, precomputed each hour
     "windows": { "day1": {"premium": 3.41, "worst": 3.06}, "days2_4": {…}, "days5_10": {…} }
   }],
   "items": [{                      // basket items with a recent price; sell helper inputs
-    "item_id": "currency:splinter-of-xoph", "name": "Splinter of Xoph", "mechanics": ["breach"],
+    "item_id": "currency:screaming-essence-of-greed", "name": "Screaming Essence of Greed", "mechanics": ["essence"],
     "chaos": {"price": 1.4, "volume_h": 3200.0, "sigma_h": 0.031, "hours_traded": 0.92},
     "divine": {"price": 0.007, "volume_h": 40.0, "sigma_h": 0.05, "hours_traded": 0.21} // or null
   }],
@@ -175,13 +174,13 @@ D curves ──┘ (D can start on a provisional basket)
 - **Then:** a short list of open questions for the user ("is X Breach or Legion?"). **The user reviews the draft before E and F treat it as final.**
 - **Done when:** the TOML loads, every name resolves on the five exchange-era leagues and Allflame, and the user has signed off.
 
-**Done (2026-10-24, branch `farm-a`), reviewed by the user the same day.** `config/mechanics.toml` has 23 mechanics and 474 names, and all of them resolve. Every output is in the core pool. The loader is `normalize/mechanics.py`, with tests in `tests/test_mechanics.py`. `eb mechanics check` reads only the local database and prints, per mechanic, how many outputs traded in each league, plus anything the core pool doesn't show.
+**Done (2026-10-24, branch `farm-a`), reviewed by the user the same day.** `config/mechanics.toml` has 20 mechanics and 431 names, and all of them resolve (23 and 474 at review; three were dropped afterwards, see 10 below). Every output is in the core pool. The loader is `normalize/mechanics.py`, with tests in `tests/test_mechanics.py`. `eb mechanics check` reads only the local database and prints, per mechanic, how many outputs traded in each league, plus anything the core pool doesn't show.
 - **Each mechanic has four lists:**
   - `outputs`: the basket.
   - `groups`: whole price-mapping groups; the divination cards are one.
   - `legacy`: outputs that left the game. They're used only for past leagues' curves, never shown.
   - `inputs`: scarabs and astrolabes, as the cost of running the mechanic. They're context, not part of the basket.
-- **The mechanics:** Abyss, Betrayal, Blight, Breach, Delirium, Delve, Divination cards, Eldritch altars, Essence, Expedition, Harbinger, Harvest, Heist, Legion, Atlas memories, Necropolis (Allflame Embers), Ritual (vessels, splinters, omens), Runegrafts (Kalguur), Ultimatum (catalysts), Tattoos, Boss rush, Beyond (Tainted currency) and Sanctum (Volatile Vaal Orb).
+- **The mechanics:** Abyss, Betrayal, Blight, Delirium, Delve, Divination cards, Eldritch altars, Essence, Expedition, Harvest, Heist, Legion, Atlas memories, Necropolis (Allflame Embers), Ritual (vessels, splinters, omens), Runegrafts (Kalguur), Ultimatum (catalysts), Tattoos, Boss rush and Beyond (Tainted currency).
 - **Built from the data, not memory.** Each item's "traded in" leagues come from `cross_market_hour`, and the mechanic often from the GGG metadata id (`HarvestBossKey`, `RitualBossFragment`, `CurrencyMavenKeyFragment`…). The user settled the rest in review.
 - **Mechanics changed between leagues:**
   - **Breach:** splinters, blessings and breachstones last traded in Keepers. Mirage and Allflame have Flesh of Xesht and Hivebrain Gland instead.
@@ -214,6 +213,10 @@ D curves ──┘ (D can start on a provisional basket)
    - **Sanctum** is new, for the Volatile Vaal Orb.
    - Valdo's Puzzle Box, Voidborn Reliquary Key, Reflecting Mist, Enkindling and Instilling Orbs and the Labyrinth offerings stay out: they can't be target-farmed.
    - Tainted Oil stays in Blight and Tainted Catalyst in Ultimatum, by their metadata. Move them to Beyond if they drop there.
+10. **Dropped after review (2026-10-24):** these were also the three mechanics with fewer than the 3 current outputs an index needs (finding 8). The reasons are noted in `config/mechanics.toml`'s header.
+    - **Harbinger:** no longer in the game. Fracturing Orbs are core drops that can't be target-farmed.
+    - **Breach:** its currency comes from glands that aren't listed on trade, and their rewards vary widely.
+    - **Sanctum:** a separate strategy that mostly yields raw currency. The Volatile Vaal Orb is a rare extra, and there's no data on the rest.
 
 ### B. Finding 6: hour of day (P1, research)
 - **Owns:** `src/exiledbroker/analysis/hours.py`, `tests/test_hours.py`, section 6 of `findings.md`.
@@ -376,7 +379,7 @@ Give each agent this prompt, with its letter:
 ## Checklist
 
 - [x] A: baskets drafted (2026-10-24: 21 mechanics, 408 names, all resolve; `eb mechanics check`)
-- [x] A: user review done (2026-10-24: 23 mechanics, 474 names, every output in the core pool)
+- [x] A: user review done (2026-10-24: 23 mechanics, 474 names, every output in the core pool; then Breach, Harbinger and Sanctum dropped: 20 mechanics, 431 names)
 - [x] B: finding 6 (hour of day) (2026-10-24: `analysis/hours.py`, `hours.report` is the `hours` constant; contract's `hours` updated; rerun on the reviewed baskets. On `main` via `farm-c`)
 - [x] C: finding 7 (impact, depth, stock fields) (2026-10-24: `analysis/impact.py`; no calibrated y, impact shown as hours of trading in bands; don't load the stock fields; Chaos market first. Contract's `impact` updated. On `main` via `farm-c`)
 - [x] D: finding 8 (mechanic paths, walk-forward outlook, Easy to sell) (2026-10-24: `analysis/mechanics.py`, on A's reviewed baskets; contract's `mechanics` and `outlook` confirmed, outlook `growth` renamed `premium`. On `main`, `8eca3a4`)

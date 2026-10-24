@@ -234,35 +234,35 @@ The fitted y is negative in every league (−0.15 to −0.39) and every phase, i
 
 ## 8. Mechanics: each has its own launch path but leagues shift it; the launch outlook carries over; Easy to sell is stable
 
-*`analysis/mechanics.py` (`python -m exiledbroker.analysis.mechanics`). Settlers, Mercenaries, Keepers, Mirage and Allflame, first 14 days each, plus Allflame's days 76–89; workstream A's reviewed baskets (`config/mechanics.toml`, 23 mechanics) with their legacy outputs, from `cross_market_hour` (every item that traded against Chaos; `price_observation` keeps too few basket items). Built 2026-10-24. Workstream D.*
+*`analysis/mechanics.py` (`python -m exiledbroker.analysis.mechanics`). Settlers, Mercenaries, Keepers, Mirage and Allflame, first 14 days each, plus Allflame's days 76–89; workstream A's reviewed baskets (`config/mechanics.toml`, 20 mechanics once Breach, Harbinger and Sanctum were dropped) with their legacy outputs, from `cross_market_hour` (every item that traded against Chaos; `price_observation` keeps too few basket items). Built 2026-10-24. Workstream D.*
 
 **Method.** Everything comes from one reduced table, `item_days`: per league, basket item and day of the league, the median hourly price (Chaos, and Divines at the same hour's rate), Chaos traded, hours traded and the median hourly move. That is the shape of the reduced history workstream E keeps, so the page can be computed hosted without past leagues' hours. A mechanic's **index** is the equal-weighted geometric mean of its items' daily price over their day-0 median (items with at least 6 hours on day 0; at least 3 items). Every test is **walk-forward**: Mirage, Keepers and Allflame are each predicted from only the leagues before them (2, 3 and 4 leagues; recency-weighted, half-life 2 leagues).
 
-**A usual path, per mechanic, days 1–13** (log error; 0.48 ≈ ±60%; 624 mechanic-days):
+**A usual path, per mechanic, days 1–13** (log error; 0.48 ≈ ±60%; 611 mechanic-days):
 
 | Usual from earlier leagues | Index in Divines | Index in Chaos |
 |---|---|---|
 | Recency-weighted, the mechanic's own | **0.48** | 0.56 |
-| Median of past leagues | 0.47 | 0.56 |
+| Median of past leagues | 0.48 | 0.56 |
 | Pooled (every mechanic's together) | 0.70 | 0.78 |
 | No change since day 0 | 0.76 | 0.85 |
-| Inside past leagues' min–max / interquartile range | 36% / 19% | 40% / 20% |
+| Inside past leagues' min–max / interquartile range | 35% / 18% | 39% / 20% |
 
 - **Mechanics have their own paths**: the mechanic's own usual beats a pooled one and "no change" in every league. In Divines it's tighter than in Chaos (Chaos's own slide adds noise). The weighted and plain medians tie.
 - **But leagues shift them a lot**, mostly by a level that lasts. The error is small for big, stable baskets (Boss rush 0.13, Divination cards 0.14, Essence 0.15, Delirium 0.21, Eldritch altars 0.23, Delve 0.30) and large where a league changed the mechanic (Legion 0.60, Ultimatum 0.65, Tattoos 0.89, Necropolis 1.10). Building each past league's index from only the items the target league has (a matched basket) doesn't help (0.51), so it's the mechanics that move, not the baskets' make-up.
-- **Where a mechanic sits against its usual persists**: the rank correlation across mechanics of index ÷ usual with the same three days later is 0.56 from day 1, 0.84 from day 2 and 0.88–0.94 from days 3–10. **It doesn't predict the next days' change** (rank correlation with the following 3 days' move against the usual's: −0.21 to +0.31 by day, no consistent sign; draft baskets). So "above usual" means its drops are worth more than usual now and probably for the next few days: a reason to farm it, not a forecast to hold.
-- **A two-item basket is too noisy**: allowing 2 items (Breach and Harbinger have 2 current outputs, Sanctum 1) raises the error to 0.58 and lowers the outlook's correlation (day 1 0.80 → 0.71).
+- **Where a mechanic sits against its usual persists**: the rank correlation across mechanics of index ÷ usual with the same three days later is 0.56 from day 1, 0.84 from day 2 and 0.90–0.96 from days 3–10. **It doesn't predict the next days' change** (rank correlation with the following 3 days' move against the usual's: −0.21 to +0.31 by day, no consistent sign; draft baskets). So "above usual" means its drops are worth more than usual now and probably for the next few days: a reason to farm it, not a forecast to hold.
+- **A two-item basket is too noisy**: allowing 2 items raised the error to 0.58 and lowered the outlook's correlation (day 1 0.80 → 0.71), measured while Breach and Harbinger (2 current outputs each) were still in. So an index needs 3.
 - **After day 14 there is no usual**: Allflame's days 76–89 sit anywhere from 0.08× (Runegrafts) to 3.7× (Abyss) of its day-13 index, and only one league has later days.
 
 **Launch outlook: the launch premium carries over.** A mechanic's premium in a window is its items' median Divine price then over their median on days 12–14 (when the market has settled; the Launch picks' sale days), geometric mean over its items. Above 1, its drops were worth more then than later. Ranked from earlier leagues (recency-weighted geometric mean):
 
 | Window | Rank correlation with what happened | The last league alone | Predicted top 3 in the actual top 3 (chance) |
 |---|---|---|---|
-| Day 1 | **0.80** | 0.78 | 1.7 (0.5) |
-| Days 2–4 | **0.72** | 0.68 | 1.7 (0.5) |
-| Days 5–10 | **0.58** | 0.48 | 2.0 (0.5) |
+| Day 1 | **0.81** | 0.79 | 1.7 (0.5) |
+| Days 2–4 | **0.71** | 0.68 | 1.7 (0.5) |
+| Days 5–10 | **0.63** | 0.52 | 2.0 (0.5) |
 
-By league (Mirage / Keepers / Allflame): day 1 0.75 / 0.93 / 0.74, days 2–4 0.79 / 0.67 / 0.69, days 5–10 0.66 / 0.29 / 0.80. From all five leagues (premium, worst league):
+By league (Mirage / Keepers / Allflame): day 1 0.75 / 0.94 / 0.74, days 2–4 0.79 / 0.65 / 0.69, days 5–10 0.66 / 0.42 / 0.80. From all five leagues (premium, worst league):
 
 | Mechanic | Day 1 | Days 2–4 | Days 5–10 |
 |---|---|---|---|
@@ -270,9 +270,7 @@ By league (Mirage / Keepers / Allflame): day 1 0.75 / 0.93 / 0.74, days 2–4 0.
 | Essence | **×3.4** (3.1) | ×1.5 (1.2) | ×1.1 (0.89) |
 | Beyond | **×3.4** (2.0) | ×1.4 (1.1) | ×1.1 (0.82) |
 | Legion | **×2.6** (2.0) | ×1.1 (0.71) | ×0.87 (0.72) |
-| Harbinger (3 leagues) | ×2.5 (2.0) | ×1.3 (1.0) | ×0.96 (0.68) |
 | Runegrafts (2–4) | ×2.1 (1.1) | **×2.5** (1.4) | ×1.2 (0.97) |
-| Breach | ×1.9 (1.8) | ×0.84 (0.70) | ×1.1 (0.82) |
 | Blight | ×1.7 (1.3) | ×0.97 (0.88) | ×0.88 (0.79) |
 | Boss rush | ×1.7 (1.4) | ×1.4 (0.99) | ×1.1 (0.90) |
 | Divination cards | ×1.5 (1.2) | ×1.2 (0.95) | ×1.1 (0.98) |
@@ -282,28 +280,28 @@ By league (Mirage / Keepers / Allflame): day 1 0.75 / 0.93 / 0.74, days 2–4 0.
 | Delirium | ×0.46 (0.36) | ×0.55 (0.41) | ×0.83 (0.75) |
 | Betrayal (3–4) | ×0.19 (0.13) | ×0.31 (0.21) | ×0.60 (0.53) |
 
-(Ultimatum, Atlas memories, Harvest, Eldritch altars, Ritual and Necropolis sit between ×0.75 and ×1.4; Abyss rests on one league; Sanctum has one item.) Expedition's, Essence's, Beyond's and Legion's drops are worth two to five times their settled price on day 1, in every league; Delirium's, Heist's and Betrayal's are cheapest at launch and gain value as the league goes on.
+(Ultimatum, Atlas memories, Harvest, Eldritch altars, Ritual and Necropolis sit between ×0.75 and ×1.4; Abyss rests on one league.) Expedition's, Essence's, Beyond's and Legion's drops are worth two to five times their settled price on day 1, in every league; Delirium's, Heist's and Betrayal's are cheapest at launch and gain value as the league goes on.
 
 **Easy to sell.** Per mechanic: the median item's Amihud-style ratio (median hourly |move| over Chaos traded an hour), its Chaos traded an hour, and the mean share of hours its items traded (an item the league has that didn't trade counts as 0). Rank correlation across mechanics from one league to the next:
 
 | Factor | Days 1–3 | Days 11–13 | Days 1–3 → 11–13, same league |
 |---|---|---|---|
-| Amihud | 0.86 | 0.87 | 0.78 |
-| Chaos traded per item | 0.84 | 0.79 | 0.83 |
-| Share of hours traded | 0.72 | 0.76 | 0.79 |
-| **Combined (0.5 / 0.25 / 0.25)** | **0.85** | **0.87** | |
+| Amihud | 0.90 | 0.91 | 0.78 |
+| Chaos traded per item | 0.92 | 0.88 | 0.79 |
+| Share of hours traded | 0.77 | 0.83 | 0.75 |
+| **Combined (0.5 / 0.25 / 0.25)** | **0.89** | **0.90** | |
 
-Amihud and Chaos traded per item say nearly the same (rank correlation −0.95); hours traded adds breadth. Allflame, days 11–13: easiest Sanctum, Betrayal, Harvest, Heist, Eldritch altars; hardest Divination cards (the median card trades 160c an hour), Expedition, Essence, Tattoos, Ritual. The basket's total Chaos traded is the most persistent (0.92) but measures the basket's size (359 cards), not how easily one drop sells, so it's shown, not scored.
+Amihud and Chaos traded per item say nearly the same (rank correlation −0.95); hours traded adds breadth. Allflame, days 11–13: easiest Betrayal, Harvest, Heist, Eldritch altars, Atlas memories; hardest Divination cards (the median card trades 160c an hour), Expedition, Essence, Tattoos, Ritual. The basket's total Chaos traded is the most persistent (0.92) but measures the basket's size (359 cards), not how easily one drop sells, so it's shown, not scored.
 
 **Decided (for the Farming page; the contract in [farming.md](farming.md) is updated):**
 - **Index in Divines**: the geometric mean over the basket's items (at least 3, each with 6 hours on day 0) of price over its day-0 median. Live, an item's price is its median over the last 24 hours, so the index compares with the usual for the league's day (`floor(day_offset)`).
 - **`usual`**: the recency-weighted geometric mean of past leagues' index on that day (like the launch curves; the plain median ties), needing at least 2 past leagues; **`usual_low` / `usual_high` are the past leagues' min and max**, labelled as their range, not a forecast (it held the next league 36% of the time with 2–4 leagues behind it; the interquartile range only 19%). **Null after day 13**, and the page says why.
 - **`change_24h` / `change_7d`** are fractional changes of the index (0.04 = +4%).
 - **The outlook is a premium**, so its field is renamed `growth` → **`premium`**: the window's median Divine price over days 12–14's, geometric mean over items, recency-weighted over leagues; `worst` the lowest league's; `leagues` how many.
-- **`liquidity`**: Amihud 0.5, Chaos traded per item 0.25, share of hours traded 0.25 (`rank_score`), over the live league's last 3 days (from past leagues' days 1–3 before then: they carry over at about 0.8).
+- **`liquidity`**: Amihud 0.5, Chaos traded per item 0.25, share of hours traded 0.25 (`rank_score`), over the live league's last 3 days (from past leagues' days 1–3 before then: they carry over at about 0.77).
 - **`score`**: `rank_score` over index ÷ usual 0.4, the current window's outlook premium 0.3 and liquidity 0.3 (`analysis/mechanics.SCORE_*`). A factor that's null for every mechanic drops out: after day 10 there's no window, after day 13 no usual (then the score is Easy to sell alone). The weights are a judgment: with no drop rates, there's no farming profit to fit them to.
-- **For workstream E**: the reduced history needs `item_days`' columns (`analysis/mechanics.ITEM_DAY_SCHEMA`), not only the price and Chaos traded: the Divine price (index and outlook), hours traded and each day's traded hours (Easy to sell), and the median hourly move (Amihud). Days 0–13, every basket item including legacy outputs that traded: about 710 items and 9,500 rows a league (47k for the five).
-- **Mechanics without an index**: Sanctum (1 current output), Breach and Harbinger (2) get no index in a live league, so no trend or usual; they're still ranked on the outlook and Easy to sell. Abyss and Breach have a usual path in one league only; Necropolis and Tattoos change too much between leagues for their usual to mean much.
+- **For workstream E**: the reduced history needs `item_days`' columns (`analysis/mechanics.ITEM_DAY_SCHEMA`), not only the price and Chaos traded: the Divine price (index and outlook), hours traded and each day's traded hours (Easy to sell), and the median hourly move (Amihud). Days 0–13, every basket item including legacy outputs that traded: about 690 items and 9,100 rows a league (45k for the five).
+- **Dropped by the user (2026-10-24)**: Harbinger (no longer in the game; Fracturing Orbs are core drops nobody can target-farm), Breach (its currency comes from glands not listed on trade, with highly variable rewards) and Sanctum (mostly raw currency). They were also the three mechanics with fewer than 3 current outputs. Of the rest, Abyss has a usual path in one league only, and Necropolis and Tattoos change too much between leagues for their usual to mean much.
 
 ## Still to do
 
