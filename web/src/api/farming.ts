@@ -55,14 +55,48 @@ export type FarmingItem = {
   divine: FarmingMarket | null
 }
 
+/** 24 values by UTC hour; null for an hour with no data. */
+export type HourProfile = (number | null)[]
+
+/** What timing is worth in a price profile, as fractions of the price: the best hour over
+ *  the 24-hour average (`gain`) and over the worst hour (`gap`); `best` / `worst` are UTC
+ *  hours; `null95` is the noise floor. "small" means time of day barely matters. */
+export type HourEffect = {
+  gain: number | null
+  gap: number | null
+  best: number | null
+  worst: number | null
+  null95: number | null
+  verdict: 'small' | 'worth_it'
+}
+
+export type MechanicHours = HourEffect & {
+  price: HourProfile
+  items: number
+  stability: number | null
+  /** False when the basket's own profile doesn't hold across leagues (the pooled one applies). */
+  shown?: boolean
+}
+
+/** Finding 6: hour-of-day profiles from past leagues, for the league's phase (a constant).
+ *  Prices are fractions over the item's centred 24-hour average. */
 export type FarmingHours = {
-  /** 24 values by UTC hour: median deviation from the day's mean (log). */
-  price: (number | null)[]
-  /** 24 values by UTC hour: share of the day's volume. */
-  volume: (number | null)[]
-  /** Size of the best-vs-worst hour gap. */
-  effect: number | null
-  verdict: 'small' | 'worth_it' | null
+  phase: 'd0_2' | 'd2_7' | 'd7_14' | 'later'
+  leagues: number
+  days: number
+  /** The Chaos market. */
+  price: HourProfile
+  /** The Divine market's own prices (not Chaos ÷ rate). */
+  price_divine_market: HourProfile
+  /** The Divine's Chaos price: when to convert. */
+  divine: HourProfile
+  /** Share of the day's Chaos traded each hour; null on days 0–2. */
+  volume: HourProfile | null
+  effect: HourEffect
+  effect_divine_market: HourEffect
+  divine_effect: HourEffect
+  /** Only baskets whose own profile holds across leagues; any other uses `price`. */
+  mechanics: Record<string, MechanicHours>
 }
 
 export type Farming = {
