@@ -60,3 +60,13 @@ describe('theme', () => {
     expect(document.documentElement.dataset.theme).toBe('dark')
   })
 })
+
+describe('social links', () => {
+  it('links the X and Discord logos, opening in a new tab', () => {
+    renderAt('/')
+    expect(screen.getByRole('link', { name: 'ExiledBroker on X' }).getAttribute('href')).toBe('https://x.com/BBagoza')
+    const discord = screen.getByRole('link', { name: 'Join the ExiledBroker Discord' })
+    expect(discord.getAttribute('href')).toBe('https://discord.gg/wK7uR32gx')
+    expect(discord.getAttribute('target')).toBe('_blank')
+  })
+})

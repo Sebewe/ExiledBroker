@@ -4,6 +4,7 @@ import { NavLink } from 'react-router'
 import { useRememberedSettings } from '../lib/rememberSettings'
 import { useTheme } from '../lib/theme'
 import { FreshnessBadge } from './Freshness'
+import { SocialLinks } from './Social'
 
 // `featured`: the two pages to start from, lit up in the bar.
 const NAV = [
@@ -50,8 +51,10 @@ export function Layout({ children }: { children: ReactNode }) {
               </NavLink>
             ))}
           </nav>
-          <div className="ml-auto flex items-center gap-3">
-            <FreshnessBadge />
+          <div className="ml-auto flex items-center gap-2">
+            <span className="mr-1">
+              <FreshnessBadge />
+            </span>
             <button
               type="button"
               onClick={toggleTheme}
@@ -61,6 +64,7 @@ export function Layout({ children }: { children: ReactNode }) {
             >
               {theme === 'dark' ? <Sun aria-hidden className="size-4" /> : <Moon aria-hidden className="size-4" />}
             </button>
+            <SocialLinks />
           </div>
         </div>
       </header>
