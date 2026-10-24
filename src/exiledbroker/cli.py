@@ -701,9 +701,9 @@ def site_seed(
         ),
     ] = False,
 ) -> None:
-    """Copy leagues' site rows, the Launch history and picks from the local DuckDB into
-    Postgres. Replaces those leagues' rows there; other leagues are left alone. Sends
-    nothing to GGG."""
+    """Copy leagues' site rows, the Launch history and picks, the Farming history and
+    the backtest and farming reports from the local DuckDB into Postgres. Replaces
+    those leagues' rows there; other leagues are left alone. Sends nothing to GGG."""
     import psycopg
 
     from exiledbroker.services.live import live_leagues

@@ -7,6 +7,7 @@ EB_TEST_POSTGRES_URL (as tests/test_pipeline.py; CI starts one): the site, its b
 and a reference seeded from the local copy."""
 
 import os
+from datetime import datetime
 
 import pytest
 
@@ -248,3 +249,85 @@ def test_eb_site_restore_says_the_size_first_and_needs_yes(local, dbs, monkeypat
     assert done.exit_code == 0, done.output
     assert "Restored from the backup: poe1-mirage +6/-0 hours" in done.output
     assert_same(dbs["eb_backup"], dbs["eb_ref"])
+
+
+# --- The tables built from past leagues -----------------------------------------------
+
+
+def _farming(con, league: str, start: datetime, chaos: float = 2.0, items: int = 40) -> None:
+    """A league's Farming history (`eb farming history` locally, the pass hosted):
+    `items` basket items over the fortnight."""
+    rows = [
+        (league, start, f"currency:item-{i}", day, chaos + i, chaos / 100, 50.0 * i, 20, 0.02, 24)
+        for i in range(items)
+        for day in range(14)
+    ]
+    marks = ", ".join("?" for _ in rows[0])
+    for row in rows:
+        db.execute(con, f"INSERT INTO item_day_history VALUES ({marks})", list(row))
+
+
+def _farming_report(con, built_at: datetime) -> None:
+    db.execute(con, "DELETE FROM farming_report")
+    db.execute(
+        con,
+        "INSERT INTO farming_report VALUES ('report', ?, ?)",
+        [built_at, '{"impact": {"y": null, "bands": [0.25, 1.0]}}'],
+    )
+
+
+def _versions(url: str, league: str) -> set:
+    """The backup's row versions of a league's history: unchanged unless rewritten."""
+    with psycopg.connect(url) as con:
+        q = "SELECT xmin::text FROM item_day_history WHERE league = ?"
+        return {r[0] for r in db.rows(con, q, [league])}
+
+
+def test_the_farming_history_and_report_are_backed_up_incrementally(local, dbs, monkeypatch):  # noqa: F811
+    """Seeded with two leagues' history and the report, then a league captured by a
+    pass and the report rebuilt: each sync sends only what changed, and a pass where
+    nothing did reads back only the stamps."""
+    s, server = local
+    with db.session(s.db_path) as con:
+        _farming(con, "Keepers", datetime(2025, 10, 31))
+        _farming(con, "Settlers", datetime(2024, 7, 26))
+        _farming_report(con, datetime(2026, 10, 24, 9))
+    _seed(s, dbs["eb_site"])
+    reads = BackupReads(monkeypatch)
+    first, _ = run(hosted(s, dbs), server, 9)
+    assert "farming report" in first.backup.tables
+    assert "farming history (Keepers, Settlers)" in first.backup.tables
+    assert_same(dbs["eb_site"], dbs["eb_backup"])
+    kept = _versions(dbs["eb_backup"], "Keepers")
+
+    before = reads.bytes
+    second, _ = run(hosted(s, dbs), server, 10)  # a new hour; nothing built changed
+    assert not {"farming report", "launch tables"} & set(second.backup.tables)
+    assert not [t for t in second.backup.tables if t.startswith("farming history")]
+    assert reads.bytes - before < 2_000, reads.bytes - before
+
+    with psycopg.connect(dbs["eb_site"], autocommit=True) as con:  # a pass's capture
+        _farming(con, "Mirage", datetime(2026, 3, 6, 20))
+    third = backup.back_up(hosted(s, dbs))
+    assert third.tables == ["farming history (Mirage)"]
+    assert _versions(dbs["eb_backup"], "Keepers") == kept  # not sent again
+
+    with psycopg.connect(dbs["eb_site"], autocommit=True) as con:  # `eb farming build`, seeded
+        _farming_report(con, datetime(2026, 10, 25, 9))
+        # A league recaptured with the same rows but other prices (a fixed reduction).
+        con.execute("UPDATE item_day_history SET chaos = chaos * 1.5 WHERE league = 'Settlers'")
+        con.execute("DELETE FROM item_day_history WHERE league = 'Keepers'")
+    fourth = backup.back_up(hosted(s, dbs))
+    assert fourth.tables == ["farming report", "farming history (Keepers, Settlers)"]
+    assert _versions(dbs["eb_backup"], "Keepers") == set()
+    assert_same(dbs["eb_site"], dbs["eb_backup"])
+    assert not backup.back_up(hosted(s, dbs)).changed
+
+    # Recaptures that change only the small values: Divine prices (a fixed Divine rate),
+    # then the moves; each is sent, or a restore would bring back the old ones.
+    for fix in ("divine = divine * 1.001", "divine = NULL WHERE day = 0", "absret = absret * 2"):
+        with psycopg.connect(dbs["eb_site"], autocommit=True) as con:
+            where = "" if "WHERE" in fix else " WHERE true"
+            con.execute(f"UPDATE item_day_history SET {fix}{where} AND league = 'Mirage'")
+        assert backup.back_up(hosted(s, dbs)).tables == ["farming history (Mirage)"], fix
+        assert_same(dbs["eb_site"], dbs["eb_backup"])

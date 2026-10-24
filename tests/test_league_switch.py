@@ -238,3 +238,39 @@ def test_the_pipeline_follows_a_league_switch(server_db):
     assert pages == [LAUNCH + h * H for h in range(4)]  # only Allflame's window is kept
     assert leagues == [("poe1-allflame",)]
     assert history == [("Keepers",)]  # Mirage's fortnight wasn't complete: not a reference
+
+
+def test_a_switch_keeps_the_farming_history_and_captures_the_old_league_first(server_db):
+    """What was built from past leagues stays through a switch: the Farming history and
+    its report, like the Launch history. A followed league whose fortnight is complete
+    but not captured yet is reduced before the switch drops its hours."""
+    s = server_db
+    with db.session(s.db_path) as con:
+        con.execute(
+            "INSERT INTO item_day_history VALUES ('Keepers', '2025-10-31', "
+            "'currency:chaos-orb', 0, 1.0, 0.01, 500.0, 24, 0.01, 24)"
+        )
+        con.execute("INSERT INTO farming_report VALUES ('report', '2026-10-24 09:00:00', '{}')")
+        # Mirage's fortnight, as complete (a Chaos price 14 days in): not captured yet.
+        start = db.scalar(con, "SELECT start_at FROM league WHERE name = 'Mirage'")
+        con.execute(
+            "INSERT INTO price_observation (item_id, league_id, observed_at, day_offset, "
+            "chaos_value, source) VALUES ('currency:chaos-orb', 'poe1-mirage', ?, 14.2, 1.0, "
+            "'ggg-exchange-hourly')",
+            [start + timedelta(days=14.2)],
+        )
+    server = FakeExchange(PAGES, now=LAUNCH)
+    for h in (-1, 0, 1, 2):
+        result, _ = run(s, server, h)
+        if h == 1:
+            assert result.dropped == ["Mirage"] and result.farming_from == ["Mirage"]
+        elif h == 2:
+            assert result.farming_from == []  # once
+    with db.session(s.db_path, read_only=True) as con:
+        history = db.rows(con, "SELECT league, count(*) FROM item_day_history GROUP BY 1")
+        report = db.rows(con, "SELECT id FROM farming_report")
+        hours = db.scalar(
+            con, "SELECT count(*) FROM cross_market_hour WHERE league_id = 'poe1-mirage'"
+        )
+    assert dict(history)["Keepers"] == 1 and dict(history)["Mirage"] > 0
+    assert report == [("report",)] and hours == 0

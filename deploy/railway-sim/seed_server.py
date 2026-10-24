@@ -5,7 +5,9 @@ For the replay, the live league (Allflame) is cut back to `--start` in a scratch
 of the research database: its later rows are deleted, so the seeded server has only
 the hours before it and the pipeline then fetches the rest from the upstream
 stand-in, one hour at a time. Each complete league is reduced to its Launch history
-(as `eb launch picks` does) and the picks are ranked from it. Stored reference
+(as `eb launch picks` does) and the picks are ranked from it, and to its Farming
+history (as `eb farming history` does), so neither holds a league cut back or dropped
+from the copy. Stored reference
 sources are pointed at the stand-in, so their checks are conditional requests
 answered 304 instead of fresh downloads (a changed URL counts as a new source).
 
@@ -27,7 +29,7 @@ import duckdb
 import psycopg
 
 from exiledbroker.config import Settings
-from exiledbroker.services import launch_picks
+from exiledbroker.services import item_history, launch_picks
 from exiledbroker.storage import db, site
 
 SRC, WORK, CACHE = Path("/src"), Path("/tmp/seed"), Path("/sim-cache")
@@ -83,6 +85,14 @@ def main() -> None:
         launch_picks.capture(con, league)
     refs = launch_picks.captured_leagues(con)[: launch_picks.REFERENCE_LEAGUES]
     launch_picks.build(con, refs)
+    # `eb farming history`: the copy's item_day_history may hold the cut-back or dropped
+    # leagues (their future days); recapture the same leagues as the Launch history.
+    local = Settings(data_dir=SRC)
+    con.execute(f"DELETE FROM {item_history.HISTORY}")
+    items = item_history.basket_items(con, local)
+    farmed = launch_picks.captured_leagues(con)
+    for league in farmed:
+        item_history.capture(con, league, items)
     reference = {}
     for key, content in db.rows(con, "SELECT key, content FROM reference_data"):
         reference[key] = json.loads(content)
@@ -91,15 +101,15 @@ def main() -> None:
     CACHE.mkdir(exist_ok=True)
     (CACHE / "reference.json").write_text(json.dumps(reference))
 
-    # `eb site seed --hosted`: rows, history and picks, and the loaded hours' pages.
-    local = Settings(data_dir=SRC)
+    # `eb site seed --hosted`: rows, histories and picks, and the loaded hours' pages.
     with psycopg.connect(os.environ["EB_DATABASE_URL"], autocommit=True) as pg:
         result = site.seed(con, pg, [args.league], local)
     con.close()
     shutil.rmtree(WORK)
     print(
         f"seeded: {args.league} {hours} hours before {start:%Y-%m-%d %H:%M}, "
-        f"{result.rows.get('exchange_page', 0)} pages, picks from {', '.join(refs)}"
+        f"{result.rows.get('exchange_page', 0)} pages, picks from {', '.join(refs)}, "
+        f"Farming history of {', '.join(farmed) or 'no league'}"
     )
 
 
