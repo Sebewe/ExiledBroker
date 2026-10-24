@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Farming as FarmingData, FarmingHours, FarmingMechanic, FarmingOutlook, HourEffect } from '../api/farming'
+import type { Farming as FarmingData, FarmingHours, FarmingMechanic, FarmingOutlook, HourEffect } from '../api/client'
 import Farming from './Farming'
 
 function serve(routes: Record<string, { status?: number; body: unknown }>) {
@@ -83,7 +83,7 @@ const HOURS: FarmingHours = {
   effect: effect(0.021, 23, 6),
   effect_divine_market: effect(0.003, 21, 8, 'small'),
   divine_effect: { ...effect(0.041, 23, 12), gap: 0.081 },
-  mechanics: { essence: { ...effect(0.092, 23, 6), price: flat.map((_, h) => (h === 23 ? 0.092 : 0)), items: 42, stability: 0.9, shown: true } },
+  mechanics: { essence: { ...effect(0.092, 23, 6), price: flat.map((_, h) => (h === 23 ? 0.092 : 0)), items: 42, stability: 0.9 } },
 }
 const FARMING: FarmingData = {
   league: 'Allflame',

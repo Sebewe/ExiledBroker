@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { FarmingItem } from '../api/farming'
-import { busiestHours, hoursOfTrading, impactBand, localHour, profileFor, stackInMarkets, tradingTime } from './impact'
+import type { FarmingItem } from '../api/client'
+import { bandsOf, busiestHours, hoursOfTrading, impactBand, localHour, profileFor, stackInMarkets, tradingTime } from './impact'
 
 const item = (divine: FarmingItem['divine']): FarmingItem => ({
   item_id: 'currency:splinter-of-xoph',
@@ -36,6 +36,13 @@ describe('impactBand', () => {
 
   it("follows the response's bands", () => {
     expect([0.3, 1, 3].map((h) => impactBand(h, [0.5, 2]))).toEqual(['low', 'medium', 'high'])
+  })
+
+  it("takes the response's two edges, else the contract's", () => {
+    expect(bandsOf({ y: null, bands: [0.5, 2], note: null })).toEqual([0.5, 2])
+    expect(bandsOf(null)).toEqual([0.25, 1])
+    expect(bandsOf({ y: null, bands: [0.5], note: null })).toEqual([0.25, 1])
+    expect(bandsOf({ y: null, bands: [2, 0.5], note: null })).toEqual([0.25, 1])
   })
 })
 
@@ -115,12 +122,12 @@ describe('profileFor', () => {
     effect_divine_market: effect,
     divine_effect: effect,
     mechanics: {
-      essence: { ...effect, gain: 0.09, price: own, items: 42, stability: 0.9, shown: true },
-      breach: { ...effect, price: own, items: 20, stability: 0.2, shown: false },
+      essence: { ...effect, gain: 0.09, price: own, items: 42, stability: 0.9 },
     },
   }
 
   it("uses the item's mechanic's own profile where it holds, else the pooled one", () => {
+    // The response leaves out the baskets whose own profile doesn't hold (here Breach).
     expect(profileFor(hours, ['legion', 'essence'])).toMatchObject({ mechanic: 'essence', price: own, effect: { gain: 0.09 } })
     expect(profileFor(hours, ['breach'])).toMatchObject({ mechanic: null, price: pooled, effect: { gain: 0.02 } })
     expect(profileFor(hours, [])).toMatchObject({ mechanic: null, price: pooled })

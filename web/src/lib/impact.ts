@@ -1,4 +1,4 @@
-import type { FarmingHours, FarmingImpact, FarmingItem, FarmingMarket, HourEffect, HourProfile } from '../api/farming'
+import type { FarmingHours, FarmingImpact, FarmingItem, FarmingMarket, HourEffect, HourProfile } from '../api/client'
 
 // The Farming page's sell helper, computed here so the typed quantity never reaches the
 // server (docs/farming.md, "The response contract"). Finding 7: hourly prices swing more
@@ -8,8 +8,18 @@ import type { FarmingHours, FarmingImpact, FarmingItem, FarmingMarket, HourEffec
 export type ImpactBand = 'low' | 'medium' | 'high'
 export type MarketId = 'chaos' | 'divine'
 
-/** The contract's bands (in hours of trading), for a response that lacks them. */
-export const DEFAULT_BANDS: FarmingImpact['bands'] = [0.25, 1]
+/** Two band edges, in hours of trading: low below the first, high from the second. */
+export type Bands = readonly [number, number]
+
+/** The contract's bands, for a response that lacks them. */
+export const DEFAULT_BANDS: Bands = [0.25, 1]
+
+/** The response's bands (a list in the API's schema), or the contract's when it doesn't
+ *  carry two increasing edges. */
+export function bandsOf(impact: FarmingImpact | null | undefined): Bands {
+  const [low, high] = impact?.bands ?? []
+  return low != null && high != null && low > 0 && high > low ? [low, high] : DEFAULT_BANDS
+}
 
 /** How many hours of this market's typical trading `qty` units amount to, or null when the
  *  market has no volume to judge by. */
@@ -21,7 +31,7 @@ export function hoursOfTrading(m: FarmingMarket | null | undefined, qty: number)
 /** low: sells into the market as it is; medium: a large part of the hour's trading;
  *  high: as much as the market trades in an hour, or more (the contract's
  *  low < bands[0] <= medium < bands[1] <= high). */
-export function impactBand(hours: number, bands: FarmingImpact['bands'] = DEFAULT_BANDS): ImpactBand {
+export function impactBand(hours: number, bands: Bands = DEFAULT_BANDS): ImpactBand {
   return hours < bands[0] ? 'low' : hours < bands[1] ? 'medium' : 'high'
 }
 
@@ -47,7 +57,7 @@ export type MarketStack = {
   hoursTraded: number | null
 }
 
-function stack(market: MarketId, m: FarmingMarket | null, qty: number, bands: FarmingImpact['bands'], rate: number | null): MarketStack | null {
+function stack(market: MarketId, m: FarmingMarket | null, qty: number, bands: Bands, rate: number | null): MarketStack | null {
   const hours = hoursOfTrading(m, qty)
   if (hours == null || !m) return null
   const unitChaos = m.price == null || rate == null ? null : m.price * rate
@@ -68,7 +78,7 @@ function stack(market: MarketId, m: FarmingMarket | null, qty: number, bands: Fa
 /** A stack of `qty` in each market: the Chaos market first (it carries most of an item's
  *  trading), the Divine market as its own hours of trading. `divineChaos` only converts
  *  the Divine market's price; its hours need no rate. */
-export function stackInMarkets(item: FarmingItem, qty: number, divineChaos: number | null | undefined, bands: FarmingImpact['bands'] = DEFAULT_BANDS) {
+export function stackInMarkets(item: FarmingItem, qty: number, divineChaos: number | null | undefined, bands: Bands = DEFAULT_BANDS) {
   const chaos = stack('chaos', item.chaos, qty, bands, 1)
   const divine = stack('divine', item.divine, qty, bands, divineChaos || null)
   return { chaos, divine }
@@ -99,10 +109,13 @@ export function localHour(utc: number, timeZone?: string): string {
 /** The profile that applies to an item: its first mechanic's own, where that holds across
  *  leagues, else the pooled one. */
 export function profileFor(hours: FarmingHours, mechanics: string[]): { mechanic: string | null; price: HourProfile; effect: HourEffect } {
-  const own = mechanics.find((m) => hours.mechanics[m] && hours.mechanics[m].shown !== false)
-  if (own) {
-    const { price, ...effect } = hours.mechanics[own]!
-    return { mechanic: own, price, effect }
+  // The response carries only the baskets whose own profile holds across leagues.
+  for (const mechanic of mechanics) {
+    const own = hours.mechanics[mechanic]
+    if (own) {
+      const { price, ...effect } = own
+      return { mechanic, price, effect }
+    }
   }
   return { mechanic: null, price: hours.price, effect: hours.effect }
 }

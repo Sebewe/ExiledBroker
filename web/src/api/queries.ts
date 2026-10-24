@@ -2,7 +2,6 @@ import { useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { JITTER, nextCheckIn } from '../lib/schedule'
 import { api, unwrap } from './client'
-import { getFarming } from './farming'
 
 /** Checked only when a new hour is due (lib/schedule): its `data_version` changes when a
  *  new hour is loaded, and every data query below is keyed on it. Between checks,
@@ -52,7 +51,11 @@ export function useBacktest() {
 
 /** The Farming page: mechanics, the launch outlook and the sell helper's inputs, per loaded hour. */
 export function useFarming(league: string | undefined) {
-  return useVersioned(['farming', league], () => getFarming(league!), !!league)
+  return useVersioned(
+    ['farming', league],
+    () => unwrap(api.GET('/api/farming/{league}', { params: { path: { league: league! } } })),
+    !!league,
+  )
 }
 
 /** The server's clock, from ours: the status is fetched about once an hour now, so its

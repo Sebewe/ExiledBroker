@@ -9,8 +9,8 @@ import type {
   FarmingOutlook,
   HourEffect,
   OutlookWindowId,
-} from '../api/farming'
-import type { Upcoming } from '../api/client'
+  Upcoming,
+} from '../api/client'
 import { useFarming, useServerNow, useStatus } from '../api/queries'
 import { Field, NumberField, Segmented, Select, Toolbar } from '../components/Controls'
 import { FreshnessBanner } from '../components/Freshness'
@@ -18,7 +18,7 @@ import { Notice } from '../components/Notice'
 import { Empty, Meter } from '../components/Opportunity'
 import { PageHeader } from '../components/Section'
 import { count, duration, pct, price, signedPct, tone, utcHour } from '../lib/format'
-import { busiestHours, DEFAULT_BANDS, localHour, profileFor, stackInMarkets, tradingTime, type ImpactBand, type MarketStack } from '../lib/impact'
+import { bandsOf, busiestHours, localHour, profileFor, stackInMarkets, tradingTime, type Bands, type ImpactBand, type MarketStack } from '../lib/impact'
 import { makeMoney, type Money } from '../lib/money'
 import { queryFallback } from '../lib/queryFallback'
 import { useLeague } from '../lib/useLeague'
@@ -388,7 +388,7 @@ function SellHelper({
               <p className="pb-2 text-xs text-faint">Drops from {item.mechanics.map((id) => mechanicName.get(id) ?? id).join(', ')}</p>
             )}
           </Toolbar>
-          <Stack item={item} qty={qty} bands={impact?.bands ?? DEFAULT_BANDS} note={impact?.note ?? DEFAULT_NOTE} money={money} divineChaos={divineChaos} />
+          <Stack item={item} qty={qty} bands={bandsOf(impact)} note={impact?.note ?? DEFAULT_NOTE} money={money} divineChaos={divineChaos} />
         </>
       )}
       <BestHours hours={hours} item={item} mechanicName={mechanicName} />
@@ -422,7 +422,7 @@ function Stack({
 }: {
   item: FarmingItem
   qty: number
-  bands: FarmingImpact['bands']
+  bands: Bands
   note: string
   money: Money
   divineChaos: number | null | undefined
@@ -472,7 +472,7 @@ function MarketCard({
   name: string
   stack: MarketStack | null
   qty: number
-  bands: FarmingImpact['bands']
+  bands: Bands
   money: Money
   missing: string
 }) {
