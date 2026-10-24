@@ -160,3 +160,19 @@ def test_check_reports_unknown_names_pool_and_trading(con):
 def test_in_pool_without_snapshots_is_undecided():
     assert mech.in_pool(CorePool(), "Flesh of Xesht") is None
     assert mech.in_pool(CorePool(include={"currency": {"Flesh of Xesht"}}), "Flesh of Xesht")
+
+
+def test_in_pool_reads_the_farming_lists_and_strips_metadata_names():
+    pool = CorePool(listed={"currency": set(), mech.POOL_KEY: {"Fine Delirium Orb"}})
+    assert mech.in_pool(pool, "Fine Delirium Orb (CurrencyAfflictionOrbCurrency)")
+    assert mech.in_pool(pool, "Splinter of Xoph") is False
+    included = CorePool(include={mech.POOL_KEY: {"Ritual Splinter"}})
+    assert mech.in_pool(included, "Ritual Splinter")
+
+
+def test_farming_lists_are_their_own_pool_entry():
+    # No price-mapping group reads them, so the other pages' universes don't change.
+    from exiledbroker.ingest.core_pool import SOURCES
+    from exiledbroker.normalize.tracked import GROUPS
+
+    assert mech.POOL_KEY in SOURCES and mech.POOL_KEY not in {g.id for g in GROUPS}

@@ -336,6 +336,7 @@ def test_refresh_pool_replaces_snapshot_and_reads_overrides(settings, tmp_path):
         "Oil": [{"name": "Golden Oil", "category": "Oils"}],
         "Essence": [{"name": "Deafening Essence of Woe", "category": "Essence"}],
         "Scarab": [{"name": "Horned Scarab of Bloodlines", "category": "Scarab"}],
+        "Fossil": [{"name": "Dense Fossil", "category": "Fossil"}],
     }
 
     def handler(request):
@@ -343,7 +344,7 @@ def test_refresh_pool_replaces_snapshot_and_reads_overrides(settings, tmp_path):
             return httpx.Response(200, text=FILTER)
         if request.url.path.endswith("/leagues"):
             return httpx.Response(200, json=[{"id": "Allflame", "name": "Allflame"}])
-        return httpx.Response(200, json={"items": lists[request.url.params["type"]]})
+        return httpx.Response(200, json={"items": lists.get(request.url.params["type"], [])})
 
     from exiledbroker.ingest import reference
 
@@ -376,6 +377,9 @@ def test_refresh_pool_replaces_snapshot_and_reads_overrides(settings, tmp_path):
     assert pool.allows("currency", "Coffin") is True  # included by config
     assert pool.allows("divination", "Coffin") is False  # ...in currency only
     assert pool.allows("scarab", "Horned Scarab of Bloodlines") is True
+    # The Farming page's lists are their own entry, in no price-mapping group.
+    assert pool.listed["mechanics"] == {"Dense Fossil"}
+    assert pool.allows("currency", "Dense Fossil") is False
     assert pool.allows("essence", "Deafening Essence of Rage") is False
     assert pool.allows("divination", "The Doctor") is True
     assert pool.allows("divination", "Rain of Chaos") is False  # hidden tier

@@ -152,9 +152,19 @@ def _suggestions(con, name: str) -> list[str]:
     return sorted({r[0] for r in rows})
 
 
+POOL_KEY = "mechanics"  # core_pool.SOURCES: the lists only the Farming page reads
+SUFFIX = re.compile(r" \([A-Za-z0-9]+\)$")  # "Name (MetadataName)" for an ambiguous name
+
+
 def in_pool(pool: CorePool, name: str) -> bool | None:
-    """Whether the core pool shows the item in any group; None without any snapshot."""
-    decisions = [pool.allows(g.id, name) for g in GROUPS]
+    """Whether the core pool lists the item in any of its lists (price-mapping groups or
+    the Farming page's own); None without any snapshot. poe.ninja lists an item by its
+    in-game name, so a stored "Name (MetadataName)" is looked up as "Name"."""
+    keys = [g.id for g in GROUPS] + [POOL_KEY]
+    names = {name, SUFFIX.sub("", name)}
+    decisions = [
+        True if any(pool.allows(k, n) for n in names) else pool.allows(k, name) for k in keys
+    ]
     if any(decisions):
         return True
     return None if all(d is None for d in decisions) else False
