@@ -13,8 +13,11 @@ with Postgres attached (`db.site_writer`). Each pass:
 2. loads the newly published hours (`live.sync_live`, which records the run and
    prunes pages that left the window);
 3. once the live league's launch fortnight is over, adds it to the Launch history and
-   rebuilds the picks (`launch_picks.refresh`);
-4. once the live league has data, drops any other league's rows (a league switch);
+   rebuilds the picks (`launch_picks.refresh`), and reduces it into the Farming page's
+   history (`item_history.refresh`: a row per basket item and day, ~2 MB a league;
+   the baskets come from config/mechanics.toml, in the image);
+4. once the live league has data, drops any other league's rows (a league switch;
+   what was built from them, the Launch history and the Farming history, stays);
 5. with EB_BACKUP_URL set, syncs the site's database to the off-site backup
    (`storage/backup.py`: uploads the changes, reads back tens of kB).
 
@@ -32,7 +35,8 @@ from exiledbroker.ingest import core_pool, reference
 from exiledbroker.ingest import currency_exchange as cx
 from exiledbroker.ingest.http import PoliteClient
 from exiledbroker.ingest.live import LiveStatus, sync_live
-from exiledbroker.services import launch_picks
+from exiledbroker.normalize import mechanics
+from exiledbroker.services import item_history, launch_picks
 from exiledbroker.services.live import live_leagues
 from exiledbroker.storage import backup as backup_mod
 from exiledbroker.storage import db, site
@@ -50,6 +54,8 @@ class PipelineResult:
     league: str
     live: LiveStatus
     picks_from: list[str] | None = None  # the picks were rebuilt from these leagues
+    farming_from: list[str] = field(default_factory=list)  # captured into item_day_history
+    no_baskets: str | None = None  # the mechanics file is missing: nothing to capture
     dropped: list[str] = field(default_factory=list)
     backup: backup_mod.SyncResult | None = None  # with EB_BACKUP_URL
     backup_error: str | None = None  # the backup failed; the pass didn't
@@ -58,6 +64,10 @@ class PipelineResult:
         parts = [str(self.live)]
         if self.picks_from:
             parts.append(f"Launch picks rebuilt from {', '.join(self.picks_from)}.")
+        if self.farming_from:
+            parts.append(f"Farming history captured for {', '.join(self.farming_from)}.")
+        if self.no_baskets:
+            parts.append(f"No mechanics at {self.no_baskets}: the Farming history waits.")
         if self.dropped:
             parts.append(f"Dropped {', '.join(self.dropped)} from the site.")
         if self.backup is not None:
@@ -173,5 +183,11 @@ def _pass(
         return result  # e.g. the announced league has no trades yet: keep the old one
     with db.site_writer(settings) as con:
         result.picks_from = launch_picks.refresh(con, live=name)
+        # Before a league switch drops the old league's hours: a finished league not
+        # captured yet (a few small queries a pass; a capture about once a league).
+        if mechanics.load_mechanics(settings):
+            result.farming_from = item_history.refresh(con, settings, live=name)
+        else:  # without baskets it would "capture" leagues as empty, every pass
+            result.no_baskets = str(settings.mechanics_file)
         result.dropped = site.drop_leagues(con, name)
     return result

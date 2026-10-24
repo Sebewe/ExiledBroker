@@ -156,3 +156,36 @@ def test_one_league_endpoints_do_not_grow_with_history(loaded, path):
     after, _ = endpoint_reads(path)
     allowed = 4 * PER_LEAGUE_ROWS
     assert after.rows <= before.rows + allowed, f"{before.rows} → {after.rows}: {describe(after)}"
+
+
+# --- The hosted pass's Farming history check (workstream I) ---------------------------
+# Every pipeline pass asks item_history.refresh whether a finished league needs
+# capturing: two small queries (the captured leagues, the complete leagues), a row per
+# league, whatever the history holds. Today on the replay: 2 queries, 0 rows; with four
+# leagues captured, 4 rows. A capture itself happens about once a league.
+FARMING_CHECK_QUERIES = 3
+
+
+def test_the_farming_history_check_reads_a_row_per_league(loaded):
+    from datetime import datetime
+
+    from exiledbroker.services import item_history
+
+    def check() -> db.Meter:
+        with db.session(loaded.db_path) as con, db.metered() as meter:
+            assert item_history.refresh(con, loaded, live="Mirage") == []
+        return meter
+
+    before = check()
+    assert len(before.queries) <= FARMING_CHECK_QUERIES and before.rows <= 2, describe(before)
+    with db.session(loaded.db_path) as con:  # four leagues' history: ~37k rows
+        for i in range(4):
+            con.execute(
+                "INSERT INTO item_day_history SELECT ?, ?, 'currency:item-' || n, d, 1.0, 0.01, "
+                "10.0, 24, 0.01, 24 FROM range(660) t(n), range(14) s(d)",
+                [f"Past{i}", datetime(2025, 1 + i, 1)],
+            )
+    after = check()
+    assert len(after.queries) <= FARMING_CHECK_QUERIES, describe(after)
+    assert after.rows <= before.rows + 4 * PER_LEAGUE_ROWS, describe(after)
+    assert after.bytes < 500, describe(after)

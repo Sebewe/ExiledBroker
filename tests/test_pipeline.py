@@ -21,8 +21,8 @@ from exiledbroker.config import Settings
 from exiledbroker.ingest import currency_exchange as cx
 from exiledbroker.ingest import pipeline
 from exiledbroker.ingest.live import sync_live
-from exiledbroker.services import launch_picks
-from exiledbroker.storage import db, site
+from exiledbroker.services import item_history, launch_picks
+from exiledbroker.storage import backup, db, site
 from test_currency_exchange import FakeExchange, client_for
 from test_live_pipeline import LAUNCH, PAGES, store_reference_data
 
@@ -38,11 +38,12 @@ def at(hours_in: int):
     return cx.from_ts(LAUNCH + hours_in * 3600) + timedelta(minutes=10)
 
 
-def _old_league_history(con) -> None:
+def _old_league_history(con, league: str = "Old") -> None:
     """A past league's Launch history, as `eb launch picks` captures it locally."""
-    con.execute(
-        "INSERT INTO launch_history VALUES ('Old', ?, 'currency:chaos-orb', 'day1', 0.01, 5)",
-        [datetime(2026, 1, 1)],
+    db.execute(
+        con,
+        "INSERT INTO launch_history VALUES (?, ?, 'currency:chaos-orb', 'day1', 0.01, 5)",
+        [league, datetime(2026, 1, 1)],
     )
 
 
@@ -181,6 +182,64 @@ def test_a_replaced_league_is_dropped_once_the_new_one_has_data(seeded):
         assert launch_picks.captured_leagues(con) == ["Old"]  # its history stays
 
 
+def _past_league(con) -> None:
+    """A finished league in the site's database (on either engine): the replayed hours
+    a year earlier, with a Chaos price 13.5 days in, so its fortnight is complete
+    (`launch_picks.complete_leagues`). Not followed, so the pass keeps Mirage."""
+    db.execute(
+        con,
+        "INSERT INTO league (id, game, name, start_at, launched_at, kind, exchange_tracked) "
+        "SELECT 'poe1-past', game, 'Past', start_at - INTERVAL '365 days', "
+        "launched_at - INTERVAL '365 days', kind, FALSE FROM league WHERE id = 'poe1-mirage'",
+    )
+    cols = backup._columns(con, "cross_market_hour")
+    picked = ", ".join(
+        {"league_id": "'poe1-past'", "observed_at": "observed_at - INTERVAL '365 days'"}.get(c, c)
+        for c in cols
+    )
+    db.execute(
+        con,
+        f"INSERT INTO cross_market_hour ({', '.join(cols)}) SELECT {picked} "
+        "FROM cross_market_hour WHERE league_id = 'poe1-mirage'",
+    )
+    start = db.scalar(con, "SELECT start_at FROM league WHERE id = 'poe1-past'")
+    db.execute(
+        con,
+        "INSERT INTO price_observation (item_id, league_id, observed_at, day_offset, "
+        "chaos_value, source) VALUES (?, 'poe1-past', ?, 13.5, 1.0, ?)",
+        [launch_picks.CHAOS, start + timedelta(days=13.5), site.HOURLY],
+    )
+
+
+def test_a_finished_league_is_captured_into_the_farming_history_once(seeded):
+    s, server = seeded
+    with db.session(s.db_path) as con:
+        _past_league(con)
+    first, _ = run(s, server, 8)
+    assert first.league == LEAGUE and first.farming_from == ["Past"]
+    assert "Farming history captured for Past." in str(first)
+    with db.session(s.db_path, read_only=True) as con:
+        rows = db.scalar(con, "SELECT count(*) FROM item_day_history WHERE league = 'Past'")
+        assert item_history.captured_leagues(con) == ["Past"]
+    assert rows > 0  # the replay's basket items, day 0
+    for hours_in in (9, 10):  # every later pass only checks
+        later, _ = run(s, server, hours_in)
+        assert later.farming_from == [] and "Farming history" not in str(later)
+    with db.session(s.db_path, read_only=True) as con:
+        assert db.scalar(con, "SELECT count(*) FROM item_day_history") == rows
+
+
+def test_without_baskets_the_farming_history_waits(seeded):
+    s, server = seeded
+    with db.session(s.db_path) as con:
+        _past_league(con)
+    missing = s.model_copy(update={"mechanics_file": s.data_dir / "nowhere.toml"})
+    result, _ = run(missing, server, 8)
+    assert result.farming_from == [] and "the Farming history waits" in str(result)
+    with db.session(s.db_path, read_only=True) as con:  # not "captured" as empty
+        assert item_history.captured_leagues(con) == []
+
+
 # --- On Postgres, seeded with `eb site seed --hosted` ---------------------------------
 
 
@@ -287,14 +346,23 @@ def test_a_pass_never_copies_a_whole_table_out_of_postgres(local, pg, monkeypatc
     correlated subquery by copying the league's rows out (the hosted pass read ~100 MB
     that way; across the internet to Supabase, ~70 GB a month). Those statements run on
     Postgres itself (`db.pushdown`); what DuckDB still copies from the big tables must
-    be limited to some hours or items."""
+    be limited to some hours or items. The pass also captures a finished league into
+    the Farming history (`item_history.refresh`), on Postgres too. (The league is in
+    the Launch history already: `launch_picks.capture` copies a league's fortnight of
+    kept prices out, filtered by league and day, once a league.)"""
+    import psycopg
+
     s, server = local
     _seed(s, pg["eb_site"])
+    with psycopg.connect(pg["eb_site"], autocommit=True) as con:
+        _past_league(con)
+        _old_league_history(con, "Past")
     hosted = s.model_copy(update={"database_url": pg["eb_site"]})
     monkeypatch.setattr(db, "SHOW_PG_QUERIES", True)
     capfd.readouterr()
     result, requests = run(hosted, server, 9)
     assert result.live.hours_added == 3 and len(requests) == 3
+    assert result.farming_from == ["Past"]
     ctypes.CDLL(None).fflush(None)  # DuckDB prints from C, to stderr
     sent = capfd.readouterr().err
     copies = [q for q in sent.split("\n\n") if q.lstrip().startswith("COPY (SELECT")]

@@ -5,11 +5,14 @@ hosted pipeline.
   Launch history and picks and (`pages=True`) the leagues' raw pages, so a new server
   starts from what we already have and fetches only what's newer.
 - `drop_leagues` (the pipeline, after a league switch): Postgres keeps only the live
-  league ("store only what the site reads").
+  league ("store only what the site reads"). The tables built from past leagues (the
+  Launch history, the Farming page's `item_day_history`, the reports) stay.
 
 Re-seeding a league replaces that league's rows only. Shared tables (items, card
 and price mappings, reference data) are upserted, so other leagues' rows survive. The
-launch tables, ranked from past leagues the site doesn't hold, are replaced whole."""
+tables built from past leagues the site doesn't hold (the launch tables, the Farming
+page's history, the backtest and farming reports) are replaced whole: the local copy
+holds every captured league (`eb launch picks`, `eb farming history`)."""
 
 from dataclasses import dataclass
 from datetime import UTC
@@ -33,13 +36,15 @@ SHARED_TABLES = {
     "reference_data": ["key"],
 }
 # Derived from the research database's history and replaced whole (services/launch_picks,
-# analysis/backtest).
+# analysis/backtest, services/item_history, services/farming). A league switch keeps them.
 REPLACED_TABLES = [
     "launch_history",
     "launch_window",
     "launch_pick",
     "launch_pick_league",
     "backtest_report",
+    "item_day_history",
+    "farming_report",
 ]
 
 
@@ -130,7 +135,7 @@ def seed(
                 "SELECT count(*) FROM information_schema.tables WHERE table_name = ?",
                 [table],
             ):
-                continue  # `eb launch picks` hasn't been run locally yet
+                continue  # an older local copy: `eb launch picks` / `eb farming` not run yet
             cols = _columns(duck, table)
             data = db.rows(duck, f"SELECT {', '.join(cols)} FROM {table}")
             _copy(pg, table, cols, data)
@@ -170,7 +175,9 @@ def _seed_pages(duck, pg, settings: Settings, ids: list[str]) -> int:
 def drop_leagues(con, keep: str) -> list[str]:
     """Delete every other league's site rows (on the pipeline's connection), and stop
     following them, once `keep` is the live league. Returns the leagues dropped.
-    Runs on the site's database itself (`db.pushdown`), not through DuckDB's scanner."""
+    What was built from them (REPLACED_TABLES: the Launch history, item_day_history)
+    stays. Runs on the site's database itself (`db.pushdown`), not through DuckDB's
+    scanner."""
     con = db.pushdown(con)
     q = (
         "SELECT DISTINCT l.id, l.name FROM ingest_load il JOIN league l ON l.id = il.league_id "
