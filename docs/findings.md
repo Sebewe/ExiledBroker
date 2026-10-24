@@ -160,6 +160,46 @@ The tables below are from the first version. The Market recap lists the latest h
 - **The open question** is the same as for the loops (finding 2): it isn't confirmed whether GGG's hourly lowest and highest ratios are executed trades or listings. If they are trades that happen in any size, this is the best hourly strategy tested. If they are mostly single small trades or stale listings, it's the strict row: small, slow and not consistent across leagues. Hourly data can't settle it; a few hours of real orders in-game would.
 - **Not yet modelled:** capital sitting in unsold positions against the 100-Divine bank (holds of up to a day can tie up far more than one hour's trades), and several traders quoting the same items.
 
+## 6. Hour of day: sell in the evening (UTC) in the first week, buy Divines around noon; after that it barely matters
+
+*`analysis/hours.py` (`python -m exiledbroker.analysis.hours`; `hours.report` is the Farming page's `hours`, [farming.md](farming.md)). Settlers, Mercenaries, Keepers, Mirage and Allflame, first 14 days each, plus Allflame's days 76–90; liquid items only (traded in 80% of the hours, median ≥ 300c an hour; 350–580 items a league). Built 2026-10-24. Workstream B.*
+
+**Method.** Each item-hour's log price minus the item's mean over the 25 hours centred on it, so a launch-week trend doesn't pose as a time-of-day effect (a UTC-day mean would make late hours look dear whenever prices rise). The median over items per day and hour is then averaged over days. The noise floor shuffles the hours within each day 500 times; the "gain" must beat its 95th percentile. Stability is how well each league's profile matches the other leagues' (mean leave-one-league-out correlation). The effect fades fast as a league ages, so the league is split into phases: days 0–2, 2–7, 7–14 and later.
+
+**Pooled, by UTC hour** (gain = the best hour over the 24-hour average; gap = best over worst):
+
+| Phase | Days (league-days) | Chaos market | Divine market | The Divine's Chaos price | Stability |
+|---|---|---|---|---|---|
+| Days 0–2 | 10 | **+5.4%** at 23:00, worst 06:00 (gap 7.8%; floor 3.7%) | noise (floor 4.8%) | noise (floor 10%) | 0.69 |
+| Days 2–7 | 30 | **+2.1%** at 23:00, worst 06:00 (gap 3.8%; floor 1.2%) | **+1.7%** at 21:00, worst 08:00 (gap 4.0%) | **+4.1%** at 23:00, **cheapest at 12:00** (gap 8.1%) | 0.75 |
+| Days 7–14 | 40 | +0.8% at 19:00 (gap 1.6%): **small** | +0.6%: small | **+2.2%** at 23:00, cheapest at 12:00 (gap 4.3%) | 0.36 |
+| Later (Allflame only) | 14 | +1.6% at 22:00, just over its floor (1.4%): small, one league | noise | noise | — |
+
+- **Items are dearest in the evening, UTC (18:00–00:00), and cheapest early morning (04:00–09:00)**, in every league: each league's own best hour is between 18:00 and 00:00 on days 2–7, and the profiles agree across leagues (0.75). The size shrinks with the league: about 5% on days 0–2, 2% on days 2–7, under 1% from day 7.
+- **The Divine has its own, stronger cycle**: dear in Chaos at 22:00–01:00 and cheap at 10:00–13:00, by ±4% on days 2–7 and ±2% on days 7–14. Converting Chaos to Divines around noon UTC instead of midnight saves about 8% on days 2–7 and 4% on days 7–14. This is the largest effect that lasts into the second week.
+- **Don't convert Chaos prices to Divines to judge the Divine market.** Chaos price ÷ the Divine rate peaks at 12:00 (because the Divine is cheap then), but the Divine market's own prices peak in the evening like the Chaos market's, more weakly (correlation of the two 0.3 on days 2–7, 0.06 on days 7–14). The gap between them is a daily cycle in the Chaos↔Divine loops (finding 2), worth a look for loop timing later.
+- **Volume** is twice as high at 15:00–21:00 as at 02:00–07:00 (5.5% of the day an hour against 2.8%), the same on days 2–7, 7–14 and later. 38% of a day's Chaos trades in those 7 evening hours. So the best hours to sell are also the deepest: a stack moves the price least then (finding 7). On days 0–2 the share by hour is only launch-day growth (tenfold), so the page shows none.
+- **Mechanics differ.** Where a basket's own profile holds across leagues (stability ≥ 0.5) and beats its noise floor, it's much stronger than the pool, and not always in the evening. On workstream A's draft baskets (outputs plus legacy outputs, `farm-a` 8505eca, before the user's review):
+
+  | Basket (items) | Days 0–2 | Days 2–7 | Days 7–14 |
+  |---|---|---|---|
+  | Essence (42) | +8.9% at 21:00 | **+9.2% at 23:00**, worst 06:00 (stability 0.90) | +4.2% at 22:00 (0.67) |
+  | Eldritch altars (12) | +11% at 00:00 | +5.8% at 22:00 (0.82) | |
+  | Legion (16) | | **+12.9% at 11:00**, worst 02:00 (0.85) | |
+  | Blight (10), Delve (29) | +20%, +13% at 22–23:00 | | |
+  | Atlas memories (12), Necropolis (5) | | | +3.3% at 21:00, +5.9% at 11:00 |
+  | Heist (3), Betrayal (3) | evening | evening (0.85, 0.76) | Betrayal +3.9% at 01:00 |
+
+  Breach, Delirium, Ritual, Runegrafts, Harvest, Harbinger, Expedition, Abyss, Deepwater and the divination cards don't hold across leagues: the page uses the pooled profile for them. Essence, Eldritch altars and Legion come out the same on the provisional name rules (`hours.PROVISIONAL`, which also counted each mechanic's scarabs); there Ultimatum and Abyss looked stable too, but that came from their scarabs, which A lists as inputs. Heist and Betrayal rest on 3 items each. The stable list must be rebuilt (`hours.report`) once the baskets are final.
+- **Per item is noise.** Forecasting a league's item profiles from the same items in the other leagues does worse than forecasting no pattern in 3 of 5 leagues (mean squared error 28.5 vs 19.4 in Settlers, 31.3 vs 28.4 in Mercenaries, 39.5 vs 38.2 in Allflame, ×10⁻⁴); the pooled profile is about as good as nothing in all five (`hours.item_vs_pooled`).
+- **Day of week**: not separable here. Every league launches on a Friday, so in a launch fortnight the weekday is the league's day, and the launch-day surge swamps any weekly rhythm. A side note only; Allflame's later days (two weeks) are too few to say.
+
+**Decided (for the Farming page):**
+- **Pooled, plus a basket's own profile where it is stable.** Not per item. The page shows the pooled profile, and a basket's own only when it holds across leagues and beats its noise floor (`report[phase]['mechanics'][m]['shown']`).
+- **Small** means the best hour beats the 24-hour average by under 1% (about one order step, 1c on 100c, and well inside an hour's typical move), or doesn't beat the noise floor, or comes from fewer than 2 leagues. The page then says "time of day barely matters" rather than hiding the chart. By that rule the pooled Chaos price is worth it on days 0–7 and small after; the Divine's cycle is worth it on days 2–14.
+- **From past leagues, per phase, shipped as a constant** (built locally like the backtest report), not from the live league's recent days. Forecasting days 7–14 from the league's own days 4–7 (`hours.recent_vs_past`) does worse than predicting nothing in 3 of 4 leagues (Keepers 1.12 vs 0.24, Allflame 0.99 vs 0.22 ×10⁻⁴), because the effect shrinks after the first week; earlier leagues' days 7–14 are about as good as nothing, which is the right size. The page picks the phase from the live league's `day_offset`; before launch it shows days 0–2. The later phase rests on one league and stays "small" until a second league has later days.
+- **The contract's `hours` grew** (in [farming.md](farming.md#the-response-contract-fixed-first-so-f-g-and-h-work-in-parallel)): the phase, the Divine market's profile, the Divine's own cycle (when to convert), and the stable baskets' profiles. Fractions, not log points.
+
 ## Still to do
 
 Run the tools across all four exchange-era leagues and write up the patterns that repeat.
