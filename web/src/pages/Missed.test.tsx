@@ -136,18 +136,30 @@ describe('Market recap', () => {
   it('recaps the last hour without promising a payout', async () => {
     serve({ '/api/status': status('2026-10-22T08:00:00Z'), '/api/missed/Allflame': { body: RECAP } })
     renderPage()
-    const hero = await screen.findByRole('region', { name: 'Recap' })
-    expect(within(hero).getByText('Loops that paid').nextSibling?.textContent).toBe('2')
-    expect(within(hero).getByText('Domination Scarab')).toBeInTheDocument() // the biggest move
+    // Investment options, at a glance, in the Backtest's order.
+    const options = await screen.findByRole('region', { name: 'Investment options' })
+    expect(within(options).getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual([
+      'Launch picks',
+      'Volatile flips',
+      'Loops',
+      'Card turn-ins',
+    ])
+    expect(within(options).getByText('up to +31%')).toBeInTheDocument() // the best flip's margin
+    expect(within(options).getAllByText('Best odds')).toHaveLength(3)
+    expect(screen.queryByText(/Things you could look into/)).not.toBeInTheDocument()
     expect(screen.queryByText(/on the table/)).not.toBeInTheDocument()
-    expect(screen.getByRole('region', { name: 'Options' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /Backtest/ })).toHaveAttribute('href', '/backtest')
+    expect(within(options).getByRole('link', { name: /Backtest/ })).toHaveAttribute('href', '/backtest')
     expect(screen.getByText(/^up 3h running$/)).toBeInTheDocument()
     expect(screen.getByText(/^down 2h running$/)).toBeInTheDocument()
+    // Market Movers: no explanation needed; more from the window's ticker list on request.
+    const moversHeading = screen.getByRole('heading', { name: 'Market Movers' })
+    const movers = moversHeading.closest('section')!
+    expect(within(movers).queryByText(/Context for what you check/)).not.toBeInTheDocument()
+    expect(within(movers).queryByText('Ancient Orb')).toBeInTheDocument() // falling, from the ticker list
     // Volatile flips come before the loops, their rates behind Show rates too.
     const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)
     expect(headings.indexOf('Volatile flips')).toBe(headings.indexOf('Loops that paid') - 1)
-    const flips = screen.getByRole('heading', { name: 'Volatile flips' }).closest('section')!
+    const flips = screen.getByRole('heading', { level: 2, name: 'Volatile flips' }).closest('section')!
     expect(within(flips).getByText('90%')).toBeInTheDocument() // went through, recently
     // The flip's margin at its orders: 110c over 84c, and 5.5c over 4.2c (11c for 2 over 21c for 5).
     expect(within(flips).getAllByText('+31%')).toHaveLength(2)
@@ -206,7 +218,7 @@ describe('Market recap', () => {
     const body = RECAP.map((w) => ({ ...w, loops, loops_paid: 4 }))
     serve({ '/api/status': status('2026-10-22T08:00:00Z'), '/api/missed/Allflame': { body } })
     renderPage()
-    const section = (await screen.findByRole('heading', { name: 'Loops that paid' })).closest('section')!
+    const section = (await screen.findByRole('heading', { level: 2, name: 'Loops that paid' })).closest('section')!
     expect(within(section).getAllByRole('heading', { level: 3 })).toHaveLength(3) // the top 3
     expect(within(section).getAllByText('15 of 20 tries in the last 3 days, by the optimistic fill rule')).toHaveLength(3)
     // The rates stay hidden until asked for.
@@ -239,10 +251,31 @@ describe('Market recap', () => {
     expect(within(section).getByRole('heading', { name: 'Loop item 4' })).toBeInTheDocument()
   })
 
+  it('shows more market movers on request, from the list already sent', async () => {
+    const many = Array.from({ length: 6 }, (_, i) => ({
+      item_id: `currency:r${i}`,
+      name: `Riser ${i}`,
+      price: 10 + i,
+      before: 10,
+      change: (i + 1) / 10,
+      volume: 5000,
+      streak: 1,
+    }))
+    const body = RECAP.map((w) => ({ ...w, rising: many.slice(3).reverse(), ticker: many }))
+    serve({ '/api/status': status('2026-10-22T08:00:00Z'), '/api/missed/Allflame': { body } })
+    renderPage()
+    const movers = (await screen.findByRole('heading', { name: 'Market Movers' })).closest('section')!
+    expect(within(movers).queryByText('Riser 0')).not.toBeInTheDocument() // the top 3 risers first
+    fireEvent.click(within(movers).getByRole('button', { name: 'Show more' }))
+    expect(within(movers).getByText('Riser 0')).toBeInTheDocument()
+    // The look-back stays pinned to the screen, a slider in a small bar.
+    expect(screen.getByRole('slider').closest('.fixed')).not.toBeNull()
+  })
+
   it('switches look-back without asking the server again', async () => {
     serve({ '/api/status': status('2026-10-22T08:00:00Z'), '/api/missed/Allflame': { body: RECAP } })
     renderPage()
-    await screen.findByRole('region', { name: 'Recap' })
+    await screen.findByRole('region', { name: 'Investment options' })
     const calls = vi.mocked(fetch).mock.calls.length
     fireEvent.change(screen.getByRole('slider'), { target: { value: '3' } })
     expect(await screen.findByText('paid every hour')).toBeInTheDocument()
@@ -256,7 +289,7 @@ describe('Market recap', () => {
     renderPage()
     expect(await screen.findByText(/Allflame is live\. First trades published in about/)).toBeInTheDocument()
     expect(screen.getByRole('timer').textContent).toMatch(/^(59:\d\d|01:00:00)$/)
-    expect(screen.queryByRole('region', { name: 'Recap' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Investment options' })).not.toBeInTheDocument()
   })
 
   it('takes over from the old league as soon as the new one starts', async () => {
@@ -275,7 +308,7 @@ describe('Market recap', () => {
     })
     renderPage()
     expect(await screen.findByText(/^Next launches in 1d 0[12]:/)).toBeInTheDocument()
-    expect(await screen.findByRole('region', { name: 'Recap' })).toBeInTheDocument()
+    expect(await screen.findByRole('region', { name: 'Investment options' })).toBeInTheDocument()
   })
 
   it('says the old league has ended, not that the feed stopped, once the next is announced', async () => {
@@ -288,7 +321,7 @@ describe('Market recap', () => {
     renderPage()
     expect(await screen.findByText('Allflame has ended')).toBeInTheDocument()
     expect(screen.queryByText('Data may be out of date')).not.toBeInTheDocument()
-    expect(await screen.findByRole('region', { name: 'Recap' })).toBeInTheDocument()
+    expect(await screen.findByRole('region', { name: 'Investment options' })).toBeInTheDocument()
   })
 
   it('says it is early when the league has only a few hours of trades', async () => {
@@ -299,7 +332,7 @@ describe('Market recap', () => {
     })
     renderPage()
     expect(await screen.findByText("Looks like it's early in the league")).toBeInTheDocument()
-    expect(await screen.findByText('nothing liquid moved')).toBeInTheDocument()
+    expect(await screen.findByRole('region', { name: 'Investment options' })).toBeInTheDocument()
     expect(screen.getByText('Nothing liquid rose.')).toBeInTheDocument()
     expect(screen.getByText(/No loop with enough volume beat a 2% edge/)).toBeInTheDocument()
     expect(screen.getByText(/No card turn-in paid/)).toBeInTheDocument()
@@ -308,7 +341,7 @@ describe('Market recap', () => {
   it('drops the early note once the league has a few hours behind it', async () => {
     serve({ '/api/status': status('2026-10-22T08:00:00Z'), '/api/missed/Allflame': { body: RECAP } })
     renderPage()
-    await screen.findByRole('region', { name: 'Recap' })
+    await screen.findByRole('region', { name: 'Investment options' })
     expect(screen.queryByText("Looks like it's early in the league")).not.toBeInTheDocument()
     // The key item names the opportunity, not a rank number.
     expect(screen.getByRole('heading', { name: 'Reverent Fragment' })).toBeInTheDocument()

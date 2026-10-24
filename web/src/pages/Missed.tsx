@@ -1,4 +1,4 @@
-import { Activity, AlertTriangle, ArrowDownRight, ArrowUpRight, CandlestickChart, FlaskConical, Layers, Repeat, Tag, Timer, Waves, X } from 'lucide-react'
+import { Activity, AlertTriangle, ArrowDown, ArrowDownRight, ArrowRight, ArrowUpRight, CandlestickChart, Clock, FlaskConical, Layers, Repeat, Tag, Timer, Waves, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import type { LiveLeague, MissedCard, MissedFlip, MissedLoop, MissedWindow, Mover, Upcoming } from '../api/client'
@@ -24,8 +24,6 @@ import { useNumberParam } from '../lib/useParam'
 const LOOKBACKS = [1, 2, 3]
 // Loops and cards shown before "Show all" (the server sends every one that paid).
 const TOP = 3
-// Went through at least this often recently: counted as likely in the options.
-const LIKELY = 0.5
 // An edge this big is usually one trade at an odd ratio, not a price anyone can repeat.
 const ODD_EDGE = 0.5
 // Hours of trades before the recap has much to say: the exchange is nearly empty at launch.
@@ -166,12 +164,14 @@ export default function Missed() {
         (queryFallback(summary, 4) ??
           (w ? (
             <>
-              <Hero w={w} flips={lastHour?.flips ?? []} onHours={setHours} />
-              <Options w={w} flips={lastHour?.flips ?? []} />
+              <InvestmentOptions w={w} flips={lastHour?.flips ?? []} />
               <Flips flips={lastHour?.flips ?? []} money={money} />
               <Loops w={w} money={money} rate={info.divine_chaos} />
               <Cards w={w} money={money} />
-              <KeyMovement w={w} money={money} />
+              <MarketMovers w={w} money={money} />
+              <LookBack hours={w.hours} onHours={setHours} />
+              {/* Room at the bottom, so the pinned look-back never covers the last cards. */}
+              <div aria-hidden className="h-10" />
             </>
           ) : (
             <Notice kind="info">Nothing to recap yet.</Notice>
@@ -180,13 +180,130 @@ export default function Missed() {
   )
 }
 
-function span(w: MissedWindow) {
-  const end = new Date(Date.parse(w.latest_hour) + 3_600_000).toISOString()
-  const start = new Date(Date.parse(w.latest_hour) - (w.hours - 1) * 3_600_000).toISOString()
-  return `${utcHour(start)} – ${utcHour(end).replace(/^.*, /, '')}`
+const lastHours = (n: number) => (n === 1 ? 'the last hour' : `the last ${n} hours`)
+
+/** The look-back, pinned to the bottom of the screen so it stays at hand while scrolling.
+ *  A small pill, centred, so it never covers much of the page. */
+function LookBack({ hours, onHours }: { hours: number; onHours: (h: number) => void }) {
+  return (
+    <div className="pointer-events-none fixed inset-x-0 bottom-4 z-30 flex justify-center px-4">
+      <label className="pointer-events-auto flex items-center gap-3 rounded-full border border-accent/40 bg-surface-2/95 px-4 py-2 text-xs font-medium text-muted shadow-xl shadow-black/40 backdrop-blur">
+        <Clock aria-hidden className="size-3.5 text-accent" />
+        Look back
+        <input
+          type="range"
+          min={1}
+          max={3}
+          step={1}
+          value={hours}
+          onChange={(e) => onHours(Number(e.target.value))}
+          className="w-24 cursor-pointer accent-[var(--color-accent)] sm:w-32"
+          aria-valuetext={`${hours} hours`}
+        />
+        <span className="num w-5 text-sm font-semibold text-text">{hours}h</span>
+      </label>
+    </div>
+  )
 }
 
-const lastHours = (n: number) => (n === 1 ? 'the last hour' : `the last ${n} hours`)
+/** The likeliest share of the items' orders that went through recently (null: too few tries). */
+const bestChance = (xs: { chance?: number | null }[]) => xs.reduce<number | null>((best, x) => (x.chance != null && x.chance > (best ?? -1) ? x.chance : best), null)
+
+/** The four ways to put money in, at a glance: what's available now and how likely it is
+ *  to go through, best first by the backtest. Details are in each section below. */
+function InvestmentOptions({ w, flips }: { w: MissedWindow; flips: MissedFlip[] }) {
+  const topMargin = flips.length ? Math.max(...flips.map((f) => f.ask / f.bid - 1)) : null
+  return (
+    <section aria-label="Investment options" className="flex flex-col gap-3">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="text-lg font-semibold">Investment options</h2>
+        <Link to="/backtest" className="flex items-center gap-1 text-xs text-faint hover:text-accent">
+          <FlaskConical aria-hidden className="size-3.5 text-accent" /> ranked by the Backtest
+        </Link>
+      </div>
+      <ol className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <OptionCard rank={1} icon={CandlestickChart} title="Launch picks" tag="Hold for days" to="/launch" link="Launch market">
+          <Big value="Day 1" label="buy, sell days 12–14" />
+        </OptionCard>
+        <OptionCard rank={2} icon={Activity} title="Volatile flips" tag="List and wait" href="#flips" link="The flips">
+          <Big value={String(flips.length)} label="to flip now" extra={topMargin != null ? `up to ${signedPct(topMargin, 0)}` : undefined} />
+          <Likely value={bestChance(flips)} />
+        </OptionCard>
+        <OptionCard rank={3} icon={Repeat} title="Loops" tag="Every hour" href="#loops" link="The loops">
+          <Big value={String(w.loops.length)} label="paid lately" />
+          <Likely value={bestChance(w.loops)} />
+        </OptionCard>
+        <OptionCard rank={4} icon={Layers} title="Card turn-ins" tag="Every hour" href="#cards" link="The cards">
+          <Big value={String(w.cards.length)} label="paid lately" />
+          <Likely value={bestChance(w.cards)} />
+        </OptionCard>
+      </ol>
+    </section>
+  )
+}
+
+function OptionCard({
+  rank,
+  icon: Icon,
+  title,
+  tag,
+  children,
+  link,
+  href,
+  to,
+}: {
+  rank: number
+  icon: typeof Waves
+  title: string
+  tag: string
+  children: ReactNode
+  link: string
+  href?: string
+  to?: string
+}) {
+  const cls = 'mt-auto flex items-center gap-1 text-sm text-accent hover:text-accent-strong'
+  return (
+    <li className="relative flex flex-col gap-3 overflow-hidden rounded-xl border border-border bg-surface p-4">
+      <span aria-hidden className="num absolute top-2 right-3 text-4xl font-bold text-text/5">
+        {rank}
+      </span>
+      <div className="flex items-center gap-2.5">
+        <span className="grid size-8 place-items-center rounded-lg bg-accent/15 text-accent">
+          <Icon aria-hidden className="size-4" />
+        </span>
+        <div className="min-w-0">
+          <h3 className="font-semibold">{title}</h3>
+          <p className="text-[11px] font-medium tracking-wide text-faint uppercase">{tag}</p>
+        </div>
+      </div>
+      {children}
+      {to ? (
+        <Link to={to} className={cls}>
+          {link} <ArrowRight aria-hidden className="size-3.5" />
+        </Link>
+      ) : (
+        <a href={href} className={cls}>
+          {link} <ArrowDown aria-hidden className="size-3.5" />
+        </a>
+      )}
+    </li>
+  )
+}
+
+function Big({ value, label, extra }: { value: string; label: string; extra?: string }) {
+  return (
+    <div className="flex items-baseline gap-2">
+      <span className="num text-3xl font-semibold tracking-tight text-text">{value}</span>
+      <span className="text-xs text-muted">{label}</span>
+      {extra && <span className="num ml-auto text-sm font-semibold text-positive">{extra}</span>}
+    </div>
+  )
+}
+
+/** The likeliest item's recent go-through share, as a bar. */
+function Likely({ value }: { value: number | null }) {
+  return <Meter label="Best odds" value={value} hint="How often the likeliest one's orders went through in the last 3 days (optimistic fills)" />
+}
 
 /** A news-style strip of the last hour's movers, scrolling right to left. Two copies of
  *  the row make the loop seamless; the second is hidden from screen readers. */
@@ -223,142 +340,6 @@ function Ticker({ items, money }: { items: Mover[]; money: Money }) {
   )
 }
 
-function Hero({ w, flips, onHours }: { w: MissedWindow; flips: MissedFlip[]; onHours: (h: number) => void }) {
-  const mover = [...w.rising, ...w.falling].sort((a, b) => Math.abs(b.change) - Math.abs(a.change))[0]
-  return (
-    <section className="flex flex-col gap-4 rounded-xl border border-accent/40 bg-gradient-to-br from-accent/10 via-surface to-surface p-5" aria-label="Recap">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-sm text-muted">Trades in {lastHours(w.hours)}</p>
-          <p className="num text-2xl font-semibold tracking-tight sm:text-3xl">{span(w)}</p>
-        </div>
-        <label className="flex w-full max-w-56 flex-col gap-1.5 text-xs font-medium text-muted">
-          <span className="flex justify-between">
-            Look back <span className="num text-text">{w.hours}h</span>
-          </span>
-          <input
-            type="range"
-            min={1}
-            max={3}
-            step={1}
-            value={w.hours}
-            onChange={(e) => onHours(Number(e.target.value))}
-            className="w-full cursor-pointer accent-[var(--color-accent)]"
-            aria-valuetext={`${w.hours} hours`}
-          />
-          <span className="flex justify-between text-[11px] text-faint">
-            {LOOKBACKS.map((h) => (
-              <span key={h}>{h}h</span>
-            ))}
-          </span>
-        </label>
-      </div>
-      <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Fact label="Volatile flips" value={String(flips.length)} note="liquid items that traded across a wide range" />
-        <Fact label="Loops that paid" value={String(w.loops_paid)} note="beat a 2% edge at the hour's worst prices" />
-        <Fact label="Card turn-ins that paid" value={String(w.cards_paid)} note="a full set cost less than its reward" />
-        <Fact
-          label="Biggest move"
-          value={mover ? signedPct(mover.change, 0) : '–'}
-          note={mover ? mover.name : 'nothing liquid moved'}
-          tone={mover ? (mover.change > 0 ? 'text-positive' : 'text-negative') : 'text-muted'}
-        />
-      </dl>
-    </section>
-  )
-}
-
-function Fact({ label, value, note, tone = 'text-text' }: { label: string; value: string; note: string; tone?: string }) {
-  return (
-    <div className="rounded-lg border border-border bg-surface/60 px-3 py-2">
-      <dt className="text-xs text-muted">{label}</dt>
-      <dd className={`num text-xl font-semibold ${tone}`}>{value}</dd>
-      <dd className="truncate text-[11px] text-faint" title={note}>
-        {note}
-      </dd>
-    </div>
-  )
-}
-
-/** Things a player could do with the recap, each with what the backtest saw. No promises. */
-function Options({ w, flips: flipList }: { w: MissedWindow; flips: MissedFlip[] }) {
-  const likely = (xs: { chance?: number | null }[]) => xs.filter((x) => (x.chance ?? 0) >= LIKELY).length
-  const loops = likely(w.loops)
-  const cards = likely(w.cards)
-  const flips = likely(flipList)
-  return (
-    <section aria-label="Options" className="flex flex-col gap-3">
-      <h2 className="text-lg font-semibold">Things you could look into</h2>
-      <ol className="grid gap-3 md:grid-cols-2">
-        <Option icon={CandlestickChart} title="Holding for a few days" to="/launch" link="Launch market →">
-          Early-league picks held for about ten days were the one tool that came out ahead at the worst prices in every past league we replayed. Past leagues
-          don't promise the next one.
-        </Option>
-        <Option icon={Activity} title="A volatile flip" href="#flips" link="See the flips ↓">
-          {flips ? `${flips} of the items below went through at least half the time recently. ` : ''}
-          Bid low in the hour's range, list high and lower the ask a little each hour until it sells. A bid that doesn't fill costs nothing: cancel it. It
-          needs a busy market, so it should work best in a league's first days.
-        </Option>
-        <Option icon={Repeat} title="A loop with limit orders" href="#loops" link="See the loops ↓">
-          {loops ? `${loops} of the loops below went through at least half the time recently. ` : ''}
-          In our replays, loops caught at the worst prices lost; limit orders priced from the last hour's range came out ahead when they filled. Check both
-          prices in-game first.
-        </Option>
-        <Option icon={Layers} title="A card turn-in with limit orders" href="#cards" link="See the cards ↓">
-          {cards ? `${cards} of the cards below went through at least half the time recently. ` : ''}
-          Bidding at the hour's low and asking the reward's average paid in our replays when the orders filled, but card orders fill less often than loops,
-          so expect many to sit unfilled.
-        </Option>
-      </ol>
-      <p className="flex items-center gap-1.5 text-xs text-faint">
-        <FlaskConical aria-hidden className="size-3.5 text-accent" />
-        <span>
-          What we replayed, and how:{' '}
-          <Link to="/backtest" className="text-accent hover:text-accent-strong">
-            Backtest
-          </Link>
-        </span>
-      </p>
-    </section>
-  )
-}
-
-function Option({
-  icon: Icon,
-  title,
-  children,
-  link,
-  href,
-  to,
-}: {
-  icon: typeof Waves
-  title: string
-  children: ReactNode
-  link: string
-  href?: string
-  to?: string
-}) {
-  const cls = 'mt-auto text-sm text-accent hover:text-accent-strong'
-  return (
-    <li className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-4">
-      <h3 className="flex items-center gap-2 font-semibold">
-        <Icon aria-hidden className="size-4 text-accent" />
-        {title}
-      </h3>
-      <p className="text-sm text-muted">{children}</p>
-      {to ? (
-        <Link to={to} className={cls}>
-          {link}
-        </Link>
-      ) : (
-        <a href={href} className={cls}>
-          {link}
-        </a>
-      )}
-    </li>
-  )
-}
-
 function Block({
   id,
   title,
@@ -389,19 +370,39 @@ function Block({
   )
 }
 
-function KeyMovement({ w, money }: { w: MissedWindow; money: Money }) {
+/** Rising first or falling first, biggest move first: the window's top movers plus the
+ *  rest of its ticker list (up to 24 movers either way, already in the response). */
+function movers(w: MissedWindow, up: boolean) {
+  const seen = new Set<string>()
+  return [...(up ? w.rising : w.falling), ...w.ticker.filter((m) => (up ? m.change > 0 : m.change < 0))]
+    .filter((m) => !seen.has(m.item_id) && seen.add(m.item_id))
+    .sort((a, b) => (up ? b.change - a.change : a.change - b.change))
+}
+
+function MarketMovers({ w, money }: { w: MissedWindow; money: Money }) {
+  const [all, setAll] = useState(false)
+  const rising = movers(w, true)
+  const falling = movers(w, false)
+  const more = Math.max(rising.length, falling.length) > TOP
+  const shown = (xs: Mover[]) => (all ? xs : xs.slice(0, TOP))
   return (
     <Block
-      title="What moved"
+      title="Market Movers"
       icon={Waves}
-      note="Context for what you check, not a tip: by the time an hour is published the move has happened, and in our replays buying the risers an hour later lost money."
+      more={
+        more && (
+          <button type="button" onClick={() => setAll(!all)} className="cursor-pointer text-sm text-accent hover:text-accent-strong">
+            {all ? 'Show the top 3' : 'Show more'}
+          </button>
+        )
+      }
     >
       <div className="grid gap-3 md:grid-cols-2">
         <Column title="Rising" hint={`Price now against ${w.hours}h before`}>
-          {w.rising.length ? w.rising.map((m) => <MoverRow key={m.item_id} m={m} money={money} />) : <Empty>Nothing liquid rose.</Empty>}
+          {rising.length ? shown(rising).map((m) => <MoverRow key={m.item_id} m={m} money={money} />) : <Empty>Nothing liquid rose.</Empty>}
         </Column>
         <Column title="Falling" hint={`Price now against ${w.hours}h before`}>
-          {w.falling.length ? w.falling.map((m) => <MoverRow key={m.item_id} m={m} money={money} />) : <Empty>Nothing liquid fell.</Empty>}
+          {falling.length ? shown(falling).map((m) => <MoverRow key={m.item_id} m={m} money={money} />) : <Empty>Nothing liquid fell.</Empty>}
         </Column>
       </div>
     </Block>
