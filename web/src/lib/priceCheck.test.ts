@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Horizon, Outlook, SeriesPoint } from '../api/client'
 import { alpha, type ChartTokens } from './chartOptions'
-import { BETWEEN_LAUNCHES, inRange, isLater, latestHour, outlookBand, priceChartOption, rangeBounds, reason } from './priceCheck'
+import { BETWEEN_LAUNCHES, dayLabel, inRange, isLater, latestHour, outlookBand, priceChartOption, rangeBounds, reason } from './priceCheck'
 
 const H = 3_600_000
 const T0 = Date.parse('2026-10-01T00:00:00Z')
@@ -61,6 +61,26 @@ describe('outlookBand', () => {
 })
 
 describe('priceChartOption', () => {
+  it('in the launch fortnight, counts days since launch and shades the hours before the first trade', () => {
+    // The item first traded 30 hours after launch.
+    const s = series(100, 30)
+    const bounds = rangeBounds(s, 'launch', at(0))!
+    type Axis = { type: string; min: number; max: number; name: string; axisLabel: { formatter: (v: number) => string } }
+    type S = { data: ([number, number | null] | { value: [number, number | null] })[]; markArea?: { data: [{ xAxis: number }, { xAxis: number }][] } }
+    const option = priceChartOption(TOKENS, inRange(s, bounds), bounds, null, bounds[0]) as { xAxis: Axis; series: S[] }
+    expect(option.xAxis.type).toBe('value')
+    expect(option.xAxis.name).toBe('Days since league start')
+    expect(option.xAxis.min).toBe(0)
+    expect(option.xAxis.axisLabel.formatter(3)).toBe('Day 3')
+    expect(option.series[0]!.data[0]).toEqual([30 / 24, 10])
+    expect(option.series[0]!.markArea!.data).toEqual([[{ xAxis: 0 }, { xAxis: 30 / 24 }]])
+    // Traded from the first hours: nothing to shade.
+    const early = series(100)
+    expect((priceChartOption(TOKENS, early, rangeBounds(early, 'launch', at(0))!, null, T0) as { series: S[] }).series[0]!.markArea).toBeUndefined()
+    expect(dayLabel(2 + 5 / 24)).toBe('Day 2 · 05h')
+    expect(dayLabel(3)).toBe('Day 3')
+  })
+
   it('puts Chaos on the left axis and Divines and the band on the right, in token colours', () => {
     const s = series(10)
     const option = priceChartOption(TOKENS, s, rangeBounds(s, '3d')!, outlookBand(s, OUTLOOK, 200)) as {

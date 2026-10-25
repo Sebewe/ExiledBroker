@@ -315,7 +315,7 @@ function PriceChart({ item, info }: { item: PriceCheckItem; info: LiveLeague }) 
     const band = latestShown ? outlookBand(item.series, item.outlook, info.divine_chaos) : null
     return { bounds, points, band }
   }, [item, range, info.launched_at, info.divine_chaos])
-  const build = useCallback((t: ChartTokens) => priceChartOption(t, points, bounds ?? [0, 0], band), [points, bounds, band])
+  const build = useCallback((t: ChartTokens) => priceChartOption(t, points, bounds ?? [0, 0], band, range === 'launch' && bounds ? bounds[0] : null), [points, bounds, band, range])
   const priced = points.filter(([, c, d]) => c != null || d != null).length
   return (
     <Block id="chart" title="Price this league" icon={LineChart}>

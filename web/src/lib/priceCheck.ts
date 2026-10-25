@@ -87,7 +87,13 @@ export const hasDivine = (series: SeriesPoint[]) => series.some(([, , d]) => d !
 /** The chart: Chaos on the left axis, Divines on the right (decided with the user: one
  *  chart shows when an item "rose" in Chaos only because the Divine moved), linear, UTC,
  *  lines broken at missing hours, and the outlook band (in Divines) past the latest hour. */
-export function priceChartOption(t: ChartTokens, points: SeriesPoint[], bounds: [number, number], band: BandPoint[] | null): EChartsCoreOption {
+export function priceChartOption(
+  t: ChartTokens,
+  points: SeriesPoint[],
+  bounds: [number, number],
+  band: BandPoint[] | null,
+  launchAt?: number | null,
+): EChartsCoreOption {
   const chaos = { ...line('Chaos', points.map(([at, c]) => [at, c])), yAxisIndex: 0, color: t.accent, lineStyle: { width: 2 }, tooltip: { valueFormatter: (v: number | null) => price(v, 'chaos') } }
   const divine = { ...line('Divine', points.map(([at, , d]) => [at, d])), yAxisIndex: 1, color: t.info, lineStyle: { width: 2 }, tooltip: { valueFormatter: (v: number | null) => price(v, 'divine') } }
   const iso = (ms: number) => new Date(ms).toISOString()
@@ -120,6 +126,7 @@ export function priceChartOption(t: ChartTokens, points: SeriesPoint[], bounds: 
       ]
     : []
   const axis = axisStyle(t)
+  if (launchAt != null) return sinceLaunch(t, { chaos, divine, bandSeries, axis, bounds, band, launchAt, first: latestFirst(points) })
   return {
     ...baseOptions(t),
     legend: { ...(baseOptions(t).legend as object), data: band ? ['Chaos', 'Divine', 'Outlook range'] : ['Chaos', 'Divine'] },
@@ -130,6 +137,79 @@ export function priceChartOption(t: ChartTokens, points: SeriesPoint[], bounds: 
       { type: 'value', name: 'Divine', position: 'right', scale: true, ...axis, splitLine: { show: false }, axisLabel: { ...axis.axisLabel, formatter: (v: number) => price(v, 'divine') } },
     ],
     series: [chaos, divine, ...bandSeries],
+  }
+}
+
+/** The first hour with a price, in ms, or null. */
+function latestFirst(points: SeriesPoint[]): number | null {
+  const p = points.find(([, c, d]) => c != null || d != null)
+  return p ? Date.parse(p[0]) : null
+}
+
+/** "Day 2 · 05h": a point in days since launch. */
+export function dayLabel(days: number): string {
+  const d = Math.floor(days + 1e-9)
+  const h = Math.round((days - d) * 24)
+  return h ? `Day ${d} · ${String(h).padStart(2, '0')}h` : `Day ${d}`
+}
+
+type Parts = {
+  chaos: { data: unknown[] } & Record<string, unknown>
+  divine: { data: unknown[] } & Record<string, unknown>
+  bandSeries: ({ data: unknown[] } & Record<string, unknown>)[]
+  axis: ReturnType<typeof axisStyle>
+  bounds: [number, number]
+  band: BandPoint[] | null
+  launchAt: number
+  first: number | null
+}
+
+/** The launch fortnight's chart (the user): the x axis in days since the league's launch,
+ *  not UTC dates, and the hours before the item first traded shaded as "Not traded yet". */
+function sinceLaunch(t: ChartTokens, { chaos, divine, bandSeries, axis, bounds, band, launchAt, first }: Parts): EChartsCoreOption {
+  const days = (iso: string) => (Date.parse(iso) - launchAt) / DAY
+  // Points are [iso, value], or { value: [iso, value] } for a lone hour's dot.
+  const shift = (point: unknown): unknown => {
+    if (Array.isArray(point)) return [days(point[0] as string), point[1]]
+    const p = point as { value: [string, number | null] }
+    return { ...p, value: [days(p.value[0]), p.value[1]] }
+  }
+  const remap = <S extends { data: unknown[] }>(s: S): S => ({ ...s, data: s.data.map(shift) })
+  // An item that first traded after the launch's first hours: show that stretch as empty, on purpose.
+  const late = first != null && first - launchAt > 2 * HOUR
+  const notYet = late
+    ? {
+        markArea: {
+          silent: true,
+          itemStyle: { color: alpha(t.faint, 0.12) },
+          label: { show: true, position: 'insideTop', color: t.faint, formatter: 'Not traded yet' },
+          data: [[{ xAxis: 0 }, { xAxis: (first! - launchAt) / DAY }]],
+        },
+      }
+    : {}
+  const end = band ? band[band.length - 1]!.at : bounds[1]
+  return {
+    ...baseOptions(t),
+    legend: { ...(baseOptions(t).legend as object), data: band ? ['Chaos', 'Divine', 'Outlook range'] : ['Chaos', 'Divine'] },
+    grid: { left: 8, right: 8, top: 40, bottom: 24, containLabel: true },
+    xAxis: {
+      type: 'value',
+      name: 'Days since league start',
+      nameLocation: 'middle',
+      nameGap: 28,
+      min: 0,
+      max: Math.max((end - launchAt) / DAY, 1),
+      interval: 1,
+      ...axis,
+      splitLine: { show: false },
+      axisLabel: { ...axis.axisLabel, formatter: (v: number) => `Day ${v}` },
+      axisPointer: { label: { formatter: ({ value }: { value: number }) => dayLabel(value) } },
+    },
+    yAxis: [
+      { type: 'value', name: 'Chaos', position: 'left', scale: true, ...axis, axisLabel: { ...axis.axisLabel, formatter: (v: number) => price(v, 'chaos') } },
+      { type: 'value', name: 'Divine', position: 'right', scale: true, ...axis, splitLine: { show: false }, axisLabel: { ...axis.axisLabel, formatter: (v: number) => price(v, 'divine') } },
+    ],
+    series: [{ ...remap(chaos), ...notYet }, remap(divine), ...bandSeries.map(remap)],
   }
 }
 
