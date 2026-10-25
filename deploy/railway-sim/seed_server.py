@@ -25,7 +25,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import duckdb
-import psycopg
 
 from exiledbroker.config import Settings
 from exiledbroker.ingest import core_pool
@@ -115,6 +114,10 @@ def main() -> None:
     (CACHE / "reference.json").write_text(json.dumps(reference))
 
     # `eb site seed --hosted`: rows, histories and picks, and the loaded hours' pages.
+    # psycopg is imported here, not at the top: CI's test job has no `[pg]` extra, and
+    # tests import this module for its helpers only.
+    import psycopg
+
     with psycopg.connect(os.environ["EB_DATABASE_URL"], autocommit=True) as pg:
         result = site.seed(con, pg, [args.league], local)
     con.close()
