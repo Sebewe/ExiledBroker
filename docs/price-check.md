@@ -4,7 +4,11 @@ This plan comes from an interview with the user on 2026-10-25. It replaces the F
 
 ## Status (2026-10-25)
 
-A, D and E are done and merged into `main` (2026-10-25). The user read finding 9 and settled what the page shows outside the launch fortnight (below). B and C are next.
+A, D and E are done and merged into `main` (2026-10-25). The user read finding 9 and settled what the page shows outside the launch fortnight (below). B and C are done (2026-10-25, with the frontend wired to the real types); F is next.
+
+- [x] **B. Data** (2026-10-25): `services/price_paths.py`, `eb price-check build`. `price_path` (19,360 rows for 831 items, 3.05 MB on Postgres), `price_path_league` (each league's own path, 2.63 MB for five leagues), `price_path_constant` (12 rows): 5.75 MB, in `docs/hosting.md`. Seeded by `eb site seed`, backed up as one group (`storage/backup.py`), and the pipeline adds the live league once its fortnight is over (`price_paths.refresh`).
+- [x] **C. Services and API** (2026-10-25): `services/price_check.py`, `api/routes/price_check.py`, the contract below. List ~24–27 kB gzipped, an item 5–9 kB.
+- **To run after merging:** `eb price-check build` on the local database (seconds), then `eb site seed` (or `--hosted`) so the site has the paths.
 
 - [x] **A. Prediction research** (2026-10-25): done, [finding 9](findings.md#9-sell-now-or-hold-past-leagues-paths-beat-no-change-in-the-launch-fortnight-mostly-as-sell-after-day-14-nothing-does). The verdict beats "no change" on days 0–13 (the item's own past-league path, shrunk per phase and thickness), in all five held-out leagues; mostly "Sell", and none in thin markets after day 7 or anywhere after day 13. B's table: per item and half-day bin, the 24 h and 3 d paths (~19k rows, ~2–3 MB), plus 12 constants.
 
@@ -70,15 +74,16 @@ A, D and E's audit start now. B waits for A's verdict on what history the model 
   - Score in Divines (decided). Report how often a Chaos verdict would disagree, as context.
 - **Done when:** finding 9 states, per phase, which model wins (or that none beats no change), the verdict thresholds, the band width, and what history the server needs to compute it. The user reads it before B and C go on.
 
-### B. Data the model needs, hosted
+### B. Data the model needs, hosted — done 2026-10-25
 - **Owns:** a reduced history table (name decided with A), its capture in `services/`, `storage/schema.sql` additions, `eb` command to build it locally.
 - **Do:** store only what A's model reads. Likely a small table of past leagues' forward-change quantiles per item (or group) and day, built locally from the DuckDB and the dumps and seeded, like `farming_report`, rather than whole daily paths. Size it (rows, MB on Postgres) and say what it adds to the backup.
 - **Done when:** the table builds locally, seeds, and its size is in `docs/hosting.md`.
 
-### C. Services and API
+### C. Services and API — done 2026-10-25
 - **Owns:** `src/exiledbroker/services/price_check.py`, `api/routes/price_check.py`, `api/warm.py` additions, `tests/test_api.py` / `tests/test_postgres.py` cases.
 - **Do:** two precomputed responses (the contract below). The per-item response is bounded: only core-pool exchange item ids (404 otherwise), so a visitor can't make it read anything new. It is computed once per data version per item, with a seek on `cross_market_hour` by league, item and time. Measure it: if building all ~1,000 every hour is cheap, warm them all; otherwise warm the index's movers and the most-traded items and build the rest on first request. Budget it in `tests/test_performance.py`.
 - **Done when:** both endpoints pass on DuckDB and Postgres, `web/openapi.json` is regenerated and the route list in `tests/test_api.py` is updated.
+- **Done:** the per-item query seeks `cross_market_hour` by league, item and time (`LIVE_QUERIES` in `tests/test_postgres.py`); every service query is compared between the engines; budgets in `tests/test_performance.py`; endpoint tests in `tests/test_price_check.py`. Serving is the existing `View` as the user asked: the list and the movers' items are warmed each hour (`api/warm.py`), any other item is built on its first request. Building all ~900 items every hour wasn't done: ~20 ms each, but ~900 cached responses would hold the LRU's 256 entries for one data version.
 
 ### D. Frontend
 - **Owns:** `web/src/pages/PriceCheck.tsx` (+ test), components it adds, `Layout.tsx`'s NAV, `App.tsx`'s route.
@@ -96,7 +101,7 @@ A, D and E's audit start now. B waits for A's verdict on what history the model 
   - [x] Search (`ItemSearch size="lg"`, every item in the response, most traded first) and the movers list (price, 24 h move, item, verdict), each row a link setting `?item=`.
   - [x] Item view: verdict card (24 h and 3 days, one-line reason, judged in Divines), the chart (`components/LazyChart` + `lib/chartOptions`, ECharts back as a dependency; Chaos left, Divines right, 3 d / 14 d / launch fortnight in `?range=`, the outlook band past the latest hour), the stack seller and best-hour sentence (moved to `components/StackSeller`, `lib/impact` widened to any item with Chaos and Divine markets), the launch premium.
   - [x] States, tested in `PriceCheck.test.tsx` against a stubbed `fetch`: 503, no league, waiting for first trades, stale feed, no Divine leg, no history (no verdict), one hour, nothing in range, an unknown item (404), no clear calls. Phone width checked by layout (single-column cards, truncated names, wrapping controls), not yet in device emulation.
-  - [ ] Waiting on C: the draft types live in `web/src/api/priceCheckDraft.ts` (fetchers use `fetch` directly). After C, run `npm run gen:api`, export the generated types from `client.ts` under the same names, switch the fetchers to `api.GET`, delete the draft file. The movers list reads a `change_24h` per item (in Divines) that the contract lacks: C to add it, or D drops the column. `hours` is typed as the Farming page's `FarmingHours` until C renames it.
+  - [x] Wired to C (2026-10-25): the generated types are exported from `client.ts` (`PriceCheckIndex`, `PriceCheckItem`, `Horizon`, `Outlook`, `SeriesPoint`; the sell helper's as `SellHours`, `StackImpact`, `StackMarket`, `HourEffect`, `MechanicHours`, `HourProfile`), the fetchers use `api.GET`, `priceCheckDraft.ts` is gone. After the fortnight the verdict card is the one line "Calls appear in a league's first two weeks; after that past leagues don't predict the next few days.", and the movers are the biggest 24-hour moves with no labels.
   - [ ] Check at 375 px in device emulation against C's real responses.
 
 ### E. Remove the Farming page
@@ -108,33 +113,45 @@ A, D and E's audit start now. B waits for A's verdict on what history the model 
 - **Owns:** `ingest/pipeline.py`, `eb site seed`, `storage/backup.py` changes, `tests/test_performance.py`, README.
 - **Do:** wire B's table into seed and the backup (say the bytes a pass reads), warm C's views, run `eb perf report`. The Railway bill simulation runs only if the user asks.
 
-## The response contract (draft; A may change the verdict fields)
+## The response contract (final, 2026-10-25)
 
-`GET /api/price-check/{league}`: the search list and the movers, one per data version.
+The generated types (`web/openapi.json` → `web/src/api/schema.d.ts`) are the reference; the shapes in brief:
+
+`GET /api/price-check/{league}` (`PriceCheckIndex`): the search list and the movers, one per data version.
 
 ```jsonc
 {
-  "league": "Allflame", "latest_hour": "2026-10-25T09:00:00Z", "day_offset": 91.4,
+  "league": "Allflame", "latest_hour": "2026-10-25T09:00:00Z", "day_offset": 91.4,   // null before trades
   "items": [{ "item_id": "currency:screaming-essence-of-greed", "name": "Screaming Essence of Greed",
-              "label": "Essence", "chaos": 1.4, "volume_h": 3200.0, "verdict_24h": "hold" }],
-  "movers": [/* item ids, strongest calls first, ≤ 20 */]
+              "label": "Essence",          // the mechanic that drops it (config/mechanics.toml), else its group
+              "chaos": 1.4,                // the price now: median of its traded hours in the latest 6
+              "volume_h": 3200.0,          // units an hour in its Chaos market, latest 3 days
+              "verdict_24h": "none",       // "sell" | "hold" | "none"
+              "change_24h": -0.08 }],      // the latest 24 hours' move in Divines (fraction), null if unknown
+  "movers": ["…"],                         // item ids, ≤ 20
+  "movers_mode": "moves"                   // "calls": strongest 24 h calls; "moves": biggest 24 h moves among thick markets, unlabelled
 }
 ```
 
-`GET /api/price-check/{league}/{item_id}`: one item.
+`GET /api/price-check/{league}/{item_id}` (`PriceCheckItem`): one item; 404 unless the league's list has it.
 
 ```jsonc
 {
-  "item_id": "…", "name": "…",
-  "series": [/* hourly: [hour, chaos, divine] over launch fortnight + latest 14 days; null where untraded */],
+  "item_id": "…", "name": "…", "label": "…", "latest_hour": "…", "day_offset": 4.2,
+  "thick": true, "change_24h": -0.06,
+  "series": [["2026-10-25T09:00:00Z", 1.4, 0.007]],   // traded hours: [hour, Chaos, Divines at the hour's rate]
   "outlook": {
-    "h24": {"verdict": "sell" | "hold" | "none", "typical": -0.03, "low": -0.09, "high": 0.02, "leagues": 4, "basis": "item" | "group"},
-    "d3":  {…},
-    "unit": "divine"                     // the verdict judges in Divines
+    "h24": {"verdict": "sell", "state": "judged", "typical": -0.12, "low": -0.30, "high": 0.09, "leagues": 5, "basis": "item"},
+    "d3":  {"verdict": "none", "state": "later", "typical": null, "low": null, "high": null, "leagues": 0, "basis": "item"},
+    "unit": "divine"
   },
+  // state: "judged" (the model ran; only it has a band), "later" (past day 13, or past the
+  // last bin with a path: ~day 13 for 24 h, ~day 11 for 3 d), "no_history" (< 2 past leagues).
+  // typical / low / high are fractions (exp of the log change − 1).
   "stack": {"chaos": {"price": 1.4, "volume_h": 3200.0, "sigma_h": 0.031, "hours_traded": 0.92}, "divine": {…} | null},
-  "launch_premium": {"day1": 3.4, "days2_4": 1.8, "days5_10": 1.2} | null,
-  "hours": {/* the best-hour sentence's inputs, from farming_report */}
+  "launch_premium": {"day1": 3.4, "days2_4": 1.8, "days5_10": 1.2} | null,   // median over leagues, vs days 12–14
+  "hours": {/* SellHours: the best-hour sentence's inputs (farming_report) */} | null,
+  "impact": {"y": null, "bands": [0.25, 1.0], "note": "…"} | null
 }
 ```
 

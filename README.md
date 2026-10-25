@@ -39,7 +39,7 @@ After that:
 | Page | What it shows | API |
 |---|---|---|
 | **Market recap** (landing) | What traded in the last 1–3 published hours: the latest hour's volatile flips, then every loop and card turn-in that paid (liquid markets only), likeliest to go through first with how often its orders went through in the last 3 days, and behind Show rates the orders the backtest's best option would place this hour and its 24-hour price range, what moved, and options to look into | `/api/status`, `/api/missed/{league}` |
-| **Price check** (being built, replaces Farming; `/farming` redirects to it) | One item at a time: its price this league in Chaos and Divines, sell now / hold / no clear signal, the stack seller (a stack as hours of the market's trading) and the best hour to sell ([price-check.md](docs/price-check.md)) | `/api/price-check/{league}` (planned) |
+| **Price check** (replaces Farming; `/farming` redirects to it) | One item at a time: its price this league in Chaos and Divines, sell now / hold / no clear signal for 24 hours and 3 days in the launch fortnight (from past leagues' paths, `eb price-check build`), the biggest moves after it, the stack seller (a stack as hours of the market's trading) and the best hour to sell ([price-check.md](docs/price-check.md)) | `/api/price-check/{league}`, `/api/price-check/{league}/{item_id}` |
 | **Backtest** | Would following the site have paid? The site's tools replayed an hour late at fair and harsh prices (`eb backtest run`) | `/api/backtest` |
 | **Launch market** | What to buy on day 1, days 2–4 and days 5–10 with a couple of Divines, ranked from the last five leagues | `/api/launch/picks` |
 | **About** | Sources and credits | |

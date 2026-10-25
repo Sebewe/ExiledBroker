@@ -52,6 +52,11 @@ Simulated with `deploy/railway-sim/` (Railway's per-minute rates, read 2026-10-2
 
 Before the Farming page (2026-10-23) it was $2.64 and $2.83 at 10 and 100 visitors, and ~$3.2 estimated at 1000.
 
+**Price check's data and responses (2026-10-25, [price-check.md](price-check.md) B and C), measured on a copy of the local database and a throwaway Postgres 17:**
+- **Tables** (`eb price-check build`, seeded whole, a league switch keeps them): `price_path` 19,360 rows, 3.05 MB (what the pages read); `price_path_league` 3,874 rows (five leagues' own paths as JSON lists), 2.63 MB; `price_path_constant` 12 rows. **5.75 MB in all**, on Postgres and in the backup, uploaded once and again only when a league is captured (the backup reads back a few counts a pass, ~100 B more). It grows by ~0.5 MB a league, never per hour.
+- **The pipeline** captures the live league once its fortnight is over: one read of its fortnight's traded hours on the site's database (~250k rows, once a league), then the medians rebuilt. Every other pass makes one primary-key lookup.
+- **Responses** (cached `View`s, as the others): the list is ~148 kB, **24–27 kB gzipped** (Allflame day 90 / Mirage day 4, ~870 items); an item ~18–32 kB, **5–9 kB gzipped** (its series over the hosted window, up to ~670 hours). Computing the list takes ~0.1 s on DuckDB, an item ~20 ms. The list and the movers' items (≤ 20) are warmed each hour; other items are built on first request and cached per data version (the bounded LRU, 256 entries).
+
 **The Farming page is retired (2026-10-25, [price-check.md](price-check.md) E):** its warmed view per listed league (206 kB, ~21 kB gzipped each), `item_day_history` (~10 MB on Postgres and in the backup; the schema drops it on the next pass and sync) and its capture are gone, so the figures above, measured with it, are an upper bound until Price check is simulated (F). The simulation's visitors no longer ask for `/api/farming`; F adds Price check's requests.
 
 - **Memory is most of it**, and the Farming page added to it. The web service averaged 0.14 GB at 10 visitors and 0.21 GB at 100 (peak 0.34 GB), against ~0.16–0.17 GB before; Postgres 0.11–0.12 GB. The cache fix keeps it from growing without end (old data versions are dropped), but each Farming response is large (206 kB, ~21 kB gzipped), and more visitors warm more of them.
