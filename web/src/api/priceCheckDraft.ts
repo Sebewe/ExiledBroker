@@ -5,8 +5,42 @@
 // switch the two fetchers below to `api.GET(...)`, and delete this file.
 // ============================================================================================
 
-import type { FarmingHours } from './client'
 import { ApiError } from './client'
+
+// The best-hour and stack inputs (`farming_report`, read through services/sell_helper.py).
+// The Farming page's response carried them; until C serves them, they're written out here.
+
+/** How much one hour-of-day profile matters (finding 6). */
+export type HourEffect = {
+  best: number | null
+  gain: number | null
+  gap: number | null
+  null95: number | null
+  verdict: 'small' | 'worth_it'
+  worst: number | null
+}
+
+/** A basket's own profile, where it holds across leagues. */
+export type MechanicHours = HourEffect & { items: number; price: (number | null)[]; stability: number | null }
+
+/** 24 values by UTC hour; null for an hour with no data. */
+export type HourProfile = (number | null)[]
+
+export type FarmingHours = {
+  days: number
+  divine: HourProfile
+  divine_effect: HourEffect
+  effect: HourEffect
+  effect_divine_market: HourEffect
+  leagues: number
+  mechanics: Record<string, MechanicHours>
+  phase: 'd0_2' | 'd2_7' | 'd7_14' | 'later'
+  price: HourProfile
+  price_divine_market: HourProfile
+  volume: HourProfile | null
+}
+
+export type FarmingImpact = { bands: number[]; note: string | null; y: number | null }
 
 /** "sell": past leagues say it falls from here; "hold": it rises; "none": no clear signal
  *  (or no verdict at all: not enough history, or the model doesn't beat "no change"). */

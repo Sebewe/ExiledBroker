@@ -50,15 +50,6 @@ export function useBacktest() {
   return useVersioned(['backtest'], () => unwrap(api.GET('/api/backtest')))
 }
 
-/** The Farming page: mechanics, the launch outlook and the sell helper's inputs, per loaded hour. */
-export function useFarming(league: string | undefined) {
-  return useVersioned(
-    ['farming', league],
-    () => unwrap(api.GET('/api/farming/{league}', { params: { path: { league: league! } } })),
-    !!league,
-  )
-}
-
 /** The Price check page's search list and movers, per loaded hour (a draft endpoint until
  *  workstream C builds it: see priceCheckDraft.ts). */
 export function usePriceCheck(league: string | undefined) {

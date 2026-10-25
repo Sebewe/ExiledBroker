@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import type { FarmingItem } from '../api/client'
-import { bandsOf, busiestHours, defaultItem, hoursOfTrading, impactBand, localHour, perHour, profileFor, spreadOver, stackInMarkets, swing, tradingTime } from './impact'
+import { type StackItem, bandsOf, busiestHours, defaultItem, hoursOfTrading, impactBand, localHour, perHour, profileFor, spreadOver, stackInMarkets, swing, tradingTime } from './impact'
 
-const item = (divine: FarmingItem['divine']): FarmingItem => ({
+const item = (divine: StackItem['divine']) => ({
   item_id: 'currency:splinter-of-xoph',
   name: 'Splinter of Xoph',
   mechanics: ['breach'],

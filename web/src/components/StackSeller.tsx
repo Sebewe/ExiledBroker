@@ -18,8 +18,8 @@ import {
 } from '../lib/impact'
 import type { Money } from '../lib/money'
 
-// The stack seller and the best-hour sentence (findings 6 and 7), shared by the Price check
-// page and the Farming page until that one is removed (docs/price-check.md, workstream E).
+// The stack seller and the best-hour sentence (findings 6 and 7), on the Price check page
+// (docs/price-check.md).
 // All sums run here (lib/impact), so a typed quantity costs no request.
 
 export const DEFAULT_NOTE = "Hourly prices swing more than a stack moves them, so this shows how much of the market's trading your stack is, not a price drop."

@@ -19,7 +19,7 @@ export default function App() {
         <Route path="cards" element={<Navigate to="/#cards" replace />} />
         <Route path="launch" element={<Launch />} />
         <Route path="price-check" element={<PriceCheck />} />
-        {/* Retired: its stack seller is on Price check now (Farming.tsx goes in workstream E). */}
+        {/* Retired: its stack seller is on Price check now. */}
         <Route path="farming" element={<Navigate to="/price-check" replace />} />
         <Route path="conversions" element={<Conversions />} />
         <Route path="about" element={<About />} />

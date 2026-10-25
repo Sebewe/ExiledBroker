@@ -1,7 +1,6 @@
 import type { FarmingHours, HourEffect, HourProfile } from '../api/client'
 
-// The stack seller (components/StackSeller: the Price check page, and the Farming page
-// until it's removed), computed here so the typed quantity never reaches the server
+// The stack seller (components/StackSeller, on the Price check page), computed here so the typed quantity never reaches the server
 // (docs/price-check.md, "The response contract"). Finding 7: hourly prices swing more
 // than a stack moves them, so no price drop can be calibrated. A stack is shown instead as
 // hours of the market's trading, Q / volume_h, banded by `impact.bands`.
