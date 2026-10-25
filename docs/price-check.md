@@ -4,7 +4,7 @@ This plan comes from an interview with the user on 2026-10-25. It replaces the F
 
 ## Status (2026-10-25)
 
-A, D and E started 2026-10-25. A's research goes first: it decides whether there is a verdict at all (see "The bar").
+A, D and E started 2026-10-25. A's research goes first: it decides whether there is a verdict at all (see "The bar"). E's backend removal is done on its branch (below); it merges after D's frontend, or with it.
 
 ## What we're building, and why
 
@@ -88,6 +88,7 @@ A, D and E's audit start now. B waits for A's verdict on what history the model 
 - Scaffold on the contract below with a stubbed `fetch` now; wire to C's real types after `npm run gen:api`.
 
 ### E. Remove the Farming page
+- **Backend: done 2026-10-25** (branch `worktree-agent-a8925f19c7eca44dc`, to merge after or with D). Removed: `services/farming.py`, `services/item_history.py`, `analysis/mechanics.py`, `api/routes/farming.py` (and its warm view), the Farming response models, `eb farming history`, the pass's capture, `item_day_history`'s seed and backup sync, the simulation's Farming traffic and checks, and their tests. `item_day_history` is dropped by `schema.sql` (`DROP TABLE IF EXISTS`) on the next pass, sync and local write. Kept: `farming_report` and `eb farming build`, read through `services/sell_helper.py` (`constants(con, day_offset)` → `{hours, impact}`, `markets()` for the stack seller's per-market trading; the `FarmingHours` / `FarmingImpact` / `FarmingMarket` models stay in `api/models.py`, unreferenced until C uses them); `config/mechanics.toml`, `normalize/mechanics.py`, `eb mechanics check`, `analysis/hours.py` and the core pool's `mechanics` lists. `web/openapi.json` is regenerated without the route; `src/api/schema.d.ts` and the frontend (D's) follow at the merge. The frontend files (`Farming.tsx`, its test, `queries.ts`' hook) are D's to remove.
 - **Owns:** `web/src/pages/Farming.tsx` and its test, `services/farming.py`, `api/routes/farming.py`, `analysis/mechanics.py`, `services/item_history.py`, and their tests and docs.
 - **Do:** after D has moved what it keeps, remove the page, `/api/farming/{league}`, the mechanic ranking and outlook, and `item_day_history` and its capture, seed and backup steps. Keep `farming_report`'s hour and stack constants (renamed if C wants), and `config/mechanics.toml` if it labels items. Mark `farming.md` superseded and update README, `decisions.md`, `hosting.md`.
 
