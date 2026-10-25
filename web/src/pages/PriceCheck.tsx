@@ -140,6 +140,12 @@ function VerdictBadge({ verdict, short = false }: { verdict: Verdict; short?: bo
 
 // --- Movers ---------------------------------------------------------------------------
 
+/** A mover card's border: green for a rise, red for a fall (in Divines). */
+function border(change: number | null | undefined): string {
+  if (change == null || change === 0) return 'border-border'
+  return change > 0 ? 'border-positive/60' : 'border-negative/60'
+}
+
 function Movers({ data, money }: { data: PriceCheckIndex; money: Money }) {
   const [params] = useSearchParams()
   const byId = new Map(data.items.map((x) => [x.item_id, x]))
@@ -155,27 +161,35 @@ function Movers({ data, money }: { data: PriceCheckIndex; money: Money }) {
   const later = data.day_offset == null || data.day_offset >= 14
   const note = calls
     ? 'The items past leagues give the clearest Sell or Hold call for the next 24 hours, judged in Divines. Pick one to see its chart and the 3-day view.'
-    : `${later ? BETWEEN_LAUNCHES : 'No item has a clear call right now.'} These are the biggest moves of the last 24 hours in Divines, among items that trade steadily. Pick one to see its chart.`
+    : `${later ? BETWEEN_LAUNCHES : 'No item has a clear call right now.'} These are the last 24 hours' biggest moves, by how much the price changed in Divines, among items that trade steadily. Pick one to see its chart.`
   return (
     <Block id="movers" title={calls ? 'Strongest calls now' : 'Biggest moves, last 24 hours'} icon={TrendingUp} note={note}>
       {data.items.length === 0 ? null : movers.length === 0 ? (
         <Empty>{calls ? 'No item has a clear call right now.' : 'No item that trades steadily has a 24-hour move yet.'} Search for one above to see its price.</Empty>
       ) : (
-        <ol className="flex flex-col divide-y divide-border/60 rounded-lg border border-border bg-surface" aria-label="Movers">
+        // Small cards: the move, the price, the name. The border is the move's direction
+        // (green up, red down: a gain or loss in Divines).
+        <ol className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5" aria-label="Movers">
           {movers.map((m) => (
             <li key={m.item_id}>
-              <Link to={href(m.item_id)} className="flex items-center gap-x-3 px-3 py-2.5 text-sm hover:bg-surface-2/60 sm:px-4">
-                <span className="num w-16 shrink-0 text-right font-semibold sm:w-20" title="Price now">
-                  {money(m.chaos)}
-                </span>
-                <span className={`num w-14 shrink-0 text-right text-xs ${tone(m.change_24h)}`} title="Last 24 hours, in Divines">
+              <Link
+                to={href(m.item_id)}
+                className={`flex h-full flex-col gap-0.5 rounded-lg border bg-surface px-3 py-2.5 transition-colors duration-150 hover:bg-surface-2/60 ${border(m.change_24h)}`}
+              >
+                <span className={`num text-lg font-semibold ${tone(m.change_24h)}`} title="Last 24 hours, in Divines">
                   {signedPct(m.change_24h, 0)}
                 </span>
-                <span className="min-w-0 flex-1 truncate font-medium" title={m.name}>
+                <span className="num text-sm" title="Price now">
+                  {money(m.chaos)}
+                </span>
+                <span className="truncate text-sm font-medium" title={m.name}>
                   {m.name}
                 </span>
-                {m.label && <span className="hidden shrink-0 text-xs text-faint sm:inline">{m.label}</span>}
-                {calls && <VerdictBadge verdict={m.verdict_24h} short />}
+                {calls && (
+                  <span className="mt-1">
+                    <VerdictBadge verdict={m.verdict_24h} short />
+                  </span>
+                )}
               </Link>
             </li>
           ))}

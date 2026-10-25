@@ -162,7 +162,16 @@ def test_the_list_and_an_item_without_paths(client, loaded):  # noqa: F811
     assert set(doc["movers"]) <= set(listed) and len(doc["movers"]) <= price_check.MOVERS
     assert all(listed[i]["change_24h"] is not None for i in doc["movers"])
     assert all(x["verdict_24h"] == "none" for x in doc["items"])
-    moves = [abs(listed[i]["change_24h"]) for i in doc["movers"]]
+    # Ranked by the amount changed in Divines, not the percentage (the user).
+    with db.session(loaded.db_path) as con:
+        latest = price_check.league_state(con, LEAGUE)["latest"]
+        f = price_check.with_moves(price_check.features(con, LEAGUE, latest))
+    amount = {
+        r["item_id"]: abs(r["div_now"] - r["div_ago"])
+        for r in f.iter_rows(named=True)
+        if r["change_24h"] is not None
+    }
+    moves = [amount[i] for i in doc["movers"]]
     assert moves == sorted(moves, reverse=True)
 
     item_id = doc["movers"][0]

@@ -162,9 +162,11 @@ describe('Price check', () => {
     const box = await screen.findByRole('combobox', { name: 'Find an item' })
     expect(box).toHaveValue('')
     const rows = within(screen.getByRole('list', { name: 'Movers' })).getAllByRole('link')
-    expect(rows.map((r) => r.textContent)).toEqual(['1.40c−6%Splinter of XophBreachSell', '3.00c+4%Deafening Essence of GreedEssenceHold'])
-    // The 24 h move is a gain or loss: green or red. The verdict isn't.
+    expect(rows.map((r) => r.textContent)).toEqual(['−6%1.40cSplinter of XophSell', '+4%3.00cDeafening Essence of GreedHold'])
+    // The 24 h move is a gain or loss: green or red, and so is the card's border. The verdict isn't.
     expect(within(rows[0]!).getByText('−6%')).toHaveClass('text-negative')
+    expect(rows[0]!.className).toMatch(/border-negative/)
+    expect(rows[1]!.className).toMatch(/border-positive/)
     expect(within(rows[0]!).getByText('Sell').className).not.toMatch(/positive|negative/)
     // Focused, the search lists every item, most traded first, each with its group.
     fireEvent.focus(box)

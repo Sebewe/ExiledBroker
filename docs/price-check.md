@@ -51,6 +51,7 @@ Settled in the interview:
 2. **`item_day_history` is dropped and `config/mechanics.toml` stays.** Nothing reads the table once the ranking is gone (~10 MB hosted, plus its capture, seed and backup steps). The config still feeds the core pool's farming lists and labels items in search ("Essence"). E removes the table (the user left it to us).
 
 3. **Outside the launch fortnight the page shows no verdict** (the user, after finding 9). After day 13, or for an item with fewer than 2 past leagues, the item view shows the chart and the stack seller with the line "Calls appear in a league's first two weeks; after that past leagues don't predict the next few days." The movers list falls back to the biggest 24-hour moves in Divines, without Sell or Hold labels. The range is shown only on days 0–13. Extending it is for later.
+5. **Movers are small cards** (the user, 2026-10-25): the 24-hour move, then the price, then the name, with a green border for a rise and a red one for a fall (in Divines). Between launches they're ranked by the amount changed in Divines, not the percentage, so a cheap item's swing doesn't outrank a real move. In the launch fortnight the strongest calls still come first.
 4. **Serving stays as it is for now:** the per-item response is a cached `View` like the others (computed once per data version, gzipped once, ETag). Optimising it (versioned URLs, loading only the 3-day range first, a compact series, a separate size-bounded item cache) is for later, once measured (the user).
 
 ## Workstreams

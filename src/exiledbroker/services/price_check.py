@@ -16,8 +16,9 @@ and movers, and one item's view, each one small document per data version.
   Divines. Outside days 0–13, or for an item under 2 past leagues, there is no verdict
   and no band (the user, after finding 9).
 - **The movers**: in the launch fortnight, the strongest 24-hour calls; otherwise (or
-  with no call at all) the biggest 24-hour moves in Divines among thick markets, with
-  no Sell or Hold labels (`movers_mode`). Thin markets are left out of the moves: their
+  with no call at all) the biggest 24-hour moves among thick markets, by the amount
+  changed in Divines rather than the percentage (the user), with no Sell or Hold labels
+  (`movers_mode`). Thin markets are left out of the moves: their
   hourly prices rest on a trade or two and bounce back (finding 7).
 - **One item** adds its hourly series over the hosted window (Chaos, and Divines at the
   hour's rate), the stack seller's inputs (`sell_helper.markets`), its launch premium
@@ -391,6 +392,10 @@ def index(con, league: str, settings: Settings | None = None) -> dict:
                 "change_24h": _sig(r["change_24h"]),
                 "_typical": h24["typical"] if h24 else None,
                 "_thick": bool(r["thick"]),
+                # The amount changed in Divines: what the moves are ranked by (the user).
+                "_amount": abs(r["div_now"] - r["div_ago"])
+                if r["change_24h"] is not None
+                else None,
             }
         )
     calls = [x for x in out if x["verdict_24h"] != "none" and x["_typical"] is not None]
@@ -399,7 +404,7 @@ def index(con, league: str, settings: Settings | None = None) -> dict:
         doc["movers"], doc["movers_mode"] = [x["item_id"] for x in calls[:MOVERS]], "calls"
     else:
         moves = [x for x in out if x["_thick"] and x["change_24h"] is not None]
-        moves.sort(key=lambda x: (-abs(x["change_24h"]), x["item_id"]))
+        moves.sort(key=lambda x: (-x["_amount"], x["item_id"]))
         doc["movers"] = [x["item_id"] for x in moves[:MOVERS]]
     doc["items"] = [{k: v for k, v in x.items() if not k.startswith("_")} for x in out]
     return doc
