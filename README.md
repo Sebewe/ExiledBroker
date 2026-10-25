@@ -15,7 +15,7 @@ A Path of Exile market tool for league starts. It turns historical and live exch
 | 2 | Exploration: recurring launch-week patterns (`analysis/`), loops and card turn-ins (now on the Market recap) | 🟨 Tools built; [findings](docs/findings.md) |
 | 3 | Patch corpus: scraper, extractor, review tool | ⬜ |
 | 4 | Baseline + backtest: first honest accuracy numbers | 🟨 The site's tools backtested at fair and harsh prices: Launch picks pay, hourly tools at best break even ([finding 4](docs/findings.md#4-backtest-the-launch-picks-pay-the-hourly-tools-at-best-break-even), the Backtest page) |
-| 5 | Signals: "farm X", "buy Y on day 2, sell day 6" | ⬜ |
+| 5 | Signals: "farm X", "buy Y on day 2, sell day 6" | 🟨 The Farming page: mechanics ranked by trend, launch outlook and how easy their drops sell, when to sell and a stack as hours of trading ([findings 6–8](docs/findings.md), [farming.md](docs/farming.md)) |
 | 6 | Live mode: hourly ingest of the running league, live arbitrage view, later drift alerts | 🟨 Live feed and Market recap page built; poe.ninja poller and alerts not started |
 | 7 | Hosted site: React on the JSON API, all on Railway (web, Postgres, hourly pipeline), with an off-site backup on Supabase | 🟨 Built and simulated locally with Railway's billing ($2.6–2.8 a month of usage at 10–100 daily visitors, ~$3.2 estimated at 1000, inside the $5 Hobby fee); the backup is seeded; not deployed |
 
@@ -27,6 +27,8 @@ The next league launches in about a month. Before then:
 
 - **Go live on Railway**: the checklist is [go-live.md](docs/go-live.md) (Postgres-only server, catch-up test, usage limits with a fallback page, rehearsed league switch).
 - **poe.ninja live poller** (phase 6). Uniques have no public sub-daily history, so it must be running at launch ([data.md](docs/data.md#sources)).
+- **Build the Farming report on the real data:** `eb farming build`, then `eb site seed` ([farming.md](docs/farming.md#status-2026-10-25)).
+- **Rerun the simulated Railway bill** with the Farming page in it ([hosting.md](docs/hosting.md#the-railway-bill)).
 - **Register the new league** once its name and date are announced (`eb exchange sync -l "<Name>" --start <date>`), so the site shows "waiting for the first trades" from launch.
 
 After that:
@@ -39,6 +41,7 @@ After that:
 | Page | What it shows | API |
 |---|---|---|
 | **Market recap** (landing) | What traded in the last 1–3 published hours: the latest hour's volatile flips, then every loop and card turn-in that paid (liquid markets only), likeliest to go through first with how often its orders went through in the last 3 days, and behind Show rates the orders the backtest's best option would place this hour and its 24-hour price range, what moved, and options to look into | `/api/status`, `/api/missed/{league}` |
+| **Farming** | What to farm: 20 mechanics, each a basket of its drops, ranked on its price against its usual launch path, its launch outlook (what its drops paid on day 1, days 2–4 and days 5–10 in past leagues) and how easy its drops are to sell; when to sell (a sentence on the hour of day, plus when Divines are cheapest); and a sell helper showing a stack as hours of the market's trading | `/api/farming/{league}` |
 | **Backtest** | Would following the site have paid? The site's tools replayed an hour late at fair and harsh prices (`eb backtest run`) | `/api/backtest` |
 | **Launch market** | What to buy on day 1, days 2–4 and days 5–10 with a couple of Divines, ranked from the last five leagues | `/api/launch/picks` |
 | **About** | Sources and credits | |
@@ -94,6 +97,7 @@ RePoE, loot filter ──────┘                  │
 | [docs/hosting.md](docs/hosting.md) | Hosting shape, cost issues and their fixes, performance tooling and findings |
 | [docs/supabase.md](docs/supabase.md) | The off-site backup on Supabase: what a sync does and costs, restoring, setting it up |
 | [docs/findings.md](docs/findings.md) | Phase-2 findings from past launches |
+| [docs/farming.md](docs/farming.md) | The Farming page: its plan, response contract and status |
 | [docs/decisions.md](docs/decisions.md) | Decision log by topic, dated |
 | [docs/roadmap.md](docs/roadmap.md) | The prediction design (patch notes, models, backtest), planned modules, add-ons, risks |
 | [CLAUDE.md](CLAUDE.md) | Commands, architecture and coding rules for working on the code |

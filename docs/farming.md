@@ -4,9 +4,9 @@ This plan comes from an interview with the user on 2026-10-24. It is split into 
 
 Deadline: the next league launches in about a month, in parallel with [go-live](go-live.md). If time runs short, ship in priority order: **P1** Launch outlook and Best hour to sell, **P2** mechanic trend and Easy to sell, **P3** stack impact.
 
-## Status (2026-10-24)
+## Status (2026-10-25)
 
-**On `main`:** A (baskets, reviewed), B, C and D (findings 6–8 and their analysis modules), E (`item_day_history`, captured locally) and H (the Farming page, on a hand-written copy of the contract). The research is done and the contract below holds every finding. Nothing serves the page yet: it needs F, G and I. `main` isn't pushed past `01b826a`.
+**Built and on `main`:** every workstream, A to J. The page is served by `GET /api/farming/{league}`, warmed for every league `/api/status` lists. The hourly pass captures a finished league into `item_day_history`, and `eb site seed` and the backup copy it along with `farming_report`. All tests pass on DuckDB and Postgres (256, 2026-10-25). `main` isn't pushed yet.
 
 **What the research found** ([findings.md](findings.md), sections 6–8):
 - **Hour of day ([finding 6](findings.md#6-hour-of-day-sell-in-the-evening-utc-in-the-first-week-buy-divines-around-noon-after-that-it-barely-matters)): real but small.** Items are dearest in the UTC evening, by about 5% on days 0–2, 2% on days 2–7 and under 1% after. Volume doubles in the evening. The one lasting effect is the Divine's own cycle: cheapest in Chaos around 12:00 UTC, 4–8% below its evening price in the launch fortnight. A few baskets (Essence, Eldritch altars, Legion) have stronger patterns of their own. B recommends a sentence on the page, not a chart.
@@ -18,23 +18,10 @@ Deadline: the next league launches in about a month, in parallel with [go-live](
   - Easy to sell is stable from league to league (0.86).
 - **Data (E):** the page reads `cross_market_hour`, which holds every traded item, so the keep rule and loader don't change and no rebuild is needed. Past leagues come from `item_day_history`: 46,679 rows, about 10 MB on Postgres. It was captured on the 23-mechanic baskets: the dropped mechanics' rows are never read, and `eb farming history` trims them.
 
-**What still needs doing, in order:**
-1. **F, services** (`services/farming.py`), the critical path. Build every contract field from the definitions already in code, not new ones:
-   - `item_history.history` for past leagues and `item_history.league_days` for the live league.
-   - `analysis/mechanics`: `index`, `usual`, `premiums` / `outlook`, `liquidity` / `easy_to_sell`, `score`, `window_at`.
-   - `hours.report` and C's `impact` constant, shipped as a locally built report with a `stamp`, like `backtest_report`.
-   - Then Postgres parity, `LIVE_QUERIES` and read budgets.
-2. **G, API:** `/api/farming/{league}`, warmed for each trading league; regenerate `openapi.json` and `schema.d.ts`.
-3. **H, follow-ups: done (2026-10-24, `farm-h3`).** The sell helper shows hours of trading in `impact.bands`, best hours are a sentence plus the Divine tip, and the page uses the generated types. Checked end to end against `eb serve` on a copy of the research database (Allflame on day 90, Mirage on day 14).
-4. **I, pipeline, seed and backup:**
-   - The pass calls `item_history.refresh` beside `launch_picks.refresh`.
-   - `eb site seed` and the backup copy `item_day_history`: about 10 MB once, then ~2 MB a league.
-   - A league switch keeps it.
-   - Rerun both replays and update the simulation's bill.
-5. **J, docs:** README, decisions, data.md (`item_day_history`), hosting.md.
-
-**Open questions for the user:**
-- `main` is ahead of `origin/main`: push when ready.
+**Left to do:**
+- **Build the report on the real database:** `eb farming build` (the local copy has `item_day_history` but no `farming_report` yet), then `eb site seed`. Without the report, the page has no hour-of-day profiles or stack bands.
+- **Rerun the simulation's bill** (`deploy/railway-sim/run.py`) with the Farming page in the visitors and the cache fix (`farm-i2`): the web service was measured at ~190–220 MB with the fix, against 0.16–0.17 GB in [hosting.md](hosting.md#the-railway-bill)'s table. It runs for hours, so it's for the user to start.
+- **The page's place in the planned live/historical split** is still undecided.
 
 ## What we're building, and why
 
@@ -390,9 +377,9 @@ Give each agent this prompt, with its letter:
 - [x] E: keep rule (2026-10-24: unchanged, the Farming page reads `cross_market_hour`)
 - [x] E: reduced history (2026-10-24, branch `farm-e`: `item_day_history`, 46,679 rows / 10 MB for five leagues; `eb farming history`)
 - [x] E: rebuild with the user (not needed: no keep-rule change, no `LOADER_VERSION` bump)
-- [ ] F: `services/farming.py`, Postgres parity, budgets
-- [ ] G: `/api/farming/{league}` cached and warmed
+- [x] F: `services/farming.py`, Postgres parity, budgets (2026-10-24: past leagues from `item_day_history`, the live league reduced in SQL; `farming_report` built locally by `eb farming build`; in `_cases` and `LIVE_QUERIES`)
+- [x] G: `/api/farming/{league}` cached and warmed (2026-10-24: a one-document `View`, warmed for every listed league, a new one before its first trades included)
 - [x] H: Farming page, all states, 375 px (2026-10-24, on `main`; checked on a mock of the contract; best hours follow B's `hours`, the outlook D's `premium`)
 - [x] H: follow-ups: sell helper as hours of trading (C's `impact`), best hours as a sentence (B), generated types and a check against `eb serve` once G lands (2026-10-24, `farm-h3`: checked on a copy of the research database, see H's "Checked on real data")
-- [ ] I: pipeline capture, seed, backup, league-switch replay, simulation bill
-- [ ] J: docs
+- [x] I: pipeline capture, seed, backup, league-switch replay (2026-10-24: one transaction per captured league; the backup syncs `item_day_history` league by league, ~215 B more read a pass; the simulation includes the page, `farm-i2`). The simulation's bill is still to rerun (Status above)
+- [x] J: docs (2026-10-25)
