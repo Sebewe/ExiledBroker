@@ -21,11 +21,11 @@ Where ExiledBroker's data comes from, how it becomes rows, and the rules that de
 | Currency prices and volume | GGG currency exchange, `GET https://web.poecdn.com/api/currency-exchange[/<unix-hour>]` | **hourly**, everything on the in-game exchange | Settlers launch, 2024-07-26 20:00 UTC | ✔ `eb exchange`, `eb live` |
 | Item names | [RePoE](https://github.com/repoe-fork/repoe) | — | — | ✔ |
 | Card tiers | NeverSink's loot filter (what FilterBlade serves) | — | — | ✔ |
-| Live prices with listing counts | poe.ninja overview endpoints (~15 min refresh) | now only | — | ⬜ planned (phase 6) |
+| Live prices with listing counts | poe.ninja overview endpoints (~15 min refresh) | now only | — | not planned: it was for uniques, which are out of scope (2026-10-25) |
 | Patch notes | pathofexile.com forum, poewiki | per league | — | ⬜ planned (phase 3) |
 | Every public listing | GGG public stash river | real time | — | not planned: needs an OAuth app and heavy processing |
 
-**Uniques have no public sub-daily history.** The exchange doesn't carry them, so the only way to get their launch-hour prices is to record poe.ninja's live overview ourselves while the league starts. The live poller has to be running at the next launch.
+**Uniques are out of scope** (the user, 2026-10-25; [decisions.md](decisions.md#scope)). Their prices swing with whichever builds are popular each league, and the few that don't are mostly gambling uniques, so past leagues say little. The daily dumps still load them (findings 1 used them), but nothing new is built for them: no live poe.ninja poller, no unique card rewards, no unique pages.
 
 **Rules of use.** Follow GGG's terms and rate limits, and never fetch the same data twice. From [poe.ninja/docs/api](https://poe.ninja/docs/api): only the economy endpoints may be used, and the builds/profiles API is off-limits to third parties. Send a descriptive User-Agent (ours names the repo), respect HTTP caching, and don't poll faster than the data refreshes (PoE1 is about every 15 minutes). A hosted app proxies through its own backend rather than calling poe.ninja from browsers. The dumps are **CC BY-SA**, so the public site credits poe.ninja.
 
@@ -117,7 +117,7 @@ The `divination_card` table (`ingest/loot_filter.py`, `normalize/divination.py`)
 - **What a set gives**, from RePoE's `properties.description` / `stack_size`. Followed cards: 67 currency, 5 card, 180 unique, 41 normal, 26 gem, 20 magic and 18 rare rewards, plus 4 disabled. A reward is *fixed* if it names exactly one item (`<currencyitem>{10x Exalted Orb}`) and *random* if it's generic (`5x Currency`, `Divination Card`). Only fixed currency/card rewards get a `reward_item_id`.
 - **Turn-in margin** (`services/divination.py`), for each hour both the card and its reward traded: set cost = set size × card price, reward value = quantity × reward price, margin = reward − cost. Gold fees and the time to collect a set aren't included. Summaries use the **median hour**, because thin card markets have junk hours (The Hoarder averaged 570c a set in Mirage against a typical hour of about 1c).
 - **Mirage, first 14 days:** 57 fixed turn-ins priced, 28 profitable in 90%+ of hours. Preferring cheap sets, The Heroic Shot scores highest (a set costs ~0.7c and roughly doubles, profitable 95% of hours, ~44k sets traded). Preferring big sets puts steady large-capital flips on top, e.g. The Nurse (~2,100c a set, +6.7%, profitable every hour) and The Sephirot.
-- **Next: expected value.** Random rewards need an EV over what they can roll; unique rewards need unique prices. A card trading below its reward's EV is then an arbitrage target.
+- **Next: expected value** for random rewards, over what they can roll. A card trading below its reward's EV is then an arbitrage target. Unique rewards are left out, with uniques (2026-10-25).
 
 ## A new league's data
 

@@ -13,7 +13,7 @@ Deadline: the next league launches in about a month. The server must be live, ca
 - **Usage limits are set**, and when the site is down because of them it shows a static "Something went wrong, we're investigating" page. Real traffic can raise the limit; a bug shouldn't be able to eat the credit.
 - **The league switch is rehearsed** on historical data before it happens for real, including changed API responses (new items, different order and size).
 - **Custom domain:** bought.
-- **Uniques:** not a priority. At most, unidentified uniques may later join the tracked items, after go-live.
+- **Uniques:** out of scope (2026-10-25, [decisions.md](decisions.md#scope)): no poller, no tracked uniques.
 
 ## Checklist
 
@@ -76,4 +76,4 @@ What the last four switches on disk show (Settlers → Mercenaries → Keepers �
 ## Settled questions
 
 - **A. Rebuilds without raw pages:** keep the live window's pages compressed in Postgres (about 80 MB), replacing them as new hours arrive (2026-10-23).
-- **B. Uniques:** not before go-live, and not a priority.
+- **B. Uniques:** out of scope (2026-10-25).

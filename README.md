@@ -16,7 +16,7 @@ A Path of Exile market tool for league starts. It turns historical and live exch
 | 3 | Patch corpus: scraper, extractor, review tool | ⬜ |
 | 4 | Baseline + backtest: first honest accuracy numbers | 🟨 The site's tools backtested at fair and harsh prices: Launch picks pay, hourly tools at best break even ([finding 4](docs/findings.md#4-backtest-the-launch-picks-pay-the-hourly-tools-at-best-break-even), the Backtest page) |
 | 5 | Signals: "farm X", "buy Y on day 2, sell day 6" | 🟨 The Farming page's mechanic ranking is retired (2026-10-25); the Price check page replaces it: one item's price in Chaos and Divines, a sell-or-hold verdict if one beats "no change", the stack seller and the best hour to sell ([findings 6–8](docs/findings.md), [price-check.md](docs/price-check.md)) |
-| 6 | Live mode: hourly ingest of the running league, live arbitrage view, later drift alerts | 🟨 Live feed and Market recap page built; poe.ninja poller and alerts not started |
+| 6 | Live mode: hourly ingest of the running league, live arbitrage view, later drift alerts | 🟨 Live feed and Market recap page built; alerts not started (the poe.ninja poller is dropped with uniques, 2026-10-25) |
 | 7 | Hosted site: React on the JSON API, all on Railway (web, Postgres, hourly pipeline), with an off-site backup on Supabase | 🟨 Built and simulated locally with Railway's billing ($2.7–3.7 a month of usage at 10–100 daily visitors, ~$4.9 estimated at 1000, inside the $5 Hobby fee); the backup is seeded; not deployed |
 
 Legend: ⬜ not started · 🟨 in progress · ✅ done. Phases 1–2 alone are useful: knowing which categories reliably spike in the first week is already an edge.
@@ -26,12 +26,11 @@ Legend: ⬜ not started · 🟨 in progress · ✅ done. Phases 1–2 alone are 
 The next league launches in about a month. Before then:
 
 - **Go live on Railway**: the checklist is [go-live.md](docs/go-live.md) (Postgres-only server, catch-up test, usage limits with a fallback page, rehearsed league switch).
-- **poe.ninja live poller** (phase 6). Uniques have no public sub-daily history, so it must be running at launch ([data.md](docs/data.md#sources)).
 - **Register the new league** once its name and date are announced (`eb exchange sync -l "<Name>" --start <date>`), so the site shows "waiting for the first trades" from launch.
 
 After that:
 - **Phase 2:** run the analysis tools across all four exchange-era leagues and write up what repeats.
-- **Divination card expected value** for random and unique rewards.
+- **Divination card expected value** for random rewards (not unique rewards: uniques are out of scope).
 - **Site split** into live trading and historical sections (being designed).
 
 ## The site
@@ -68,7 +67,7 @@ EB_DATABASE_URL=postgresql://eb:eb@localhost:55432/exiledbroker .venv/bin/eb ser
 docker compose up -d --build api        # or the whole site as Railway runs it, on :8000
 ```
 
-Settings come from `EB_*` environment variables or `.env` (`src/exiledbroker/config.py`, `.env.example`). Unattended ingest, logs and stopping a run: [data.md](docs/data.md#running-the-ingest). The full command list for development is in [CLAUDE.md](CLAUDE.md).
+Settings come from `EB_*` environment variables or `.env` (`src/exiledbroker/config.py`). Unattended ingest, logs and stopping a run: [data.md](docs/data.md#running-the-ingest). The full command list for development is in [CLAUDE.md](CLAUDE.md).
 
 ## How it works
 
@@ -123,7 +122,7 @@ ExiledBroker/
 ├── docs/                   # design docs (see above)
 ├── config/core_pool.toml   # manual core-pool overrides
 ├── scripts/ingest.sh       # unattended, resumable ingest
-├── Dockerfile, docker-compose.yml, .env.example
+├── Dockerfile, docker-compose.yml
 ├── deploy/                 # railway/ (service configs), railway-sim/ (local Railway with billing)
 ├── .github/workflows/ci.yml
 └── data/                   # gitignored: raw downloads, Parquet, logs, exiledbroker.duckdb

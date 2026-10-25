@@ -23,7 +23,7 @@ live prices ──────────────────────�
 
 1. Split the notes into sections and lines.
 2. An LLM turns each line into a `PatchChange` with a fixed set of change types (pydantic schema).
-3. Match the change to items directly ("Mageblood now…") and indirectly: a buffed skill raises demand for the uniques and bases its builds use.
+3. Match the change to items directly ("Mageblood now…") and indirectly: a buffed skill raises demand for the currency and cards its builds need.
 4. **Review extractions by hand.** A few patches a year at ~300 lines each is realistic, and it produces labelled data.
 
 ## Phase 4–5: models, backtest, signals
@@ -31,7 +31,7 @@ live prices ──────────────────────�
 There are only about 15–25 leagues of usable data, so start simple:
 
 1. **Baseline curves:** the median day 0–14 path per item and category, scaled to the day-1 price (the launch curves in `analysis/` are the start of this).
-2. **Analog matching:** find past items with a similar change (e.g. "unique buffed, magnitude 2, build-enabling") and apply their observed lift.
+2. **Analog matching:** find past items with a similar change (e.g. "mechanic buffed, magnitude 2, more drops") and apply their observed lift.
 3. **Learned model (later):** gradient boosting on curve, change and demand features, only once the backtest shows it beats step 2.
 4. **Backtest everything:** hold out each league, give the model only its patch notes, and score its day 1/3/7/14 predictions. Built early, because it's what says whether anything works.
 
@@ -39,14 +39,12 @@ Signals then become a ranked list: "farm X", "buy Y on day 2, sell on day 6".
 
 ## Phase 6: live, still to do
 
-- **poe.ninja live poller** (`ingest/poe_ninja_live.py`): uniques have no public sub-daily history, so this must be running when the next league starts.
 - **Prediction alerts** once there are predictions to drift from.
-- **Divination card expected value** for random and unique rewards ([data.md](data.md#divination-cards)).
+- **Divination card expected value** for random rewards ([data.md](data.md#divination-cards)). Unique rewards are out, with uniques (2026-10-25).
 
 ## Planned modules
 
 ```
-ingest/poe_ninja_live.py    # live economy overview
 ingest/patch_notes.py       # scrape raw text → store
 normalize/entities.py       # name resolution, renames, variants
 patchnotes/                 # taxonomy.py (change types), extractor.py (LLM), review.py
@@ -75,7 +73,7 @@ The site will split into a **live trading** section and a **historical** section
 ## Add-ons
 
 - **Flip tracker.** Track exchange pairs with high volume and a decent spread and surface what's worth flipping. The hourly digests already carry volume and low/high ratios, so flip margins can be backtested on past launches first. It advises the player; automating trades is against GGG's terms.
-- **Build popularity.** Main skills, target uniques and ascendancies as a demand signal. ⚠️ poe.ninja's builds/profiles API is internal and off-limits, and their builds pages are rendered from it, so scraping them is effectively using it. Ask poe.ninja first (they're on Discord), or use another source: GGG's ladder API gives class/ascendancy but needs a registered OAuth app.
+- **Build popularity.** Main skills and ascendancies as a demand signal. ⚠️ poe.ninja's builds/profiles API is internal and off-limits, and their builds pages are rendered from it, so scraping them is effectively using it. Ask poe.ninja first (they're on Discord), or use another source: GGG's ladder API gives class/ascendancy but needs a registered OAuth app.
 
 ## Risks
 

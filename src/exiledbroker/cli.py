@@ -724,7 +724,7 @@ def site_seed(
 
     settings = get_settings()
     if not settings.database_url:
-        typer.echo("Set EB_DATABASE_URL (see .env.example) to the site's Postgres database.")
+        typer.echo("Set EB_DATABASE_URL to the site's Postgres database.")
         raise typer.Exit(1)
     with db.session(read_only=True) as duck:
         names = league or live_leagues(duck)["name"].head(1).to_list()

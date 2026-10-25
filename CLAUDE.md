@@ -45,7 +45,7 @@ EB_TEST_POSTGRES_URL=postgresql://postgres:eb@localhost:55432/postgres .venv/bin
 
 .venv/bin/eb serve                         # the site's API at http://127.0.0.1:8000/api (docs at /docs)
 
-# Local copy of hosting: Postgres in Docker stands in for Railway's (see .env.example)
+# Local copy of hosting: Postgres in Docker stands in for Railway's
 docker compose up -d db
 EB_DATABASE_URL=postgresql://eb:eb@localhost:55432/exiledbroker .venv/bin/eb site seed   # copy the live league in
 EB_DATABASE_URL=postgresql://eb:eb@localhost:55432/exiledbroker .venv/bin/eb serve       # API from Postgres
@@ -128,6 +128,7 @@ Target: everything on Railway Hobby ($5 a month including $5 of usage): web, Pos
 
 - **Challenge leagues only.** Event and Ruthless leagues are excluded from data and analysis; every command defaults to `kind = challenge`.
 - **Only show items in the current core drop pool.** Remove an item via `config/core_pool.toml`, not code.
+- **Uniques are out of scope** (2026-10-25): their prices follow each league's popular builds, and the rest are mostly gambling uniques. No unique features, no poe.ninja live poller, no unique card rewards; don't propose them. The daily dumps still load uniques (existing data only).
 - **Design for a new league's data arriving.** At launch everything is null and fills in hour by hour, with gaps (no Divine rate in the first hours, untraded items, a single league loaded). Every page must handle no data, one hour, partial days and one-league states. Widgets with data-dependent ranges must not break when there's only one option.
 - Recent leagues are the best reference; the currency exchange (Settlers, 2024-07) is a structural break.
 - Charts default to linear axes (log scale is only an opt-in toggle). Trading tables put the money columns first. Credit poe.ninja (CC BY-SA) on the public site.

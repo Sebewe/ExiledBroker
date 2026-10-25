@@ -153,7 +153,6 @@ activemq-data/
 .env
 .envrc
 .env.*
-!.env.example
 .venv
 env/
 venv/
