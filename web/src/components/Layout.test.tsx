@@ -49,6 +49,17 @@ describe('remembered settings', () => {
   })
 })
 
+describe('menu', () => {
+  it('puts Price check first, lit up, and has no Farming tab', () => {
+    renderAt('/')
+    const links = screen.getAllByRole('link').filter((a) => a.closest('nav'))
+    expect(links[0]).toHaveTextContent('Price check')
+    expect(links[0]!.getAttribute('href')).toBe('/price-check')
+    expect(links[0]!.className).toMatch(/border-accent/)
+    expect(screen.queryByRole('link', { name: /Farming/ })).not.toBeInTheDocument()
+  })
+})
+
 describe('theme', () => {
   it('opens dark, switches to light and remembers it', () => {
     renderAt('/')

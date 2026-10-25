@@ -14,13 +14,17 @@ export function ItemSearch<T extends SearchOption>({
   value,
   onChange,
   placeholder = 'Type to search…',
+  size = 'md',
 }: {
   label: string
   options: T[]
   value: string | undefined
   onChange: (id: string) => void
   placeholder?: string
+  /** "lg": the Price check page's headline box, as wide as its column. */
+  size?: 'md' | 'lg'
 }) {
+  const lg = size === 'lg'
   const id = useId()
   const listId = `${id}-list`
   const input = useRef<HTMLInputElement>(null)
@@ -58,12 +62,16 @@ export function ItemSearch<T extends SearchOption>({
   }
 
   return (
-    <div className="relative flex flex-col gap-1">
-      <label htmlFor={id} className="text-xs font-medium text-muted">
+    <div className={`relative flex flex-col gap-1 ${lg ? 'w-full max-w-2xl' : ''}`}>
+      <label htmlFor={id} className={lg ? 'text-sm font-medium text-muted' : 'text-xs font-medium text-muted'}>
         {label}
       </label>
-      <div className="flex h-9 w-72 max-w-full items-center gap-2 rounded-md border border-border bg-surface px-2.5 focus-within:border-accent">
-        <Search aria-hidden className="size-4 shrink-0 text-faint" />
+      <div
+        className={`flex max-w-full items-center gap-2 border bg-surface focus-within:border-accent ${
+          lg ? 'h-12 w-full rounded-lg border-accent/40 px-3.5 shadow-sm shadow-shadow/20' : 'h-9 w-72 rounded-md border-border px-2.5'
+        }`}
+      >
+        <Search aria-hidden className={`shrink-0 ${lg ? 'size-5 text-accent' : 'size-4 text-faint'}`} />
         <input
           ref={input}
           id={id}
@@ -84,7 +92,7 @@ export function ItemSearch<T extends SearchOption>({
             setActive(0)
           }}
           onKeyDown={onKey}
-          className="min-w-0 flex-1 truncate bg-transparent text-sm outline-none placeholder:text-faint"
+          className={`min-w-0 flex-1 truncate bg-transparent outline-none placeholder:text-faint ${lg ? 'text-base' : 'text-sm'}`}
         />
       </div>
       {open && (
@@ -94,7 +102,7 @@ export function ItemSearch<T extends SearchOption>({
           aria-label={label}
           // Keep focus in the box while clicking a row, so blur doesn't close it first.
           onMouseDown={(e) => e.preventDefault()}
-          className="absolute top-full left-0 z-30 mt-1 max-h-80 w-80 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-md border border-border bg-surface p-1 shadow-lg shadow-shadow/40"
+          className={`absolute top-full left-0 z-30 mt-1 max-h-80 ${lg ? 'w-full' : 'w-80'} max-w-[calc(100vw-2rem)] overflow-y-auto rounded-md border border-border bg-surface p-1 shadow-lg shadow-shadow/40`}
         >
           {shown.length === 0 && <li className="px-2.5 py-2 text-sm text-muted">No item matches "{query.trim()}".</li>}
           {shown.map((o, i) => (
