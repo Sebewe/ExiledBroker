@@ -4,9 +4,9 @@ This plan comes from an interview with the user on 2026-10-25. It replaces the F
 
 ## Status (2026-10-25)
 
-A, D and E started 2026-10-25. A's research goes first: it decides whether there is a verdict at all (see "The bar"). D's scaffold is built on the draft contract and waits on C's endpoints.
+A, D and E are done and merged into `main` (2026-10-25). The user read finding 9 and settled what the page shows outside the launch fortnight (below). B and C are next.
 
-- [x] **A. Prediction research** (2026-10-25): done, [finding 9](findings.md#9-sell-now-or-hold-past-leagues-paths-beat-no-change-in-the-launch-fortnight-mostly-as-sell-after-day-14-nothing-does). The verdict beats "no change" on days 0–13 (the item's own past-league path, shrunk per phase and thickness), in all five held-out leagues; mostly "Sell", and none in thin markets after day 7 or anywhere after day 13. B's table: per item and half-day bin, the 24 h and 3 d paths (~19k rows, ~2–3 MB), plus 12 constants. Waiting for the user to read it before B and C go on.
+- [x] **A. Prediction research** (2026-10-25): done, [finding 9](findings.md#9-sell-now-or-hold-past-leagues-paths-beat-no-change-in-the-launch-fortnight-mostly-as-sell-after-day-14-nothing-does). The verdict beats "no change" on days 0–13 (the item's own past-league path, shrunk per phase and thickness), in all five held-out leagues; mostly "Sell", and none in thin markets after day 7 or anywhere after day 13. B's table: per item and half-day bin, the 24 h and 3 d paths (~19k rows, ~2–3 MB), plus 12 constants.
 
 ## What we're building, and why
 
@@ -45,6 +45,9 @@ Settled in the interview:
 
 1. **The verdict judges in Divines.** Chaos inflates quickly, at a pace that depends on the patch, so Divines are the peg dedicated players care about (the user). The chart still shows both lines. A reports the Chaos view only as context.
 2. **`item_day_history` is dropped and `config/mechanics.toml` stays.** Nothing reads the table once the ranking is gone (~10 MB hosted, plus its capture, seed and backup steps). The config still feeds the core pool's farming lists and labels items in search ("Essence"). E removes the table (the user left it to us).
+
+3. **Outside the launch fortnight the page shows no verdict** (the user, after finding 9). After day 13, or for an item with fewer than 2 past leagues, the item view shows the chart and the stack seller with the line "Calls appear in a league's first two weeks; after that past leagues don't predict the next few days." The movers list falls back to the biggest 24-hour moves in Divines, without Sell or Hold labels. The range is shown only on days 0–13. Extending it is for later.
+4. **Serving stays as it is for now:** the per-item response is a cached `View` like the others (computed once per data version, gzipped once, ETag). Optimising it (versioned URLs, loading only the 3-day range first, a compact series, a separate size-bounded item cache) is for later, once measured (the user).
 
 ## Workstreams
 
@@ -97,6 +100,7 @@ A, D and E's audit start now. B waits for A's verdict on what history the model 
   - [ ] Check at 375 px in device emulation against C's real responses.
 
 ### E. Remove the Farming page
+- **Backend: done 2026-10-25** (branch `worktree-agent-a8925f19c7eca44dc`, to merge after or with D). Removed: `services/farming.py`, `services/item_history.py`, `analysis/mechanics.py`, `api/routes/farming.py` (and its warm view), the Farming response models, `eb farming history`, the pass's capture, `item_day_history`'s seed and backup sync, the simulation's Farming traffic and checks, and their tests. `item_day_history` is dropped by `schema.sql` (`DROP TABLE IF EXISTS`) on the next pass, sync and local write. Kept: `farming_report` and `eb farming build`, read through `services/sell_helper.py` (`constants(con, day_offset)` → `{hours, impact}`, `markets()` for the stack seller's per-market trading; the `FarmingHours` / `FarmingImpact` / `FarmingMarket` models stay in `api/models.py`, unreferenced until C uses them); `config/mechanics.toml`, `normalize/mechanics.py`, `eb mechanics check`, `analysis/hours.py` and the core pool's `mechanics` lists. `web/openapi.json` is regenerated without the route; `src/api/schema.d.ts` and the frontend (D's) follow at the merge. The frontend files (`Farming.tsx`, its test, `queries.ts`' hook) are D's to remove.
 - **Owns:** `web/src/pages/Farming.tsx` and its test, `services/farming.py`, `api/routes/farming.py`, `analysis/mechanics.py`, `services/item_history.py`, and their tests and docs.
 - **Do:** after D has moved what it keeps, remove the page, `/api/farming/{league}`, the mechanic ranking and outlook, and `item_day_history` and its capture, seed and backup steps. Keep `farming_report`'s hour and stack constants (renamed if C wants), and `config/mechanics.toml` if it labels items. Mark `farming.md` superseded and update README, `decisions.md`, `hosting.md`.
 

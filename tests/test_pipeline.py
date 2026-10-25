@@ -21,7 +21,7 @@ from exiledbroker.config import Settings
 from exiledbroker.ingest import currency_exchange as cx
 from exiledbroker.ingest import pipeline
 from exiledbroker.ingest.live import sync_live
-from exiledbroker.services import item_history, launch_picks
+from exiledbroker.services import launch_picks
 from exiledbroker.storage import backup, db, site
 from test_currency_exchange import FakeExchange, client_for
 from test_live_pipeline import LAUNCH, PAGES, store_reference_data
@@ -211,62 +211,18 @@ def _past_league(con) -> None:
     )
 
 
-def test_a_finished_league_is_captured_into_the_farming_history_once(seeded):
+def test_the_retired_farming_history_is_dropped(seeded):
+    """A database from before the Farming page's removal still holds item_day_history:
+    the pass's schema drops it (on Postgres too: tests/test_backup.py)."""
     s, server = seeded
     with db.session(s.db_path) as con:
-        _past_league(con)
-    first, _ = run(s, server, 8)
-    assert first.league == LEAGUE and first.farming_from == ["Past"]
-    assert "Farming history captured for Past." in str(first)
+        con.execute("CREATE TABLE item_day_history (league VARCHAR, day INTEGER)")
+        con.execute("INSERT INTO item_day_history VALUES ('Keepers', 0)")
+    result, _ = run(s, server, 8)
+    assert result.live.state == "updated"
     with db.session(s.db_path, read_only=True) as con:
-        rows = db.scalar(con, "SELECT count(*) FROM item_day_history WHERE league = 'Past'")
-        assert item_history.captured_leagues(con) == ["Past"]
-    assert rows > 0  # the replay's basket items, day 0
-    for hours_in in (9, 10):  # every later pass only checks
-        later, _ = run(s, server, hours_in)
-        assert later.farming_from == [] and "Farming history" not in str(later)
-    with db.session(s.db_path, read_only=True) as con:
-        assert db.scalar(con, "SELECT count(*) FROM item_day_history") == rows
-
-
-def _killed_capture(monkeypatch):
-    """item_history.capture that writes the league's rows, then dies (a pass stopped
-    partway: a deploy, the cron's stop). Returns the real one, to put back."""
-    real = item_history.capture
-
-    def dies(con, league, item_ids):
-        assert real(con, league, item_ids) > 0
-        raise OSError("killed")
-
-    monkeypatch.setattr(item_history, "capture", dies)
-    return real
-
-
-def test_a_capture_cut_short_leaves_nothing_and_the_next_pass_retries(seeded, monkeypatch):
-    """A league with any rows counts as captured, so a half-written league would stay
-    half-written for good (and be backed up so): the capture is one transaction."""
-    s, server = seeded
-    with db.session(s.db_path) as con:
-        _past_league(con)
-    real = _killed_capture(monkeypatch)
-    with pytest.raises(OSError):
-        run(s, server, 8)
-    with db.session(s.db_path, read_only=True) as con:
-        assert db.scalar(con, "SELECT count(*) FROM item_day_history") == 0
-    monkeypatch.setattr(item_history, "capture", real)
-    again, _ = run(s, server, 8)
-    assert again.farming_from == ["Past"]
-
-
-def test_without_baskets_the_farming_history_waits(seeded):
-    s, server = seeded
-    with db.session(s.db_path) as con:
-        _past_league(con)
-    missing = s.model_copy(update={"mechanics_file": s.data_dir / "nowhere.toml"})
-    result, _ = run(missing, server, 8)
-    assert result.farming_from == [] and "the Farming history waits" in str(result)
-    with db.session(s.db_path, read_only=True) as con:  # not "captured" as empty
-        assert item_history.captured_leagues(con) == []
+        q = "SELECT count(*) FROM information_schema.tables WHERE table_name = ?"
+        assert db.scalar(con, q, ["item_day_history"]) == 0
 
 
 # --- On Postgres, seeded with `eb site seed --hosted` ---------------------------------
@@ -370,38 +326,14 @@ def test_a_failed_pass_leaves_the_site_as_it_was(local, pg, monkeypatch):
 
 
 @needs_pg
-def test_a_hosted_capture_cut_short_leaves_nothing(local, pg, monkeypatch):
-    """The same on Postgres, through `site_writer`: the capture's DELETE (pushed down)
-    and its INSERTs are one Postgres transaction, so nothing of the league is left."""
-    import psycopg
-
-    s, server = local
-    _seed(s, pg["eb_site"])
-    with psycopg.connect(pg["eb_site"], autocommit=True) as con:
-        _past_league(con)
-    hosted = s.model_copy(update={"database_url": pg["eb_site"]})
-    real = _killed_capture(monkeypatch)
-    with pytest.raises(OSError):
-        run(hosted, server, 9)
-    with psycopg.connect(pg["eb_site"]) as con:
-        assert db.scalar(con, "SELECT count(*) FROM item_day_history") == 0
-    monkeypatch.setattr(item_history, "capture", real)
-    again, _ = run(hosted, server, 9)
-    assert again.farming_from == ["Past"]
-    with psycopg.connect(pg["eb_site"]) as con:
-        assert item_history.captured_leagues(con) == ["Past"]
-
-
-@needs_pg
 def test_a_pass_never_copies_a_whole_table_out_of_postgres(local, pg, monkeypatch, capfd):
     """Through an attached Postgres, DuckDB answers a DELETE, an aggregate or a
     correlated subquery by copying the league's rows out (the hosted pass read ~100 MB
     that way; across the internet to Supabase, ~70 GB a month). Those statements run on
     Postgres itself (`db.pushdown`); what DuckDB still copies from the big tables must
-    be limited to some hours or items. The pass also captures a finished league into
-    the Farming history (`item_history.refresh`), on Postgres too. (The league is in
-    the Launch history already: `launch_picks.capture` copies a league's fortnight of
-    kept prices out, filtered by league and day, once a league.)"""
+    be limited to some hours or items. (The finished league is in the Launch history
+    already: `launch_picks.capture` copies a league's fortnight of kept prices out,
+    filtered by league and day, once a league.)"""
     import psycopg
 
     s, server = local
@@ -414,7 +346,6 @@ def test_a_pass_never_copies_a_whole_table_out_of_postgres(local, pg, monkeypatc
     capfd.readouterr()
     result, requests = run(hosted, server, 9)
     assert result.live.hours_added == 3 and len(requests) == 3
-    assert result.farming_from == ["Past"]
     ctypes.CDLL(None).fflush(None)  # DuckDB prints from C, to stderr
     sent = capfd.readouterr().err
     copies = [q for q in sent.split("\n\n") if q.lstrip().startswith("COPY (SELECT")]

@@ -240,16 +240,13 @@ def test_the_pipeline_follows_a_league_switch(server_db):
     assert history == [("Keepers",)]  # Mirage's fortnight wasn't complete: not a reference
 
 
-def test_a_switch_keeps_the_farming_history_and_captures_the_old_league_first(server_db):
-    """What was built from past leagues stays through a switch: the Farming history and
-    its report, like the Launch history. A followed league whose fortnight is complete
-    but not captured yet is reduced before the switch drops its hours."""
+def test_a_switch_keeps_the_reports_and_captures_the_old_league_first(server_db):
+    """What was built from past leagues stays through a switch: the farming report (the
+    sell helper's constants), like the Launch history. A followed league whose fortnight
+    is complete but not captured yet goes into the Launch history before the switch
+    drops its hours."""
     s = server_db
     with db.session(s.db_path) as con:
-        con.execute(
-            "INSERT INTO item_day_history VALUES ('Keepers', '2025-10-31', "
-            "'currency:chaos-orb', 0, 1.0, 0.01, 500.0, 24, 0.01, 24)"
-        )
         con.execute("INSERT INTO farming_report VALUES ('report', '2026-10-24 09:00:00', '{}')")
         # Mirage's fortnight, as complete (a Chaos price 14 days in): not captured yet.
         start = db.scalar(con, "SELECT start_at FROM league WHERE name = 'Mirage'")
@@ -263,14 +260,12 @@ def test_a_switch_keeps_the_farming_history_and_captures_the_old_league_first(se
     for h in (-1, 0, 1, 2):
         result, _ = run(s, server, h)
         if h == 1:
-            assert result.dropped == ["Mirage"] and result.farming_from == ["Mirage"]
-        elif h == 2:
-            assert result.farming_from == []  # once
+            assert result.dropped == ["Mirage"]
     with db.session(s.db_path, read_only=True) as con:
-        history = db.rows(con, "SELECT league, count(*) FROM item_day_history GROUP BY 1")
+        history = db.rows(con, "SELECT DISTINCT league FROM launch_history")
         report = db.rows(con, "SELECT id FROM farming_report")
         hours = db.scalar(
             con, "SELECT count(*) FROM cross_market_hour WHERE league_id = 'poe1-mirage'"
         )
-    assert dict(history)["Keepers"] == 1 and dict(history)["Mirage"] > 0
+    assert ("Mirage",) in history
     assert report == [("report",)] and hours == 0

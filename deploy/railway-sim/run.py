@@ -172,9 +172,6 @@ BACKUP_CHECK = """SELECT json_build_object(
     'pages', (SELECT count(*) FROM exchange_page),
     'items', (SELECT count(*) FROM item),
     'history', (SELECT count(*) FROM launch_history),
-    'farming_history', (SELECT string_agg(league || ':' || n, ',' ORDER BY league)
-                        FROM (SELECT league, count(*) AS n FROM item_day_history
-                              GROUP BY league) h),
     'farming_report', (SELECT max(built_at)::text FROM farming_report))"""
 
 
@@ -416,8 +413,8 @@ def switch(args) -> dict:
     first = launch - 2 * 3600 + CRON_MINUTE * 60
     reset_and_seed(["--league", "Mirage", "--drop", LEAGUE], first, announced)
     seeded = summary()
-    farmed = {k: seeded[k] for k in ("farming_history", "farming_report")}
-    print(f"seeded Farming tables: {json.dumps(farmed)}")
+    built = {k: seeded[k] for k in ("history", "farming_report")}
+    print(f"seeded tables built from past leagues: {json.dumps(built)}")
     steps = []
     for h in range(-1, 5):
         at = launch + h * 3600 + CRON_MINUTE * 60
@@ -427,7 +424,6 @@ def switch(args) -> dict:
         status = httpx.get(f"{WEB}/api/status", timeout=10).json()
         names = [lg["name"] for lg in status["leagues"]]
         missed = httpx.get(f"{WEB}/api/missed/{names[0]}", timeout=30) if names else None
-        farming = {name: farming_check(name) for name in names}
         now = summary()
         steps.append(
             {
@@ -440,8 +436,7 @@ def switch(args) -> dict:
                 "upcoming": (status.get("upcoming") or {}).get("name"),
                 "missed_status": missed.status_code if missed else None,
                 "warmed": warmed,
-                "farming": farming,
-                "farming_tables_kept": all(now[k] == farmed[k] for k in farmed),
+                "built_tables_kept": all(now[k] == built[k] for k in built),
             }
         )
         print(json.dumps(steps[-1]))
@@ -450,14 +445,13 @@ def switch(args) -> dict:
     print(f"backup matches the site: {backed_up['same']}")
     passed = (
         backed_up["same"]
-        and all(s["ok"] and s["farming_tables_kept"] for s in steps)
-        and all(f["status"] == 200 for s in steps for f in s["farming"].values())
+        and all(s["ok"] and s["built_tables_kept"] for s in steps)
         and steps[-1]["site_leagues"] == [LEAGUE]
     )
     out = {
         "label": "switch",
         "passed": passed,
-        "seeded_farming": farmed,
+        "seeded_built": built,
         "steps": steps,
         "upstream": upstream,
         "backup": backed_up,
@@ -486,24 +480,6 @@ def wait_warmed(before: int, seconds: int = 75) -> str | None:
             return line[line.index("warmed ") :]
         time.sleep(1)
     return None
-
-
-def farming_check(league: str) -> dict:
-    """/api/farming/<league> as a visitor gets it, and how long it took (a warmed view
-    is served from the cache in milliseconds)."""
-    started = time.perf_counter()
-    r = httpx.get(f"{WEB}/api/farming/{league}", timeout=30)
-    out = {"status": r.status_code, "ms": round((time.perf_counter() - started) * 1000, 1)}
-    if r.status_code == 200:
-        body = r.json()
-        out |= {
-            "phase": body.get("phase"),
-            "mechanics": len(body.get("mechanics") or []),
-            "outlook": len(body.get("outlook") or []),
-            "items": len(body.get("items") or []),
-            "report": body.get("hours") is not None and body.get("impact") is not None,
-        }
-    return out
 
 
 def main() -> None:

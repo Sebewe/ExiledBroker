@@ -1,6 +1,6 @@
 """Hour of day: does it matter when a farmer sells? (finding 6 in docs/findings.md).
-Research only, on the local database; `report` is what the Farming page's `hours` ships
-(docs/farming.md), built locally from past leagues.
+Research only, on the local database; `report` is what the sell helper's `hours` ships
+(services/sell_helper.py, `eb farming build`), built locally from past leagues.
 
 Price: each item-hour's log Chaos price minus the item's mean log price over the WINDOW
 hours centred on it (at least MIN_WINDOW of them traded). A centred mean rather than the
@@ -433,7 +433,7 @@ def phase_report(
 def report(
     px: pl.DataFrame, dev: pl.DataFrame, dev_div: pl.DataFrame, bks: dict[str, list[str]]
 ) -> dict:
-    """The Farming page's hour-of-day constants, per phase, from past leagues: price
+    """The sell helper's hour-of-day constants, per phase, from past leagues: price
     profiles (fractions over the 24-hour average, by UTC hour) in the Chaos market, in the
     Divine market, and the Divine's own Chaos price; the share of the day's Chaos traded
     each hour; each price profile's effect; and every basket's profile, `shown` when it

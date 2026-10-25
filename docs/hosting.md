@@ -11,7 +11,7 @@ web (always on, no data of its own: uvicorn serving /api and the built frontend)
    │ reads (private network, free)
    ▼
 Postgres (always on: only what the site reads: the live league, its window's
-   ▲       raw pages, the Launch history and picks, the Farming history and report)
+   ▲       raw pages, the Launch history and picks, the backtest and farming reports)
    │ loads the new hours once an hour, in one transaction
    │
 pipeline (cron "6 * * * *": eb pipeline run, then exits; no volume, no disk)
@@ -36,7 +36,7 @@ Supabase (another provider, free tier): the off-site backup, read only to restor
 - **`eb live watch` writes Postgres through DuckDB** (`EB_DATABASE_URL`, local use). `db.site_writer` attaches Postgres to an in-memory DuckDB, so the incremental loader runs unchanged and the transaction is Postgres's. On Mirage: 24 new hours in 1.0 s, identical rows, and a failed load rolls back. A worker container starting from an empty disk fetched only the 2 new hours (2 requests, 110 KB) and wrote them in 2 s.
 - **Serving.** Each table is a `View` (`api/deps.py`), computed once per data version, gzipped once, and sent with an ETag (`304` for a client that has it). The data version is trusted for 15 s, so a cached request makes no database query. Default views are precomputed when an hour loads (`api/warm.py`). The cache is a bounded LRU, and a new data version drops the old one's results (they're never asked for again; with the Farming page's 206 kB responses, keeping them grew the web service from ~190 MB to ~340 MB, now ~190–220 MB). Cached calls take 2–8 ms on real Allflame data; the heaviest cold call (arbitrage, 566 loops) about 0.3 s.
 
-- **The off-site backup.** After each pass, with `EB_BACKUP_URL` set, the pipeline syncs the site's database to Supabase (`storage/backup.py`): the hours the backup lacks, reference data only when its MD5 differs, the rebuilt Launch, backtest and Farming tables (each group with its own stamp; `item_day_history` league by league, so a new league's capture sends ~1.2 MB, not the whole history), the window's pages; it drops what the site dropped. It reads back only which hours and pages the backup has and a few checksums (~25 kB, ~18 MB a month), and a failed backup never fails the pass. `eb site restore` is the one bulk read, behind `--yes`. Details and measurements: [supabase.md](supabase.md).
+- **The off-site backup.** After each pass, with `EB_BACKUP_URL` set, the pipeline syncs the site's database to Supabase (`storage/backup.py`): the hours the backup lacks, reference data only when its MD5 differs, the rebuilt Launch tables and the backtest and farming reports (each group with its own stamp), the window's pages; it drops what the site dropped. It reads back only which hours and pages the backup has and a few checksums (~25 kB, ~18 MB a month), and a failed backup never fails the pass. `eb site restore` is the one bulk read, behind `--yes`. Details and measurements: [supabase.md](supabase.md).
 
 Not deployed yet.
 
@@ -52,11 +52,13 @@ Simulated with `deploy/railway-sim/` (Railway's per-minute rates, read 2026-10-2
 
 Before the Farming page (2026-10-23) it was $2.64 and $2.83 at 10 and 100 visitors, and ~$3.2 estimated at 1000.
 
+**The Farming page is retired (2026-10-25, [price-check.md](price-check.md) E):** its warmed view per listed league (206 kB, ~21 kB gzipped each), `item_day_history` (~10 MB on Postgres and in the backup; the schema drops it on the next pass and sync) and its capture are gone, so the figures above, measured with it, are an upper bound until Price check is simulated (F). The simulation's visitors no longer ask for `/api/farming`; F adds Price check's requests.
+
 - **Memory is most of it**, and the Farming page added to it. The web service averaged 0.14 GB at 10 visitors and 0.21 GB at 100 (peak 0.34 GB), against ~0.16–0.17 GB before; Postgres 0.11–0.12 GB. The cache fix keeps it from growing without end (old data versions are dropped), but each Farming response is large (206 kB, ~21 kB gzipped), and more visitors warm more of them.
 - **The pipeline costs almost nothing:** ~2.4 s and ~0.12–0.16 GB a pass, billed only while it runs: about $0.03 a month, nearly all CPU. Its backup sync adds ~0.3 s a pass.
 - **CPU is reported at Railway's rates for the measured use;** Apple Silicon is faster than Railway's vCPUs, so the "slow CPU" band doubles it: still $2.98 / $3.98 at 10 / 100 visitors.
 - **1000 visitors** wasn't run (it would take hours). The estimate scales the 100-visitor egress tenfold on the same always-on memory, which puts it close to the $5 included in Hobby. Worth measuring before a launch week, and the Farming response is the first thing to shrink if it's over.
-- **What would push it over $5:** much more always-on memory (a second web replica, a larger cache), a Railway volume holding history again, or an endpoint that recomputes per visitor (the API serves only the five precomputed responses, `docs/decisions.md`). The Supabase backup isn't on this bill.
+- **What would push it over $5:** much more always-on memory (a second web replica, a larger cache), a Railway volume holding history again, or an endpoint that recomputes per visitor (the API serves only the four precomputed responses since the Farming page was retired, `docs/decisions.md`). The Supabase backup isn't on this bill.
 - **p95 latency** 20–34 ms at 10 and 100 visitors, no errors. The league-switch replay (`run.py switch`) passed with the Farming view warmed.
 
 ## Supabase: tried as the database, now the off-site backup

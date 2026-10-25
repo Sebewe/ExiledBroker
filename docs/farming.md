@@ -1,5 +1,7 @@
 # Farming page: the work plan
 
+> **Superseded (2026-10-25) by [price-check.md](price-check.md).** The Farming page is being retired: its mechanic ranking, launch outlook, `item_day_history` (and its capture, seed and backup), `eb farming history` and `GET /api/farming/{league}` are removed (Price check workstream E). What stays: the stack seller and the best-hour sentence, which move into Price check; `farming_report` and `eb farming build` (the hour-of-day and stack constants, read through `services/sell_helper.py`); `config/mechanics.toml`, `normalize/mechanics.py` and `eb mechanics check` (the core pool's farming lists and item labels). Findings 6–8 stand. The rest of this page is the record of how the Farming page was built.
+
 This plan comes from an interview with the user on 2026-10-24. It is split into workstreams so that several agents can work at once. Each workstream lists what it owns, what it waits for and when it's done. Tick items off here as they land, and record the reasoning in [decisions.md](decisions.md).
 
 Deadline: the next league launches in about a month, in parallel with [go-live](go-live.md). If time runs short, ship in priority order: **P1** Launch outlook and Best hour to sell, **P2** mechanic trend and Easy to sell, **P3** stack impact.

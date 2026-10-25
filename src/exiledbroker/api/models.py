@@ -319,48 +319,7 @@ class BacktestFlip(BaseModel):
 BacktestReport.model_rebuild()
 
 
-# --- The Farming page (docs/farming.md, the response contract) ---------------------
-
-
-class FarmingMechanic(BaseModel):
-    """A mechanic's basket now (finding 8). The index is in Divines, over the basket's
-    day-0 prices; `usual` and its range are past leagues' at the same day of the league
-    (null after day 13 or with fewer than 2 past leagues)."""
-
-    id: str
-    name: str
-    items: int  # basket outputs the page shows (core drop pool)
-    priced_items: int  # of those, the ones with a price in the latest 24 hours
-    index: float | None
-    usual: float | None
-    usual_low: float | None
-    usual_high: float | None
-    change_24h: float | None  # fractional: 0.04 = +4%
-    change_7d: float | None
-    chaos_volume_h: float | None  # Chaos traded an hour across the basket, last 3 days
-    liquidity: float | None  # Easy to sell: percentile among mechanics, 0–1
-    score: float | None
-
-
-class OutlookWindow(BaseModel):
-    """The launch premium in a window: its median Divine price over days 12–14's,
-    recency-weighted over past leagues (`premium`), and the lowest league's (`worst`)."""
-
-    premium: float | None
-    worst: float | None
-
-
-class OutlookWindows(BaseModel):
-    day1: OutlookWindow | None = None
-    days2_4: OutlookWindow | None = None
-    days5_10: OutlookWindow | None = None
-
-
-class FarmingOutlook(BaseModel):
-    id: str
-    name: str
-    leagues: int
-    windows: OutlookWindows
+# --- The sell helper (services/sell_helper.py; kept from the Farming page for Price check) -
 
 
 class FarmingMarket(BaseModel):
@@ -373,14 +332,6 @@ class FarmingMarket(BaseModel):
     volume_h: float | None
     sigma_h: float | None
     hours_traded: float | None
-
-
-class FarmingItem(BaseModel):
-    item_id: str
-    name: str
-    mechanics: list[str]
-    chaos: FarmingMarket | None
-    divine: FarmingMarket | None  # null when it didn't trade against Divines
 
 
 class HourEffect(BaseModel):
@@ -426,15 +377,3 @@ class FarmingImpact(BaseModel):
     y: float | None
     bands: list[float]
     note: str | None
-
-
-class Farming(BaseModel):
-    league: str
-    latest_hour: datetime | None  # null before the first trades
-    day_offset: float | None
-    phase: Literal["pre_launch", "launch", "later"]
-    mechanics: list[FarmingMechanic]  # best first; empty before the first trades
-    outlook: list[FarmingOutlook]
-    items: list[FarmingItem]
-    hours: FarmingHours | None  # null until `eb farming build` has been run and seeded
-    impact: FarmingImpact | None
