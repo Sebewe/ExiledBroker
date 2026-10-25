@@ -135,11 +135,13 @@ export function busiestHours(volume: HourProfile | null | undefined, span = 4) {
   return { start: busiest, end: (busiest + span) % 24, share, quietStart: quietest, quietEnd: (quietest + span) % 24, ratio }
 }
 
+/** Chaos traded an hour in the item's Chaos market (0 without a price). */
+export const chaosTraded = (x: FarmingItem) => (x.chaos?.price ?? 0) * (x.chaos?.volume_h ?? 0)
+
 /** The sell helper's first item: the one with the most Chaos traded an hour (what a farmer
  *  most likely holds a stack of), else the first. */
 export function defaultItem<T extends FarmingItem>(items: T[]): T | undefined {
-  const traded = (x: FarmingItem) => (x.chaos?.price ?? 0) * (x.chaos?.volume_h ?? 0)
-  return items.reduce<T | undefined>((best, x) => (best === undefined || traded(x) > traded(best) ? x : best), undefined)
+  return items.reduce<T | undefined>((best, x) => (best === undefined || chaosTraded(x) > chaosTraded(best) ? x : best), undefined)
 }
 
 /** How long to spread a stack in the top band over: its hours of trading rounded up, at

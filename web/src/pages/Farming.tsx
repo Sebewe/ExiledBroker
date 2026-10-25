@@ -12,13 +12,14 @@ import type {
   Upcoming,
 } from '../api/client'
 import { useFarming, useServerNow, useStatus } from '../api/queries'
-import { Field, NumberField, Segmented, Select, Toolbar } from '../components/Controls'
+import { NumberField, Segmented, Select, Toolbar } from '../components/Controls'
 import { FreshnessBanner } from '../components/Freshness'
+import { ItemSearch } from '../components/ItemSearch'
 import { Notice } from '../components/Notice'
 import { Empty, Meter } from '../components/Opportunity'
 import { PageHeader } from '../components/Section'
 import { count, duration, pct, price, signedPct, tone, utcHour } from '../lib/format'
-import { bandsOf, busiestHours, defaultItem, localHour, perHour, spreadOver, swing, profileFor, stackInMarkets, tradingTime, type Bands, type ImpactBand, type MarketStack } from '../lib/impact'
+import { bandsOf, busiestHours, chaosTraded, defaultItem, localHour, perHour, spreadOver, swing, profileFor, stackInMarkets, tradingTime, type Bands, type ImpactBand, type MarketStack } from '../lib/impact'
 import { makeMoney, type Money } from '../lib/money'
 import { queryFallback } from '../lib/queryFallback'
 import { useLeague } from '../lib/useLeague'
@@ -60,10 +61,18 @@ export default function Farming() {
   const money = makeMoney(info?.divine_chaos)
 
   const header = (
-    <PageHeader title="Farming">
-      Which mechanics' drops are worth the most right now, how they did at past league launches, and how to sell a stack without sinking its price. From GGG's
-      hourly exchange history: what has already traded, not a forecast.
-    </PageHeader>
+    <>
+      <PageHeader title="Farming">
+        Ranks farming strategies by where their drops' prices are heading: whether each mechanic's currency is rising or falling against how it usually
+        moves at this point in a league, what it was worth at past launches, and how easily it sells. Use it to decide whether a strategy is worth investing
+        in, such as running 40 maps with scarabs, before you commit.
+      </PageHeader>
+      <ul className="-mt-2 flex max-w-3xl list-disc flex-col gap-0.5 pl-5 text-xs leading-relaxed text-muted">
+        <li>It doesn't count how much a strategy drops: not its raw currency, and not other loot.</li>
+        <li>It doesn't know how you run a strategy: your atlas, scarabs or map mods.</li>
+        <li>It only reads the prices of each mechanic's drops on GGG's hourly exchange and how they moved in past leagues, so it's a guide, not a guarantee.</li>
+      </ul>
+    </>
   )
   const fallback = queryFallback(status)
   if (fallback || !info)
@@ -355,7 +364,10 @@ function SellHelper({
   const [qty, setQty] = useNumberParam('qty', DEFAULT_QTY)
   const item = sorted.find((x) => x.item_id === itemParam) ?? defaultItem(sorted)
   const mechanicName = new Map(mechanics.map((m) => [m.id, m.name]))
-  const groups = itemGroups(sorted, mechanicName)
+  // Before anything is typed, the most traded items come first: what a farmer most likely holds.
+  const options = [...sorted]
+    .sort((a, b) => chaosTraded(b) - chaosTraded(a))
+    .map((x) => ({ id: x.item_id, name: x.name, group: x.mechanics[0] == null ? undefined : (mechanicName.get(x.mechanics[0]) ?? x.mechanics[0]) }))
   return (
     <Block
       id="sell"
@@ -368,26 +380,7 @@ function SellHelper({
       ) : (
         <>
           <Toolbar>
-            <Field label="Item">
-              {(id) => (
-                <select
-                  id={id}
-                  value={item.item_id}
-                  onChange={(e) => setItem(e.target.value)}
-                  className="h-9 max-w-[16rem] min-w-40 cursor-pointer rounded-md border border-border bg-surface px-2.5 text-sm"
-                >
-                  {groups.map(([group, xs]) => (
-                    <optgroup key={group} label={group}>
-                      {xs.map((x) => (
-                        <option key={x.item_id} value={x.item_id}>
-                          {x.name}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
-              )}
-            </Field>
+            <ItemSearch label="Item" options={options} value={item.item_id} onChange={setItem} placeholder="Type an item, e.g. Divine Orb" />
             <NumberField label="How many" value={qty} onChange={setQty} min={1} max={1_000_000} step={1} />
             {item.mechanics.length > 0 && (
               <p className="pb-2 text-xs text-faint">Drops from {item.mechanics.map((id) => mechanicName.get(id) ?? id).join(', ')}</p>
@@ -399,17 +392,6 @@ function SellHelper({
       <BestHours hours={hours} item={item} mechanicName={mechanicName} />
     </Block>
   )
-}
-
-/** The item list by mechanic (an item's first), mechanics and items in name order. */
-function itemGroups(sorted: FarmingItem[], mechanicName: Map<string, string>): [string, FarmingItem[]][] {
-  const groups = new Map<string, FarmingItem[]>()
-  for (const x of sorted) {
-    const id = x.mechanics[0]
-    const group = id == null ? 'Other' : (mechanicName.get(id) ?? id)
-    groups.set(group, [...(groups.get(group) ?? []), x])
-  }
-  return [...groups].sort(([a], [b]) => a.localeCompare(b))
 }
 
 const MARKET_NAME = { chaos: 'Chaos market', divine: 'Divine market' } as const

@@ -16,6 +16,14 @@ function serve(routes: Record<string, { status?: number; body: unknown }>) {
   )
 }
 
+/** Types into the item search and clicks the matching row. */
+function pickItem(text: string, name: RegExp) {
+  const box = screen.getByRole('combobox', { name: 'Item' })
+  fireEvent.focus(box)
+  fireEvent.change(box, { target: { value: text } })
+  fireEvent.click(within(screen.getByRole('listbox')).getByRole('option', { name }))
+}
+
 function renderFarming(url = '/farming') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
@@ -223,14 +231,30 @@ describe('Farming', () => {
     expect(divine.getByText(/list it over several days\. It trades in only 21% of hours/)).toBeInTheDocument()
   })
 
-  it('opens on the most traded item, listed by mechanic', async () => {
+  it('opens on the most traded item; typing filters the item list', async () => {
     serve({ '/api/status': status([league(iso(-80 * MIN))]), '/api/farming/Allflame': { body: FARMING } })
     renderFarming()
     // Splinters: 1.4c × 3,200 an hour, against essences' 3c × 50.
     expect(await screen.findByText(/of the Chaos market's trading/)).toHaveTextContent(/^100 Splinter of Xoph is/)
-    const select = screen.getByLabelText('Item')
-    expect(within(select).getByRole('group', { name: 'Breach' })).toHaveTextContent('Splinter of Xoph')
-    expect(within(select).getByRole('group', { name: 'Essence' })).toHaveTextContent('Deafening Essence of Greed')
+    const box = screen.getByRole('combobox', { name: 'Item' })
+    expect(box).toHaveValue('Splinter of Xoph')
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    // Focused, every item is listed, most traded first, each with its mechanic.
+    fireEvent.focus(box)
+    const all = within(screen.getByRole('listbox', { name: 'Item' })).getAllByRole('option')
+    expect(all.map((o) => o.textContent)).toEqual(['Splinter of XophBreach', 'Deafening Essence of GreedEssence'])
+    // Typing narrows it (a mechanic's name matches too); Enter picks the first.
+    fireEvent.change(box, { target: { value: 'essence' } })
+    expect(within(screen.getByRole('listbox')).getAllByRole('option')).toHaveLength(1)
+    fireEvent.keyDown(box, { key: 'Enter' })
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    expect(box).toHaveValue('Deafening Essence of Greed')
+    expect(screen.getByText(/of the Chaos market's trading/)).toHaveTextContent(/^100 Deafening Essence of Greed is/)
+    fireEvent.focus(box)
+    fireEvent.change(box, { target: { value: 'mirror' } })
+    expect(screen.getByRole('listbox')).toHaveTextContent('No item matches "mirror".')
+    fireEvent.keyDown(box, { key: 'Escape' })
+    expect(box).toHaveValue('Deafening Essence of Greed')
   })
 
   it('says when the Divine market takes a stack faster, and spreads a very long one over days', async () => {
@@ -255,7 +279,7 @@ describe('Farming', () => {
     )
     // A log swing of 0.8 is ×2.2 or ÷2.2, not ±80%.
     expect(within(screen.getByRole('region', { name: 'Chaos market' })).getByText('×2.2 either way')).toBeInTheDocument()
-    fireEvent.change(screen.getByLabelText('Item'), { target: { value: 'currency:a-chilling-wind' } })
+    pickItem('chilling', /A Chilling Wind/)
     expect(screen.getByText(/of the Chaos market's trading/)).toHaveTextContent('so split it and list it over several days.')
     expect(within(screen.getByRole('region', { name: 'Chaos market' })).getByText('under 0.1')).toBeInTheDocument()
   })
@@ -320,7 +344,7 @@ describe('Farming', () => {
     expect(screen.getByText(/From 5 past leagues' days 2–7 \(30 league-days\), in your time zone/)).toBeInTheDocument()
     // A sentence, not a chart.
     expect(screen.queryByRole('img', { name: /by hour of day/ })).not.toBeInTheDocument()
-    fireEvent.change(screen.getByLabelText('Item'), { target: { value: 'currency:deafening-essence-of-greed' } })
+    pickItem('greed', /Deafening Essence of Greed/)
     expect(screen.getByText(/drops sell highest/)).toHaveTextContent("Essence's drops sell highest around 23:00 your time: about 9.2% over the day's average")
   })
 
