@@ -1,4 +1,4 @@
-// Run with: node --test deploy/cloudflare/   (Node 20+, no dependencies; fetch is stubbed.)
+// Run with: node --test "deploy/cloudflare/*.test.mjs"   (Node 20+, no dependencies; fetch is stubbed.)
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
