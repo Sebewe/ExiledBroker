@@ -58,6 +58,14 @@ describe('menu', () => {
     expect(links[0]!.className).toMatch(/border-accent/)
     expect(screen.queryByRole('link', { name: /Farming/ })).not.toBeInTheDocument()
   })
+
+  it('sets the Backtest apart in blue, as the proof of concept', () => {
+    renderAt('/')
+    const backtest = screen.getByRole('link', { name: /Backtest/ })
+    expect(backtest.className).toMatch(/border-info/)
+    expect(backtest.className).not.toMatch(/accent/)
+    expect(backtest).toHaveAttribute('title', expect.stringMatching(/^Proof of concept/))
+  })
 })
 
 describe('theme', () => {
