@@ -179,7 +179,7 @@ function Movers({ data, money }: { data: PriceCheckIndex; money: Money }) {
                 <span className={`num text-lg font-semibold ${tone(m.change_24h)}`} title="Last 24 hours, in Divines">
                   {signedPct(m.change_24h, 0)}
                 </span>
-                <span className="num text-sm" title="Price now">
+                <span className="num text-sm" title="Typical price over the last 6 hours (median of the hourly averages), not a live price">
                   {money(m.chaos)}
                 </span>
                 <span className="truncate text-sm font-medium" title={m.name}>

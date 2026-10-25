@@ -137,7 +137,9 @@ function MarketCard({
       <dl className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 text-sm">
         <dt className="text-muted">Trades an hour</dt>
         <dd className="num text-right">{perHour(stack.volumeH)}</dd>
-        <dt className="text-muted">Price now</dt>
+        <dt className="text-muted" title="The median of the market's hourly average prices over the last 24 hours, not a live price">
+          Typical price, last 24 h
+        </dt>
         <dd className="num text-right">{stack.unit == null ? '–' : `${inDivines ? price(stack.unit, 'divine') : money(stack.unitChaos)} each`}</dd>
         <dt className="text-muted">The stack at that price</dt>
         <dd className="num text-right font-medium">

@@ -47,7 +47,7 @@ export type MarketStack = {
   band: ImpactBand
   /** Units traded in a typical hour. */
   volumeH: number
-  /** One unit's price now, in Chaos (the Divine market's at the latest Divine rate); null
+  /** One unit's typical price over the last 24 hours (not a live price), in Chaos (the Divine market's at the latest Divine rate); null
    *  without a recent price, or for the Divine market before there's a rate. */
   unitChaos: number | null
   /** The Divine market before there's a Divine rate: its prices can only be given in
