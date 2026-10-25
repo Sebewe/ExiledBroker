@@ -133,7 +133,8 @@ def _cases(duck) -> dict:
         "price_check.features(item)": lambda c: price_check.features(c, LEAGUE, latest, ITEM),
         "price_check.series": lambda c: price_check.series(c, LEAGUE, ITEM),
         "price_check.stack": lambda c: price_check.stack(c, LEAGUE, latest, ITEM, 30),
-        "price_check.launch_premium": lambda c: price_check.launch_premium(c, ITEM),
+        "price_check.last_day": lambda c: price_check.last_day(c, LEAGUE, latest, ITEM),
+        "price_check.launch_prices": lambda c: price_check.launch_prices(c, ITEM),
         "price_check.paths": lambda c: price_check.paths(c, 2),
         "price_check.last_bins": lambda c: price_check.last_bins(c),
     }
@@ -187,6 +188,7 @@ LIVE_QUERIES = [
     "price_check.features(item)",  # one item's view: by league, item and time
     "price_check.series",
     "price_check.stack",
+    "price_check.last_day",
 ]
 
 

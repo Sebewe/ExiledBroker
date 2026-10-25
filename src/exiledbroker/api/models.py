@@ -437,13 +437,31 @@ class StackMarkets(BaseModel):
     divine: StackMarket | None
 
 
-class LaunchPremium(BaseModel):
-    """Past leagues' launch windows against the settled price (days 12–14), in Divines:
-    the median over leagues (3.4 is three and a half times as much)."""
+class LaunchPrice(BaseModel):
+    divine: float | None  # the median over past leagues of the window's median, in Divines
+    leagues: int
 
-    day1: float | None
-    days2_4: float | None
-    days5_10: float | None
+
+class LaunchPrices(BaseModel):
+    """The item's typical price in each launch window of past leagues, in Divines; a
+    window no past league has is null."""
+
+    day1: LaunchPrice | None
+    days2_4: LaunchPrice | None
+    days5_10: LaunchPrice | None
+
+
+class DayHour(BaseModel):
+    """One traded hour of the latest 24: each market's price (Chaos per item, Divines per
+    item) and units traded (unsigned: a unit traded was both sold and bought), and the
+    hour's Divine rate in Chaos."""
+
+    hour: datetime
+    chaos_price: float | None
+    chaos_units: float | None
+    divine_price: float | None
+    divine_units: float | None
+    divine_rate: float | None
 
 
 class PriceCheckItem(BaseModel):
@@ -461,6 +479,7 @@ class PriceCheckItem(BaseModel):
     series: list[tuple[datetime, float | None, float | None]]
     outlook: PriceOutlook
     stack: StackMarkets
-    launch_premium: LaunchPremium | None
+    launch_prices: LaunchPrices | None
+    last_day: list[DayHour]  # the "best time to sell" box: the latest 24 hours' trading
     hours: SellHours | None  # the best-hour sentence's inputs (null until built)
     impact: StackImpact | None

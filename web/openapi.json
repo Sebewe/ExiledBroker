@@ -642,6 +642,81 @@
         "title": "BacktestReport",
         "type": "object"
       },
+      "DayHour": {
+        "description": "One traded hour of the latest 24: each market's price (Chaos per item, Divines per\nitem) and units traded (unsigned: a unit traded was both sold and bought), and the\nhour's Divine rate in Chaos.",
+        "properties": {
+          "chaos_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chaos Price"
+          },
+          "chaos_units": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chaos Units"
+          },
+          "divine_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Divine Price"
+          },
+          "divine_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Divine Rate"
+          },
+          "divine_units": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Divine Units"
+          },
+          "hour": {
+            "format": "date-time",
+            "title": "Hour",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hour",
+          "chaos_price",
+          "chaos_units",
+          "divine_price",
+          "divine_units",
+          "divine_rate"
+        ],
+        "title": "DayHour",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -816,41 +891,63 @@
         "title": "LaunchPick",
         "type": "object"
       },
-      "LaunchPremium": {
-        "description": "Past leagues' launch windows against the settled price (days 12\u201314), in Divines:\nthe median over leagues (3.4 is three and a half times as much).",
+      "LaunchPrice": {
+        "properties": {
+          "divine": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Divine"
+          },
+          "leagues": {
+            "title": "Leagues",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "divine",
+          "leagues"
+        ],
+        "title": "LaunchPrice",
+        "type": "object"
+      },
+      "LaunchPrices": {
+        "description": "The item's typical price in each launch window of past leagues, in Divines; a\nwindow no past league has is null.",
         "properties": {
           "day1": {
             "anyOf": [
               {
-                "type": "number"
+                "$ref": "#/components/schemas/LaunchPrice"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Day1"
+            ]
           },
           "days2_4": {
             "anyOf": [
               {
-                "type": "number"
+                "$ref": "#/components/schemas/LaunchPrice"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Days2 4"
+            ]
           },
           "days5_10": {
             "anyOf": [
               {
-                "type": "number"
+                "$ref": "#/components/schemas/LaunchPrice"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Days5 10"
+            ]
           }
         },
         "required": [
@@ -858,7 +955,7 @@
           "days2_4",
           "days5_10"
         ],
-        "title": "LaunchPremium",
+        "title": "LaunchPrices",
         "type": "object"
       },
       "LaunchWindow": {
@@ -1863,6 +1960,13 @@
             ],
             "title": "Label"
           },
+          "last_day": {
+            "items": {
+              "$ref": "#/components/schemas/DayHour"
+            },
+            "title": "Last Day",
+            "type": "array"
+          },
           "latest_hour": {
             "anyOf": [
               {
@@ -1875,10 +1979,10 @@
             ],
             "title": "Latest Hour"
           },
-          "launch_premium": {
+          "launch_prices": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/LaunchPremium"
+                "$ref": "#/components/schemas/LaunchPrices"
               },
               {
                 "type": "null"
@@ -1946,7 +2050,8 @@
           "series",
           "outlook",
           "stack",
-          "launch_premium",
+          "launch_prices",
+          "last_day",
           "hours",
           "impact"
         ],

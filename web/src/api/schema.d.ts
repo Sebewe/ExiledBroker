@@ -380,6 +380,29 @@ export interface components {
             /** Persistence */
             persistence: components["schemas"]["BacktestPersistence"][];
         };
+        /**
+         * DayHour
+         * @description One traded hour of the latest 24: each market's price (Chaos per item, Divines per
+         *     item) and units traded (unsigned: a unit traded was both sold and bought), and the
+         *     hour's Divine rate in Chaos.
+         */
+        DayHour: {
+            /** Chaos Price */
+            chaos_price: number | null;
+            /** Chaos Units */
+            chaos_units: number | null;
+            /** Divine Price */
+            divine_price: number | null;
+            /** Divine Rate */
+            divine_rate: number | null;
+            /** Divine Units */
+            divine_units: number | null;
+            /**
+             * Hour
+             * Format: date-time
+             */
+            hour: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -437,18 +460,22 @@ export interface components {
             /** Worst */
             worst: number;
         };
+        /** LaunchPrice */
+        LaunchPrice: {
+            /** Divine */
+            divine: number | null;
+            /** Leagues */
+            leagues: number;
+        };
         /**
-         * LaunchPremium
-         * @description Past leagues' launch windows against the settled price (days 12–14), in Divines:
-         *     the median over leagues (3.4 is three and a half times as much).
+         * LaunchPrices
+         * @description The item's typical price in each launch window of past leagues, in Divines; a
+         *     window no past league has is null.
          */
-        LaunchPremium: {
-            /** Day1 */
-            day1: number | null;
-            /** Days2 4 */
-            days2_4: number | null;
-            /** Days5 10 */
-            days5_10: number | null;
+        LaunchPrices: {
+            day1: components["schemas"]["LaunchPrice"] | null;
+            days2_4: components["schemas"]["LaunchPrice"] | null;
+            days5_10: components["schemas"]["LaunchPrice"] | null;
         };
         /** LaunchWindow */
         LaunchWindow: {
@@ -732,9 +759,11 @@ export interface components {
             item_id: string;
             /** Label */
             label: string | null;
+            /** Last Day */
+            last_day: components["schemas"]["DayHour"][];
             /** Latest Hour */
             latest_hour: string | null;
-            launch_premium: components["schemas"]["LaunchPremium"] | null;
+            launch_prices: components["schemas"]["LaunchPrices"] | null;
             /** Name */
             name: string;
             outlook: components["schemas"]["PriceOutlook"];

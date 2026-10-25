@@ -21,7 +21,7 @@ and movers, and one item's view, each one small document per data version.
   (`movers_mode`). Thin markets are left out of the moves: their
   hourly prices rest on a trade or two and bounce back (finding 7).
 - **One item** adds its hourly series over the hosted window (Chaos, and Divines at the
-  hour's rate), the stack seller's inputs (`sell_helper.markets`), its launch premium
+  hour's rate), the stack seller's inputs (`sell_helper.markets`), its typical launch prices
   (`launch_history`) and the best-hour inputs (`sell_helper.constants`).
 
 SQL here must stay Postgres-compatible and aggregates in SQL: the hosted site's
@@ -427,6 +427,43 @@ def series(con, league: str, item_id: str) -> list[list]:
     return [[t.replace(tzinfo=UTC), _sig(c), _sig(d)] for t, c, d in rows]
 
 
+def last_day(con, league: str, latest: datetime, item_id: str) -> list[dict]:
+    """The item's traded hours over the latest 24: each market's price and units traded,
+    and the hour's Divine rate, for the "best time to sell" box (the user: from the last
+    day, not past leagues). Volumes are unsigned (finding 7): a unit traded was both sold
+    and bought."""
+    rows = db.rows(
+        con,
+        """
+        SELECT observed_at, chaos_price, chaos_volume, divine_price, divine_volume, divine_rate
+        FROM cross_market_hour
+        WHERE league_id = (SELECT id FROM league WHERE name = ?) AND item_id = ?
+          AND observed_at > ? AND observed_at <= ?
+          AND (chaos_volume > 0 OR divine_volume > 0)
+        ORDER BY observed_at
+        """,
+        [league, item_id, latest - timedelta(hours=24), latest],
+    )
+
+    def leg(p, v):
+        return (_sig(p), _sig(v)) if p and v and p > 0 and v > 0 else (None, None)
+
+    out = []
+    for t, cp, cv, dp, dv, rate in rows:
+        (cp, cv), (dp, dv) = leg(cp, cv), leg(dp, dv)
+        out.append(
+            {
+                "hour": t.replace(tzinfo=UTC),
+                "chaos_price": cp,
+                "chaos_units": cv,
+                "divine_price": dp,
+                "divine_units": dv,
+                "divine_rate": _sig(rate) if rate and rate > 0 else None,
+            }
+        )
+    return out
+
+
 def _sig(x) -> float | None:
     """`x` to SIGNIFICANT significant digits (smaller JSON; null for NaN / inf)."""
     if x is None:
@@ -476,31 +513,33 @@ def stack(con, league: str, latest: datetime, item_id: str, loaded: int) -> dict
     return {"chaos": market("chaos", price[0]), "divine": market("divine", price[1])}
 
 
-def launch_premium(con, item_id: str) -> dict | None:
-    """What the item was worth in each launch window of past leagues against its price
-    in the sale days (12–14), in Divines: the median over the captured leagues."""
+def launch_prices(con, item_id: str) -> dict | None:
+    """The item's typical price in each launch window of past leagues, in Divines: the
+    median over the captured leagues of each league's window median (`launch_history`),
+    for the page to set against the price now (the user)."""
     rows = db.rows(
         con,
         """
-        SELECT w.window_id,
-               percentile_cont(0.5) WITHIN GROUP (ORDER BY w.divine / nullif(s.divine, 0))
-        FROM launch_history w
-        JOIN launch_history s
-          ON s.league = w.league AND s.item_id = w.item_id AND s.window_id = 'sell'
-        WHERE w.item_id = ? AND w.window_id <> 'sell' AND s.divine > 0
-        GROUP BY w.window_id
+        SELECT window_id, percentile_cont(0.5) WITHIN GROUP (ORDER BY divine), count(*)
+        FROM launch_history
+        WHERE item_id = ? AND window_id <> 'sell' AND divine > 0
+        GROUP BY window_id
         """,
         [item_id],
     )
-    got = {w: None if v is None else float(v) for w, v in rows}
-    if not any(got.get(w) is not None for w in PREMIUM_WINDOWS):
+    got = {w: (float(v), int(n)) for w, v, n in rows if v is not None}
+    if not any(w in got for w in PREMIUM_WINDOWS):
         return None
-    return {w: got.get(w) for w in PREMIUM_WINDOWS}
+    return {
+        w: {"divine": _sig(got[w][0]), "leagues": got[w][1]} if w in got else None
+        for w in PREMIUM_WINDOWS
+    }
 
 
 def item(con, league: str, item_id: str, entry: dict) -> dict:
     """`GET /api/price-check/{league}/{item_id}`: one item of the index (`entry`, its
-    row there): its series, outlook, stack inputs, launch premium and best-hour inputs."""
+    row there): its series, outlook, stack inputs, launch prices, last day's trading
+    and best-hour inputs."""
     state = league_state(con, league)
     latest, day = state["latest"], state["day_offset"]
     f = with_moves(features(con, league, latest, item_id)) if latest is not None else pl.DataFrame()
@@ -522,7 +561,8 @@ def item(con, league: str, item_id: str, entry: dict) -> dict:
         "stack": stack(con, league, latest, item_id, row["loaded"] or 0)
         if latest is not None
         else {"chaos": None, "divine": None},
-        "launch_premium": launch_premium(con, item_id),
+        "launch_prices": launch_prices(con, item_id),
+        "last_day": last_day(con, league, latest, item_id) if latest is not None else [],
         "hours": helper["hours"],
         "impact": helper["impact"],
     }

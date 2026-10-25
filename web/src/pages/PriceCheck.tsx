@@ -15,7 +15,7 @@ import { PageHeader } from '../components/Section'
 import { BestHours, Stack } from '../components/StackSeller'
 import { bandsOf } from '../lib/impact'
 import type { ChartTokens } from '../lib/chartOptions'
-import { signedPct, tone } from '../lib/format'
+import { count, pct, price, signedPct, tone } from '../lib/format'
 import { makeMoney, type Money } from '../lib/money'
 import {
   hasDivine,
@@ -252,7 +252,7 @@ function ItemView({
       <VerdictCard item={item} />
       <PriceChart item={item} info={info} />
       <Selling item={item} money={money} divineChaos={info.divine_chaos} />
-      <LaunchPremium premium={item.launch_premium} />
+      <LaunchPrices item={item} money={money} divineChaos={info.divine_chaos} />
     </>
   )
 }
@@ -360,38 +360,59 @@ function Selling({ item, money, divineChaos }: { item: PriceCheckItem; money: Mo
         money={money}
         divineChaos={divineChaos}
       />
-      <BestHours hours={item.hours} />
+      <BestHours rows={item.last_day} money={money} divineChaos={divineChaos} />
     </Block>
   )
 }
 
-const times = (x: number | null | undefined) => (x == null ? '–' : `×${x >= 10 ? x.toFixed(0) : x.toFixed(2)}`)
 const PREMIUM_WINDOWS = [
   { id: 'day1', label: 'Day 1' },
   { id: 'days2_4', label: 'Days 2–4' },
   { id: 'days5_10', label: 'Days 5–10' },
 ] as const
 
-function LaunchPremium({ premium }: { premium: PriceCheckItem['launch_premium'] }) {
+/** How the price now sits against what the item typically fetched in each launch window
+ *  of past leagues (the user), compared in Divines. */
+function LaunchPrices({ item, money, divineChaos }: { item: PriceCheckItem; money: Money; divineChaos: number | null | undefined }) {
+  const prices = item.launch_prices
+  const now = [...item.series].reverse().find(([, , d]) => d != null)?.[2] ?? null
+  const shown = (divine: number) => (divineChaos ? money(divine * divineChaos) : price(divine, 'divine'))
   return (
     <Block
       id="launch"
       title="At past launches"
       icon={Rocket}
-      note="What it was worth in each launch window of past leagues, against its price once the market settled (days 12–14). ×3 means three times as much."
+      note="What this item typically sold for in each launch window of past leagues (the median, in Divines), and how today's price compares."
     >
-      {!premium || PREMIUM_WINDOWS.every((w) => premium[w.id] == null) ? (
+      {!prices || PREMIUM_WINDOWS.every((w) => prices[w.id] == null) ? (
         <Empty>No past league's launch has this item yet.</Empty>
       ) : (
-        <dl className="grid grid-cols-3 gap-3">
-          {PREMIUM_WINDOWS.map((w) => (
-            <div key={w.id} className="flex flex-col gap-1 rounded-lg border border-border bg-surface p-3">
-              <dt className="text-xs text-muted">{w.label}</dt>
-              <dd className="num text-xl font-semibold">{times(premium[w.id])}</dd>
-            </div>
-          ))}
+        <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {PREMIUM_WINDOWS.map((w) => {
+            const p = prices[w.id]
+            const rel = p?.divine && now != null ? now / p.divine - 1 : null
+            return (
+              <div key={w.id} className="flex flex-col gap-1 rounded-lg border border-border bg-surface p-3">
+                <dt className="text-xs text-muted">{w.label}</dt>
+                <dd className="flex flex-col gap-0.5">
+                  <span className="num text-xl font-semibold">{p?.divine ? shown(p.divine) : '–'}</span>
+                  <span className="text-sm text-muted">
+                    {rel == null ? (p ? 'No price today to compare.' : 'No past league has this window.') : nowVs(rel)}
+                  </span>
+                  {p && <span className="text-xs text-faint">Typical over {p.leagues} past {p.leagues === 1 ? 'league' : 'leagues'}</span>}
+                </dd>
+              </div>
+            )
+          })}
         </dl>
       )}
     </Block>
   )
+}
+
+/** Today's price against a window's typical price, in words. */
+function nowVs(rel: number): string {
+  if (Math.abs(rel) < 0.05) return 'Today it sells for about the same.'
+  if (rel > 0) return rel >= 1 ? `Today it sells for ${count(rel + 1, 1)} times as much.` : `Today it sells for ${pct(rel, 0)} more.`
+  return `Today it sells for ${pct(-rel, 0)} less.`
 }

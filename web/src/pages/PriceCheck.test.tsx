@@ -114,7 +114,12 @@ const ITEM: PriceCheckItem = {
     chaos: { price: 1.4, volume_h: 3200, sigma_h: 0.031, hours_traded: 0.92 },
     divine: { price: 0.008, volume_h: 40, sigma_h: 0.05, hours_traded: 0.21 },
   },
-  launch_premium: { day1: 3.4, days2_4: 1.8, days5_10: 1.2 },
+  launch_prices: { day1: { divine: 0.02, leagues: 4 }, days2_4: { divine: 0.01, leagues: 4 }, days5_10: null },
+  last_day: [
+    { hour: '2026-10-22T19:00:00Z', chaos_price: 1.4, chaos_units: 3000, divine_price: null, divine_units: null, divine_rate: 200 },
+    { hour: '2026-10-22T20:00:00Z', chaos_price: 1.5, chaos_units: 4000, divine_price: 0.008, divine_units: 40, divine_rate: 200 },
+    { hour: '2026-10-22T21:00:00Z', chaos_price: 1.3, chaos_units: 2000, divine_price: null, divine_units: null, divine_rate: 200 },
+  ],
   hours: HOURS,
   impact: { y: null, bands: [0.25, 1], note: null },
 }
@@ -210,9 +215,15 @@ describe('Price check', () => {
     ])
     // The stack seller moved from the Farming page, unchanged.
     expect(screen.getByText(/of the Chaos market's trading/)).toHaveTextContent("10 Splinter of Xoph is under a minute of the Chaos market's trading")
-    expect(screen.getByText(/^Prices run highest/)).toHaveTextContent('Prices run highest around 23:00 your time')
-    expect(screen.getByText('×3.40')).toBeInTheDocument()
-    expect(screen.getByText('×1.20')).toBeInTheDocument()
+    // Best time to sell: from the last 24 hours' trading.
+    expect(screen.getByText(/traded \(about/)).toHaveTextContent('9,040 traded')
+    expect(screen.getByText(/^Most traded at/)).toHaveTextContent('Most traded at 20:00 your time (4,040 that hour)')
+    expect(screen.getByText(/^Highest price at/)).toHaveTextContent('Highest price at 20:00 your time')
+    // At past launches: each window's typical price, against today's.
+    const launch = within(screen.getByRole('heading', { name: 'At past launches' }).closest('section')!)
+    expect(launch.getAllByText(/^Today it sells for/)).toHaveLength(2)
+    expect(launch.getByText('No past league has this window.')).toBeInTheDocument()
+    expect(launch.getAllByText('Typical over 4 past leagues')).toHaveLength(2)
     // Sell is the accent, never green or red.
     expect(day.getByText('Sell now').className).toMatch(/accent/)
     expect(day.getByText('Sell now').className).not.toMatch(/positive|negative/)
@@ -239,7 +250,7 @@ describe('Price check', () => {
       series: hourly(240, false),
       outlook: { h24: none, d3: none, unit: 'divine' },
       stack: { ...ITEM.stack, divine: null },
-      launch_premium: null,
+      launch_prices: null,
     }
     serve(live(item))
     renderPage(`/price-check?item=${SPLINTER}`)

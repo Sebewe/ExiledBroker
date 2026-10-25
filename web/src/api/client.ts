@@ -30,9 +30,10 @@ export type Verdict = Horizon['verdict']
 /** [hour (ISO, UTC), price in Chaos, price in Divines at that hour's rate]. */
 export type SeriesPoint = PriceCheckItem['series'][number]
 export type StackMarket = Schemas['StackMarket']
-export type LaunchPremium = Schemas['LaunchPremium']
+export type LaunchPrices = Schemas['LaunchPrices']
 // The best-hour and stack inputs (`farming_report`, read through services/sell_helper.py).
 export type SellHours = Schemas['SellHours']
+export type DayHour = Schemas['DayHour']
 export type StackImpact = Schemas['StackImpact']
 export type HourEffect = Schemas['HourEffect']
 export type MechanicHours = Schemas['MechanicHours']

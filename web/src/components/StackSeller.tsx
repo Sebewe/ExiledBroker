@@ -1,12 +1,10 @@
 import { Clock } from 'lucide-react'
-import type { SellHours, HourEffect } from '../api/client'
+import type { DayHour } from '../api/client'
 import { count, pct, price } from '../lib/format'
 import {
-  busiestHours,
   DEFAULT_BANDS,
   localHour,
   perHour,
-  profileFor,
   spreadOver,
   stackInMarkets,
   swing,
@@ -16,6 +14,7 @@ import {
   type MarketStack,
   type StackItem,
 } from '../lib/impact'
+import { lastDay } from '../lib/lastDay'
 import type { Money } from '../lib/money'
 
 // The stack seller and the best-hour sentence (findings 6 and 7), on the Price check page
@@ -159,76 +158,45 @@ function MarketCard({
 
 // --- Best hours ----------------------------------------------------------------------
 
-const PHASE_TEXT: Record<SellHours['phase'], string> = { d0_2: 'days 0–2', d2_7: 'days 2–7', d7_14: 'days 7–14', later: 'later days' }
-
-/** Finding 6 in a sentence or two (past leagues, for the league's phase): the busiest
- *  hours; the dearest ones when timing is worth it (the item's own mechanic's profile where
- *  it holds across leagues, else the pooled one); and when Divines are cheapest. */
-export function BestHours({
-  hours,
-  mechanics = [],
-  mechanicName = new Map(),
-}: {
-  hours: SellHours | null
-  mechanics?: string[]
-  mechanicName?: Map<string, string>
-}) {
-  const chosen = hours ? profileFor(hours, mechanics) : null
-  const e = chosen && chosen.price.some((p) => p != null) ? chosen.effect : null
-  const busy = busiestHours(hours?.volume)
-  const own = chosen?.mechanic ? (mechanicName.get(chosen.mechanic) ?? chosen.mechanic) : null
+/** The last 24 hours of the item's trading (the user: this league's last day, not past
+ *  leagues): how much traded, the busiest hour and the highest-priced one, in local time. */
+export function BestHours({ rows, money, divineChaos }: { rows: DayHour[]; money: Money; divineChaos: number | null | undefined }) {
+  const d = lastDay(rows, divineChaos)
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-4">
       <h3 className="flex items-center gap-2 font-semibold">
-        <Clock aria-hidden className="size-4 text-accent" /> Best time to sell
+        <Clock aria-hidden className="size-4 text-accent" /> Best time to sell, last 24 hours
       </h3>
-      {busy && (
-        <p className="text-sm text-muted">
-          {busy.ratio < 1.2 ? (
-            'Trading is about as busy at every hour of the day.'
-          ) : busy.ratio === Infinity ? (
-            <>
-              Trading is busiest from <span className="num text-text">{localHour(busy.start)}</span> to <span className="num text-text">{localHour(busy.end)}</span>{' '}
-              your time: a big stack sells most easily then. Almost nothing trades from {localHour(busy.quietStart)} to {localHour(busy.quietEnd)}.
-            </>
-          ) : (
-            <>
-              Trading is busiest from <span className="num text-text">{localHour(busy.start)}</span> to <span className="num text-text">{localHour(busy.end)}</span>{' '}
-              your time, {count(busy.ratio, 1)} times as busy as from {localHour(busy.quietStart)} to {localHour(busy.quietEnd)}: a big stack sells most easily then.
-            </>
-          )}
-        </p>
-      )}
-      {!e || e.gain == null ? (
-        <p className="text-sm text-muted">Not enough days of trades yet to tell which hours sell higher.</p>
-      ) : e.verdict === 'small' || e.best == null ? (
-        <p className="text-sm text-muted">
-          Time of day barely matters{own ? ` for ${own}'s drops` : ''} on {PHASE_TEXT[hours!.phase]}: the best hour beats the day's average by about {pct(e.gain, 1)}.
-          Sell whenever suits you.
-        </p>
+      {!d ? (
+        <p className="text-sm text-muted">Nothing traded in the last 24 hours.</p>
       ) : (
-        <p className="text-sm text-muted">
-          {own ? `${own}'s drops sell` : 'Prices run'} highest around <span className="num text-text">{localHour(e.best)}</span> your time: about {pct(e.gain, 1)} over
-          the day's average{e.gap != null && e.worst != null && `, and ${pct(e.gap, 1)} over the lowest hour (${localHour(e.worst)})`}.
-        </p>
-      )}
-      {hours && <ConvertHint e={hours.divine_effect} />}
-      {hours && (
-        <p className="text-xs text-faint">
-          From {count(hours.leagues)} past {hours.leagues === 1 ? "league's" : "leagues'"} {PHASE_TEXT[hours.phase]} ({count(hours.days)} league-days), in your time zone.
-        </p>
+        <>
+          <p className="text-sm text-muted">
+            <span className="num text-text">{count(d.units, 0)}</span> traded{d.valueChaos != null && <> (about <span className="num text-text">{money(d.valueChaos)}</span>)</>}
+            {d.divineUnits > 0 && d.chaosUnits > 0 && (
+              <>
+                : {count(d.chaosUnits, 0)} for Chaos, {count(d.divineUnits, 0)} for Divines
+              </>
+            )}
+            . Every one was both sold and bought: the exchange doesn't say which side started a trade.
+          </p>
+          {d.busiest && (
+            <p className="text-sm text-muted">
+              Most traded at <span className="num text-text">{localHour(d.busiest.hour)}</span> your time ({count(d.busiest.units, 0)} that hour): a big stack sells most easily then.
+            </p>
+          )}
+          {d.dearest && (
+            <p className="text-sm text-muted">
+              Highest price at <span className="num text-text">{localHour(d.dearest.hour)}</span> your time:{' '}
+              <span className="num text-text">{divineChaos ? money(d.dearest.divine * divineChaos) : price(d.dearest.divine, 'divine')}</span> each
+              {d.dearest.over != null && d.dearest.over > 0 && <>, {pct(d.dearest.over, 1)} over the day's typical hour</>}.
+            </p>
+          )}
+          <p className="text-xs text-faint">
+            {d.hours < 12 ? `Only ${d.hours} of the last 24 hours traded, so this is rough. ` : ''}One day's trading, in your time zone: it can change from one day to the next.
+          </p>
+        </>
       )}
     </div>
-  )
-}
-
-/** The Divine's own daily cycle: when Chaos buys the most Divines. */
-function ConvertHint({ e }: { e: HourEffect }) {
-  if (e.verdict !== 'worth_it' || e.best == null || e.worst == null || e.gap == null) return null
-  return (
-    <p className="text-sm text-muted">
-      Converting to Divines? They're cheapest in Chaos around <span className="num text-text">{localHour(e.worst)}</span> your time and dearest around{' '}
-      <span className="num text-text">{localHour(e.best)}</span>: about {pct(e.gap, 1)} apart.
-    </p>
   )
 }

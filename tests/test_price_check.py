@@ -184,7 +184,12 @@ def test_the_list_and_an_item_without_paths(client, loaded):  # noqa: F811
         assert item["outlook"][h]["state"] == "no_history"
         assert item["outlook"][h]["verdict"] == "none" and item["outlook"][h]["low"] is None
     assert item["stack"]["chaos"]["volume_h"] > 0
-    assert item["launch_premium"] is None and item["hours"] is None
+    assert item["launch_prices"] is None and item["hours"] is None
+    # The last day's trading, for the best-time-to-sell box: traded hours of the latest 24.
+    day = item["last_day"]
+    assert day and len(day) <= 24 and day[-1]["hour"] == item["latest_hour"]
+    assert [h["hour"] for h in day] == sorted(h["hour"] for h in day)
+    assert all(h["chaos_units"] or h["divine_units"] for h in day)
 
 
 def test_unknown_items_and_leagues_are_404(client, loaded):  # noqa: F811
@@ -211,3 +216,17 @@ def test_no_call_falls_back_to_the_biggest_moves(client, loaded):  # noqa: F811
     _synthetic_paths(loaded, -0.01)  # every path under the thresholds
     doc = client.get(f"/api/price-check/{LEAGUE}").json()
     assert doc["movers_mode"] == "moves" and doc["movers"]
+
+
+def test_launch_prices_are_past_leagues_medians_per_window(loaded):
+    item = "currency:orb-of-alchemy"
+    with db.session(loaded.db_path) as con:
+        for league, start, day1 in (("A", 1, 0.03), ("B", 2, 0.05), ("C", 3, 0.04)):
+            for window, divine in (("day1", day1), ("sell", 0.01)):
+                con.execute(
+                    "INSERT INTO launch_history VALUES (?, ?, ?, ?, ?, 1.0)",
+                    [league, datetime(2025, start, 1), item, window, divine],
+                )
+        got = price_check.launch_prices(con, item)
+        assert price_check.launch_prices(con, "currency:nope") is None
+    assert got == {"day1": {"divine": 0.04, "leagues": 3}, "days2_4": None, "days5_10": None}
