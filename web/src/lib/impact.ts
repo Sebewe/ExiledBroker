@@ -1,4 +1,4 @@
-import type { FarmingHours, HourEffect, HourProfile } from '../api/client'
+import type { SellHours, HourEffect, HourProfile } from '../api/client'
 
 // The stack seller (components/StackSeller, on the Price check page), computed here so the typed quantity never reaches the server
 // (docs/price-check.md, "The response contract"). Finding 7: hourly prices swing more
@@ -113,7 +113,7 @@ export function localHour(utc: number, timeZone?: string): string {
 
 /** The profile that applies to an item: its first mechanic's own, where that holds across
  *  leagues, else the pooled one. */
-export function profileFor(hours: FarmingHours, mechanics: string[]): { mechanic: string | null; price: HourProfile; effect: HourEffect } {
+export function profileFor(hours: SellHours, mechanics: string[]): { mechanic: string | null; price: HourProfile; effect: HourEffect } {
   // The response carries only the baskets whose own profile holds across leagues.
   for (const mechanic of mechanics) {
     const own = hours.mechanics[mechanic]

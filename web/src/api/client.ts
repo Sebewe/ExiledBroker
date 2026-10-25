@@ -19,8 +19,25 @@ export type BacktestHourly = Schemas['BacktestHourly']
 export type BacktestLaunch = Schemas['BacktestLaunch']
 export type BacktestLimit = Schemas['BacktestLimit']
 export type BacktestFlip = Schemas['BacktestFlip']
-// Hand-written until the Price check endpoints serve them (priceCheckDraft.ts).
-export type { FarmingHours, FarmingImpact, HourEffect, HourProfile, MechanicHours } from './priceCheckDraft'
+// Price check (docs/price-check.md)
+export type PriceCheckIndex = Schemas['PriceCheckIndex']
+export type PriceCheckListItem = Schemas['PriceCheckListItem']
+export type PriceCheckItem = Schemas['PriceCheckItem']
+export type Outlook = Schemas['PriceOutlook']
+export type Horizon = Schemas['PriceHorizon']
+/** "sell": past leagues say it falls from here; "hold": it rises; "none": no clear signal. */
+export type Verdict = Horizon['verdict']
+/** [hour (ISO, UTC), price in Chaos, price in Divines at that hour's rate]. */
+export type SeriesPoint = PriceCheckItem['series'][number]
+export type StackMarket = Schemas['StackMarket']
+export type LaunchPremium = Schemas['LaunchPremium']
+// The best-hour and stack inputs (`farming_report`, read through services/sell_helper.py).
+export type SellHours = Schemas['SellHours']
+export type StackImpact = Schemas['StackImpact']
+export type HourEffect = Schemas['HourEffect']
+export type MechanicHours = Schemas['MechanicHours']
+/** 24 values by UTC hour; null for an hour with no data. */
+export type HourProfile = SellHours['price']
 
 // Same origin: the API serves this app in production, and Vite proxies /api in development.
 export const api = createClient<paths>({

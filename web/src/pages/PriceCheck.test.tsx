@@ -2,8 +2,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { FarmingHours } from '../api/client'
-import type { Horizon, PriceCheckIndex, PriceCheckItem, SeriesPoint } from '../api/priceCheckDraft'
+import type { SellHours } from '../api/client'
+import type { Horizon, PriceCheckIndex, PriceCheckItem, SeriesPoint } from '../api/client'
 import type { ChartTokens } from '../lib/chartOptions'
 import PriceCheck from './PriceCheck'
 
@@ -79,14 +79,15 @@ const INDEX: PriceCheckIndex = {
     { item_id: 'currency:chaos-orb', name: 'Chaos Orb', label: null, chaos: 1, volume_h: 9000, verdict_24h: 'none', change_24h: null },
   ],
   movers: [SPLINTER, ESSENCE],
+  movers_mode: 'calls',
 }
 
-const horizon = (x: Partial<Horizon> = {}): Horizon => ({ verdict: 'sell', typical: -0.08, low: -0.12, high: 0.02, leagues: 4, basis: 'item', ...x })
+const horizon = (x: Partial<Horizon> = {}): Horizon => ({ verdict: 'sell', typical: -0.08, low: -0.12, high: 0.02, leagues: 4, basis: 'item', state: 'judged', ...x })
 /** Hourly from launch to the latest hour (10 days), Chaos 1.4, Divines at 1/200. */
 const hourly = (hours: number, divine = true): SeriesPoint[] =>
   Array.from({ length: hours }, (_, i) => [iso(LATEST - (hours - 1 - i) * HOUR), 1.4, divine ? 0.007 : null])
 const flat = Array(24).fill(0)
-const HOURS: FarmingHours = {
+const HOURS: SellHours = {
   phase: 'd7_14',
   leagues: 5,
   days: 30,
@@ -102,6 +103,11 @@ const HOURS: FarmingHours = {
 const ITEM: PriceCheckItem = {
   item_id: SPLINTER,
   name: 'Splinter of Xoph',
+  label: 'Breach',
+  latest_hour: iso(LATEST),
+  day_offset: 9.9,
+  thick: true,
+  change_24h: -0.06,
   series: hourly(240),
   outlook: { h24: horizon({ typical: -0.03, low: -0.09 }), d3: horizon({ verdict: 'none', typical: -0.01 }), unit: 'divine' },
   stack: {
@@ -110,6 +116,7 @@ const ITEM: PriceCheckItem = {
   },
   launch_premium: { day1: 3.4, days2_4: 1.8, days5_10: 1.2 },
   hours: HOURS,
+  impact: { y: null, bands: [0.25, 1], note: null },
 }
 const itemPath = (id: string) => `/api/price-check/Allflame/${encodeURIComponent(id)}`
 const live = (item: PriceCheckItem = ITEM, index: PriceCheckIndex = INDEX) => ({
@@ -178,7 +185,7 @@ describe('Price check', () => {
     fireEvent.keyDown(box, { key: 'Enter' })
     expect(await screen.findByRole('heading', { name: 'Deafening Essence of Greed', level: 2 })).toBeInTheDocument()
     // Back to the movers keeps the league.
-    fireEvent.click(screen.getByRole('link', { name: 'Strongest calls' }))
+    fireEvent.click(screen.getByRole('link', { name: 'Back to the list' }))
     expect(screen.getByTestId('where')).toHaveTextContent(/^\/price-check\?league=Allflame$/)
     expect(await screen.findByRole('list', { name: 'Movers' })).toBeInTheDocument()
   })
@@ -223,18 +230,50 @@ describe('Price check', () => {
     expect(screen.getByTestId('where')).toHaveTextContent('range=launch')
   })
 
-  it('has no Divine line for an item with no Divine leg, and no verdict for one without history', async () => {
-    const item: PriceCheckItem = { ...ITEM, series: hourly(240, false), outlook: null, stack: { ...ITEM.stack, divine: null }, launch_premium: null }
+  it('has no Divine line without a Divine rate, and no verdict for an item without history', async () => {
+    const none = horizon({ verdict: 'none', state: 'no_history', typical: null, low: null, high: null, leagues: 0 })
+    const item: PriceCheckItem = {
+      ...ITEM,
+      series: hourly(240, false),
+      outlook: { h24: none, d3: none, unit: 'divine' },
+      stack: { ...ITEM.stack, divine: null },
+      launch_premium: null,
+    }
     serve(live(item))
     renderPage(`/price-check?item=${SPLINTER}`)
-    expect(await screen.findByText(/hasn't traded against Divines, so there's no Divine line/)).toBeInTheDocument()
+    expect(await screen.findByText(/No Divine rate for these hours yet, so there's no Divine line/)).toBeInTheDocument()
     expect(screen.getByText(/hasn't traded against Divines lately/)).toBeInTheDocument() // the stack's Divine market
     const verdict = within(screen.getByRole('region', { name: 'Verdict' }))
     expect(verdict.getAllByText('No clear signal')).toHaveLength(2)
     expect(verdict.getAllByText(/nothing to judge by/)).toHaveLength(2)
-    expect(verdict.getByText(/A verdict needs past leagues/)).toBeInTheDocument()
-    expect(screen.getByRole('img', { name: /hourly price/ }).dataset.series).toBe('Chaos:72,Divine:72') // no outlook, no band
+    expect(verdict.getByText(/A verdict needs at least two past leagues/)).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: /hourly price/ }).dataset.series).toBe('Chaos:72,Divine:72') // no band
     expect(screen.getByText(/No past league's launch has this item yet/)).toBeInTheDocument()
+  })
+
+  it('after the launch fortnight, shows no verdict and no band, only the line saying why', async () => {
+    const later = horizon({ verdict: 'none', state: 'later', typical: null, low: null, high: null, leagues: 0 })
+    serve(live({ ...ITEM, day_offset: 40, outlook: { h24: later, d3: later, unit: 'divine' } }))
+    renderPage(`/price-check?item=${SPLINTER}`)
+    const verdict = within(await screen.findByRole('region', { name: 'Verdict' }))
+    expect(verdict.getByText("Calls appear in a league's first two weeks; after that past leagues don't predict the next few days.")).toBeInTheDocument()
+    expect(verdict.queryByText('Sell now')).toBeNull()
+    expect(verdict.queryByText('No clear signal')).toBeNull()
+    expect(screen.getByRole('img', { name: /hourly price/ }).dataset.series).toBe('Chaos:72,Divine:72')
+    expect(screen.getByRole('region', { name: 'Selling a stack' })).toBeInTheDocument()
+  })
+
+  it('between launches, lists the biggest 24-hour moves without Sell or Hold labels', async () => {
+    const items = INDEX.items.map((x) => ({ ...x, verdict_24h: 'none' as const }))
+    serve(live(ITEM, { ...INDEX, day_offset: 40, items, movers: [SPLINTER, ESSENCE], movers_mode: 'moves' }))
+    renderPage()
+    expect(await screen.findByRole('heading', { name: 'Biggest moves, last 24 hours' })).toBeInTheDocument()
+    expect(screen.getByText(/Calls appear in a league's first two weeks/)).toBeInTheDocument()
+    const rows = within(screen.getByRole('list', { name: 'Movers' })).getAllByRole('listitem')
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toHaveTextContent('Splinter of Xoph')
+    expect(rows[0]).toHaveTextContent('−6%')
+    for (const row of rows) for (const word of ['Sell', 'Hold', '–']) expect(within(row).queryByText(word)).toBeNull()
   })
 
   it('handles a single hour of data', async () => {
@@ -272,7 +311,7 @@ describe('Price check', () => {
   })
 
   it('says when no item has a clear call', async () => {
-    serve(live(ITEM, { ...INDEX, movers: [] }))
+    serve(live(ITEM, { ...INDEX, movers: [], movers_mode: 'calls' }))
     renderPage()
     expect(await screen.findByText(/No item has a clear call right now/)).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: 'Find an item' })).toBeInTheDocument()

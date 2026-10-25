@@ -1,5 +1,5 @@
 import { Clock } from 'lucide-react'
-import type { FarmingHours, HourEffect } from '../api/client'
+import type { SellHours, HourEffect } from '../api/client'
 import { count, pct, price } from '../lib/format'
 import {
   busiestHours,
@@ -157,7 +157,7 @@ function MarketCard({
 
 // --- Best hours ----------------------------------------------------------------------
 
-const PHASE_TEXT: Record<FarmingHours['phase'], string> = { d0_2: 'days 0–2', d2_7: 'days 2–7', d7_14: 'days 7–14', later: 'later days' }
+const PHASE_TEXT: Record<SellHours['phase'], string> = { d0_2: 'days 0–2', d2_7: 'days 2–7', d7_14: 'days 7–14', later: 'later days' }
 
 /** Finding 6 in a sentence or two (past leagues, for the league's phase): the busiest
  *  hours; the dearest ones when timing is worth it (the item's own mechanic's profile where
@@ -167,7 +167,7 @@ export function BestHours({
   mechanics = [],
   mechanicName = new Map(),
 }: {
-  hours: FarmingHours | null
+  hours: SellHours | null
   mechanics?: string[]
   mechanicName?: Map<string, string>
 }) {

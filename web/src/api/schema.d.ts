@@ -85,6 +85,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/price-check/{league}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Price Check Index
+         * @description The search list (every core-pool exchange item the league has traded: price now,
+         *     units an hour, 24-hour verdict and move in Divines) and the movers: the strongest
+         *     24-hour calls in the launch fortnight, else the biggest 24-hour moves.
+         */
+        get: operations["price_check_index_api_price_check__league__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/price-check/{league}/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Price Check Item
+         * @description One item: its hourly series over the hosted window, the outlook for the next 24
+         *     hours and 3 days (judged in Divines), the stack seller's inputs, its launch premium
+         *     and the best-hour inputs. 404 for an item the league's list doesn't hold.
+         */
+        get: operations["price_check_item_api_price_check__league___item_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/status": {
         parameters: {
             query?: never;
@@ -341,6 +385,29 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /**
+         * HourEffect
+         * @description What timing is worth in a price profile (finding 6), as fractions of the price:
+         *     best hour over the 24-hour average (`gain`) and over the worst (`gap`), UTC hours,
+         *     the noise floor (`null95`); "small" means time of day barely matters.
+         */
+        HourEffect: {
+            /** Best */
+            best: number | null;
+            /** Gain */
+            gain: number | null;
+            /** Gap */
+            gap: number | null;
+            /** Null95 */
+            null95: number | null;
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "small" | "worth_it";
+            /** Worst */
+            worst: number | null;
+        };
         /** LaunchPick */
         LaunchPick: {
             /** Buy Divine */
@@ -369,6 +436,19 @@ export interface components {
             traded: number;
             /** Worst */
             worst: number;
+        };
+        /**
+         * LaunchPremium
+         * @description Past leagues' launch windows against the settled price (days 12–14), in Divines:
+         *     the median over leagues (3.4 is three and a half times as much).
+         */
+        LaunchPremium: {
+            /** Day1 */
+            day1: number | null;
+            /** Days2 4 */
+            days2_4: number | null;
+            /** Days5 10 */
+            days5_10: number | null;
         };
         /** LaunchWindow */
         LaunchWindow: {
@@ -419,6 +499,30 @@ export interface components {
             launched_at: string | null;
             /** Name */
             name: string;
+        };
+        /** MechanicHours */
+        MechanicHours: {
+            /** Best */
+            best: number | null;
+            /** Gain */
+            gain: number | null;
+            /** Gap */
+            gap: number | null;
+            /** Items */
+            items: number;
+            /** Null95 */
+            null95: number | null;
+            /** Price */
+            price: (number | null)[];
+            /** Stability */
+            stability: number | null;
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "small" | "worth_it";
+            /** Worst */
+            worst: number | null;
         };
         /** MissedCard */
         MissedCard: {
@@ -592,6 +696,192 @@ export interface components {
             /** Volume */
             volume: number;
         };
+        /**
+         * PriceCheckIndex
+         * @description The search list and the movers, one per data version.
+         */
+        PriceCheckIndex: {
+            /** Day Offset */
+            day_offset: number | null;
+            /** Items */
+            items: components["schemas"]["PriceCheckListItem"][];
+            /** Latest Hour */
+            latest_hour: string | null;
+            /** League */
+            league: string;
+            /** Movers */
+            movers: string[];
+            /**
+             * Movers Mode
+             * @enum {string}
+             */
+            movers_mode: "calls" | "moves";
+        };
+        /**
+         * PriceCheckItem
+         * @description One item, one per data version.
+         */
+        PriceCheckItem: {
+            /** Change 24H */
+            change_24h: number | null;
+            /** Day Offset */
+            day_offset: number | null;
+            hours: components["schemas"]["SellHours"] | null;
+            impact: components["schemas"]["StackImpact"] | null;
+            /** Item Id */
+            item_id: string;
+            /** Label */
+            label: string | null;
+            /** Latest Hour */
+            latest_hour: string | null;
+            launch_premium: components["schemas"]["LaunchPremium"] | null;
+            /** Name */
+            name: string;
+            outlook: components["schemas"]["PriceOutlook"];
+            /** Series */
+            series: [
+                string,
+                number | null,
+                number | null
+            ][];
+            stack: components["schemas"]["StackMarkets"];
+            /** Thick */
+            thick: boolean;
+        };
+        /**
+         * PriceCheckListItem
+         * @description One row of the search list. Prices in Chaos (the browser converts with
+         *     `divine_chaos`).
+         */
+        PriceCheckListItem: {
+            /** Change 24H */
+            change_24h: number | null;
+            /** Chaos */
+            chaos: number | null;
+            /** Item Id */
+            item_id: string;
+            /** Label */
+            label: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Verdict 24H
+             * @enum {string}
+             */
+            verdict_24h: "sell" | "hold" | "none";
+            /** Volume H */
+            volume_h: number | null;
+        };
+        /**
+         * PriceHorizon
+         * @description One horizon's outlook, in Divines, as fractions (−0.03 is −3%): the typical
+         *     change (weight × the item's past-league path from this point) and the band past
+         *     leagues' residuals give it. `state` "judged": the model ran (the verdict may still
+         *     be "none"); "later": outside the days past leagues' paths cover (after about day 13
+         *     for 24 hours, day 11 for 3 days); "no_history": under 2 past leagues have the item
+         *     here. Only "judged" carries a band.
+         */
+        PriceHorizon: {
+            /**
+             * Basis
+             * @constant
+             */
+            basis: "item";
+            /** High */
+            high: number | null;
+            /** Leagues */
+            leagues: number;
+            /** Low */
+            low: number | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "judged" | "later" | "no_history";
+            /** Typical */
+            typical: number | null;
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "sell" | "hold" | "none";
+        };
+        /** PriceOutlook */
+        PriceOutlook: {
+            d3: components["schemas"]["PriceHorizon"];
+            h24: components["schemas"]["PriceHorizon"];
+            /**
+             * Unit
+             * @constant
+             */
+            unit: "divine";
+        };
+        /**
+         * SellHours
+         * @description Hour-of-day profiles from past leagues for the league's phase (a constant): 24
+         *     values each by UTC hour, a price's fraction over its centred 24-hour average.
+         */
+        SellHours: {
+            /** Days */
+            days: number;
+            /** Divine */
+            divine: (number | null)[];
+            divine_effect: components["schemas"]["HourEffect"];
+            effect: components["schemas"]["HourEffect"];
+            effect_divine_market: components["schemas"]["HourEffect"];
+            /** Leagues */
+            leagues: number;
+            /** Mechanics */
+            mechanics: {
+                [key: string]: components["schemas"]["MechanicHours"];
+            };
+            /**
+             * Phase
+             * @enum {string}
+             */
+            phase: "d0_2" | "d2_7" | "d7_14" | "later";
+            /** Price */
+            price: (number | null)[];
+            /** Price Divine Market */
+            price_divine_market: (number | null)[];
+            /** Volume */
+            volume: (number | null)[] | null;
+        };
+        /**
+         * StackImpact
+         * @description Finding 7: no calibrated price drop (`y` null); a stack is shown as hours of the
+         *     market's trading (Q / volume_h), banded at `bands`.
+         */
+        StackImpact: {
+            /** Bands */
+            bands: number[];
+            /** Note */
+            note: string | null;
+            /** Y */
+            y: number | null;
+        };
+        /**
+         * StackMarket
+         * @description One market's recent trading for an item: `price` in that market's currency
+         *     (Chaos, or Divines in the Divine market; median, latest 24 hours), units traded an
+         *     hour, the typical hourly swing (informative only) and the share of hours traded
+         *     (latest 3 days).
+         */
+        StackMarket: {
+            /** Hours Traded */
+            hours_traded: number | null;
+            /** Price */
+            price: number | null;
+            /** Sigma H */
+            sigma_h: number | null;
+            /** Volume H */
+            volume_h: number | null;
+        };
+        /** StackMarkets */
+        StackMarkets: {
+            chaos: components["schemas"]["StackMarket"] | null;
+            divine: components["schemas"]["StackMarket"] | null;
+        };
         /** Status */
         Status: {
             /** Data Version */
@@ -742,6 +1032,69 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MissedWindow"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    price_check_index_api_price_check__league__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                league: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PriceCheckIndex"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    price_check_item_api_price_check__league___item_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                league: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PriceCheckItem"];
                 };
             };
             /** @description Validation Error */

@@ -1,5 +1,5 @@
 import type { EChartsCoreOption } from 'echarts/core'
-import type { Horizon, Outlook, SeriesPoint, Verdict } from '../api/priceCheckDraft'
+import type { Horizon, Outlook, SeriesPoint, Verdict } from '../api/client'
 import { alpha, axisStyle, baseOptions, HOUR, line, type ChartTokens } from './chartOptions'
 import { price, signedPct } from './format'
 
@@ -140,14 +140,22 @@ export const VERDICT_SHORT: Record<Verdict, string> = { sell: 'Sell', hold: 'Hol
 
 const HORIZON_TEXT = { h24: 'the next 24 hours', d3: 'the next 3 days' } as const
 
-/** Whether a horizon has any past league behind it (else the card says there's no verdict). */
-export const hasHistory = (h: Horizon | null | undefined): h is Horizon => !!h && h.leagues > 0 && h.typical != null
+/** Whether the model judged this horizon (a verdict, possibly "none", and a band): in the
+ *  launch fortnight, for an item at least 2 past leagues traded at this point. */
+export const hasHistory = (h: Horizon | null | undefined): h is Horizon => !!h && h.state === 'judged' && h.typical != null
+
+/** Shown outside the launch fortnight, where no horizon has a call (decided after finding 9). */
+export const BETWEEN_LAUNCHES = "Calls appear in a league's first two weeks; after that past leagues don't predict the next few days."
+
+/** Whether both horizons are past the days past leagues' paths cover. */
+export const isLater = (o: Outlook | null | undefined) => !!o && o.h24.state === 'later' && o.d3.state === 'later'
 
 /** The verdict's one-line reason: "In past leagues it fell 8% in Divines over the next 3
  *  days from this point (−12% to +2%, 4 leagues)." */
-export function reason(h: Horizon | null | undefined, horizon: keyof typeof HORIZON_TEXT, label?: string | null): string {
-  if (!hasHistory(h)) return 'No past league has this item at this point, so there is nothing to judge by yet.'
-  const who = h.basis === 'item' ? 'it' : label ? `${label.toLowerCase()} items like it` : 'items like it'
+export function reason(h: Horizon | null | undefined, horizon: keyof typeof HORIZON_TEXT): string {
+  if (h?.state === 'later') return horizon === 'd3' ? 'Past leagues have no 3-day path from this late in a league.' : BETWEEN_LAUNCHES
+  if (!hasHistory(h)) return 'Fewer than two past leagues traded it at this point, so there is nothing to judge by.'
+  const who = 'it'
   const leagues = `${h.leagues} league${h.leagues === 1 ? '' : 's'}`
   const range = h.low != null && h.high != null ? `${signedPct(h.low, 0)} to ${signedPct(h.high, 0)}, ` : ''
   const typical = h.typical!

@@ -2,7 +2,7 @@ import { ArrowLeft, Coins, LineChart, Rocket, Scale, TrendingUp } from 'lucide-r
 import { useCallback, useMemo, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { ApiError, type LiveLeague } from '../api/client'
-import type { Horizon, PriceCheckIndex, PriceCheckItem, PriceCheckListItem, Verdict } from '../api/priceCheckDraft'
+import type { Horizon, PriceCheckIndex, PriceCheckItem, PriceCheckListItem, Verdict } from '../api/client'
 import { usePriceCheck, usePriceCheckItem, useServerNow, useStatus } from '../api/queries'
 import { NumberField, Segmented, Select, Toolbar } from '../components/Controls'
 import { FreshnessBanner } from '../components/Freshness'
@@ -13,13 +13,16 @@ import { Empty } from '../components/Opportunity'
 import { Skeleton } from '../components/QueryState'
 import { PageHeader } from '../components/Section'
 import { BestHours, Stack } from '../components/StackSeller'
+import { bandsOf } from '../lib/impact'
 import type { ChartTokens } from '../lib/chartOptions'
 import { signedPct, tone } from '../lib/format'
 import { makeMoney, type Money } from '../lib/money'
 import {
   hasDivine,
+  BETWEEN_LAUNCHES,
   hasHistory,
   inRange,
+  isLater,
   outlookBand,
   priceChartOption,
   RANGES,
@@ -146,15 +149,17 @@ function Movers({ data, money }: { data: PriceCheckIndex; money: Money }) {
     p.set('item', id)
     return `?${p.toString()}`
   }
+  const calls = data.movers_mode === 'calls'
+  // Outside the launch fortnight past leagues don't predict the next few days (finding 9),
+  // so the list is the biggest moves, unlabelled.
+  const later = data.day_offset == null || data.day_offset >= 14
+  const note = calls
+    ? 'The items past leagues give the clearest Sell or Hold call for the next 24 hours, judged in Divines. Pick one to see its chart and the 3-day view.'
+    : `${later ? BETWEEN_LAUNCHES : 'No item has a clear call right now.'} These are the biggest moves of the last 24 hours in Divines, among items that trade steadily. Pick one to see its chart.`
   return (
-    <Block
-      id="movers"
-      title="Strongest calls now"
-      icon={TrendingUp}
-      note="The items past leagues give the clearest Sell or Hold call for the next 24 hours, judged in Divines. Pick one to see its chart and the 3-day view."
-    >
+    <Block id="movers" title={calls ? 'Strongest calls now' : 'Biggest moves, last 24 hours'} icon={TrendingUp} note={note}>
       {data.items.length === 0 ? null : movers.length === 0 ? (
-        <Empty>No item has a clear call right now. Search for one above to see its price and range.</Empty>
+        <Empty>{calls ? 'No item has a clear call right now.' : 'No item that trades steadily has a 24-hour move yet.'} Search for one above to see its price.</Empty>
       ) : (
         <ol className="flex flex-col divide-y divide-border/60 rounded-lg border border-border bg-surface" aria-label="Movers">
           {movers.map((m) => (
@@ -170,7 +175,7 @@ function Movers({ data, money }: { data: PriceCheckIndex; money: Money }) {
                   {m.name}
                 </span>
                 {m.label && <span className="hidden shrink-0 text-xs text-faint sm:inline">{m.label}</span>}
-                <VerdictBadge verdict={m.verdict_24h} short />
+                {calls && <VerdictBadge verdict={m.verdict_24h} short />}
               </Link>
             </li>
           ))}
@@ -201,7 +206,7 @@ function ItemView({
   for (const k of ['item', 'range', 'qty']) movers.delete(k)
   const back = (
     <Link to={{ search: movers.toString() }} className="inline-flex items-center gap-1 self-start text-sm text-accent hover:text-accent-strong">
-      <ArrowLeft aria-hidden className="size-4" /> Strongest calls
+      <ArrowLeft aria-hidden className="size-4" /> Back to the list
     </Link>
   )
   if (q.error instanceof ApiError && q.error.status === 404)
@@ -228,9 +233,9 @@ function ItemView({
         <h2 className="min-w-0 truncate text-2xl" title={item.name}>
           {item.name}
         </h2>
-        {entry?.label && <span className="text-sm text-faint">{entry.label}</span>}
+        {item.label && <span className="text-sm text-faint">{item.label}</span>}
       </header>
-      <VerdictCard item={item} label={entry?.label} />
+      <VerdictCard item={item} />
       <PriceChart item={item} info={info} />
       <Selling item={item} money={money} divineChaos={info.divine_chaos} />
       <LaunchPremium premium={item.launch_premium} />
@@ -238,28 +243,36 @@ function ItemView({
   )
 }
 
-function VerdictCard({ item, label }: { item: PriceCheckItem; label: string | null | undefined }) {
+function VerdictCard({ item }: { item: PriceCheckItem }) {
   const o = item.outlook
-  const noHistory = !hasHistory(o?.h24) && !hasHistory(o?.d3)
+  // After the launch fortnight there is no call at all (decided after finding 9): one line.
+  if (isLater(o))
+    return (
+      <section aria-label="Verdict" className="flex items-start gap-2 rounded-xl border border-border bg-surface p-4 text-sm text-muted sm:p-5">
+        <Scale aria-hidden className="mt-0.5 size-4 shrink-0 text-accent" />
+        <p>{BETWEEN_LAUNCHES}</p>
+      </section>
+    )
+  const noHistory = !hasHistory(o.h24) && !hasHistory(o.d3)
   return (
     <section aria-label="Verdict" className="flex flex-col gap-3 rounded-xl border border-accent/30 bg-surface p-4 sm:p-5">
       <h3 className="flex items-center gap-2 font-semibold">
         <Scale aria-hidden className="size-4 text-accent" /> Sell now or hold?
       </h3>
       <div className="grid gap-3 sm:grid-cols-2">
-        <HorizonCard title="Next 24 hours" h={o?.h24} horizon="h24" label={label} />
-        <HorizonCard title="Next 3 days" h={o?.d3} horizon="d3" label={label} />
+        <HorizonCard title="Next 24 hours" h={o.h24} horizon="h24" />
+        <HorizonCard title="Next 3 days" h={o.d3} horizon="d3" />
       </div>
       <p className="text-xs text-faint">
         {noHistory
-          ? 'A verdict needs past leagues with this item (or items like it) at the same point in the league.'
+          ? 'A verdict needs at least two past leagues that traded this item at the same point in the league.'
           : 'Judged in Divines, since Chaos inflates over a league. From what past leagues did from this point; a guide, not a guarantee. Shown only where it beat "no change" in backtests.'}
       </p>
     </section>
   )
 }
 
-function HorizonCard({ title, h, horizon, label }: { title: string; h: Horizon | undefined; horizon: 'h24' | 'd3'; label: string | null | undefined }) {
+function HorizonCard({ title, h, horizon }: { title: string; h: Horizon; horizon: 'h24' | 'd3' }) {
   const verdict: Verdict = hasHistory(h) ? h.verdict : 'none'
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-border bg-bg/40 p-3" aria-label={title} role="group">
@@ -272,7 +285,7 @@ function HorizonCard({ title, h, horizon, label }: { title: string; h: Horizon |
         )}
       </div>
       <p className={`text-xl font-semibold ${verdict === 'sell' ? 'text-accent-strong' : verdict === 'hold' ? 'text-text' : 'text-muted'}`}>{VERDICT_WORD[verdict]}</p>
-      <p className="text-sm text-muted">{reason(h, horizon, label)}</p>
+      <p className="text-sm text-muted">{reason(h, horizon)}</p>
     </div>
   )
 }
@@ -308,7 +321,7 @@ function PriceChart({ item, info }: { item: PriceCheckItem; info: LiveLeague }) 
       )}
       <ul className="flex max-w-3xl flex-col gap-1 text-xs text-faint">
         {priced === 1 && <li>Only one hour has traded so far: the lines start as the next hours are published.</li>}
-        {!hasDivine(item.series) && <li>It hasn't traded against Divines, so there's no Divine line: only its Chaos price.</li>}
+        {!hasDivine(item.series) && <li>No Divine rate for these hours yet, so there's no Divine line: only its Chaos price.</li>}
         {band && <li>The shaded range past the latest hour is what past leagues did from this point, in Divines (right axis); the dashed line is the typical path.</li>}
         <li>Hourly, UTC. Lines break at hours with no trades.</li>
       </ul>
@@ -325,7 +338,14 @@ function Selling({ item, money, divineChaos }: { item: PriceCheckItem; money: Mo
       <Toolbar>
         <NumberField label="How many" value={qty} onChange={setQty} min={1} max={1_000_000} step={1} />
       </Toolbar>
-      <Stack item={{ name: item.name, ...item.stack }} qty={qty} money={money} divineChaos={divineChaos} />
+      <Stack
+        item={{ name: item.name, ...item.stack }}
+        qty={qty}
+        bands={bandsOf(item.impact)}
+        note={item.impact?.note ?? undefined}
+        money={money}
+        divineChaos={divineChaos}
+      />
       <BestHours hours={item.hours} />
     </Block>
   )

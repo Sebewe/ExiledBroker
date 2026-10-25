@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import type { Horizon, Outlook, SeriesPoint } from '../api/priceCheckDraft'
+import type { Horizon, Outlook, SeriesPoint } from '../api/client'
 import { alpha, type ChartTokens } from './chartOptions'
-import { inRange, latestHour, outlookBand, priceChartOption, rangeBounds, reason } from './priceCheck'
+import { BETWEEN_LAUNCHES, inRange, isLater, latestHour, outlookBand, priceChartOption, rangeBounds, reason } from './priceCheck'
 
 const H = 3_600_000
 const T0 = Date.parse('2026-10-01T00:00:00Z')
@@ -9,7 +9,7 @@ const at = (h: number) => new Date(T0 + h * H).toISOString()
 /** `n` hours from launch, Chaos rising by 1 an hour, Divines at 1/200 of it. */
 const series = (n: number, from = 0): SeriesPoint[] => Array.from({ length: n }, (_, i) => [at(from + i), 10 + i, (10 + i) / 200])
 
-const horizon = (x: Partial<Horizon> = {}): Horizon => ({ verdict: 'sell', typical: -0.08, low: -0.12, high: 0.02, leagues: 4, basis: 'item', ...x })
+const horizon = (x: Partial<Horizon> = {}): Horizon => ({ verdict: 'sell', typical: -0.08, low: -0.12, high: 0.02, leagues: 4, basis: 'item', state: 'judged', ...x })
 const OUTLOOK: Outlook = { h24: horizon({ typical: -0.03, low: -0.09, high: 0.02 }), d3: horizon(), unit: 'divine' }
 const TOKENS: ChartTokens = { text: '#e8eaf0', muted: '#a9afbd', faint: '#7c8293', border: '#3a404e', surface: '#252933', surface2: '#2d323e', accent: '#e3ac72', info: '#93b8f5' }
 
@@ -104,8 +104,8 @@ describe('alpha', () => {
 describe('reason', () => {
   it('says what past leagues did from this point, in Divines', () => {
     expect(reason(horizon(), 'd3')).toBe('In past leagues it fell 8% in Divines over the next 3 days from this point (−12% to +2%, 4 leagues).')
-    expect(reason(horizon({ verdict: 'hold', typical: 0.05, basis: 'group', leagues: 1 }), 'h24', 'Essence')).toBe(
-      'In past leagues essence items like it rose 5% in Divines over the next 24 hours from this point (−12% to +2%, 1 league).',
+    expect(reason(horizon({ verdict: 'hold', typical: 0.05, leagues: 2 }), 'h24')).toBe(
+      'In past leagues it rose 5% in Divines over the next 24 hours from this point (−12% to +2%, 2 leagues).',
     )
   })
 
@@ -114,6 +114,12 @@ describe('reason', () => {
       "Past leagues don't agree: over the next 24 hours from this point it moved −12% to +2%, typically −1% in Divines (4 leagues).",
     )
     expect(reason(null, 'h24')).toMatch(/nothing to judge by/)
-    expect(reason(horizon({ leagues: 0 }), 'h24')).toMatch(/nothing to judge by/)
+    expect(reason(horizon({ state: 'no_history', typical: null }), 'h24')).toMatch(/nothing to judge by/)
+  })
+
+  it("says after the launch fortnight that calls are only for a league's first two weeks", () => {
+    expect(reason(horizon({ state: 'later', typical: null }), 'h24')).toBe(BETWEEN_LAUNCHES)
+    expect(isLater({ h24: horizon({ state: 'later' }), d3: horizon({ state: 'later' }), unit: 'divine' })).toBe(true)
+    expect(isLater(OUTLOOK)).toBe(false)
   })
 })
