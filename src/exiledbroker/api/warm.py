@@ -13,6 +13,7 @@ from exiledbroker.api import deps
 from exiledbroker.api.deps import View
 from exiledbroker.api.routes.live import leagues_view, missed_view
 from exiledbroker.api.routes.market import backtest_view, launch_picks_view
+from exiledbroker.api.routes.price_check import index_view, movers_views
 
 log = logging.getLogger("uvicorn.error")  # shown in the server log (Railway's logs)
 CHECK_EVERY = 30.0  # seconds between data-version checks
@@ -23,6 +24,10 @@ def default_views() -> list[View]:
     trading = [lg.name for lg in leagues if lg.latest_hour]
     views = [deps.LEAGUE_NAMES, launch_picks_view(), backtest_view()]
     views += [missed_view(league) for league in trading]
+    # Price check: the list, then the movers' items (what a visitor most likely opens;
+    # computing them needs the list). Other items are built on their first request.
+    views += [index_view(league) for league in trading]
+    views += [v for league in trading for v in movers_views(league)]
     return views
 
 

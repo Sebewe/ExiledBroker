@@ -117,12 +117,18 @@ API_BUDGET = {
     "/api/status": (20, 2_000),  # 4 rows, 196 B
     "/api/missed/{league}": (500, 12_000),  # 121 rows, 7.4 KB (Allflame: ~3k rows, 10 KB)
     "/api/launch/picks": (60, 2_000),  # no picks in the replay; up to 30 picks hosted
+    # Price check: a row or two per item (hosted ~900 items: ~2k rows, 165 kB / 30 kB
+    # gzipped on Allflame), and one item's hours (hosted ~700 rows, ~32 kB / 8 kB).
+    "/api/price-check/{league}": (200, 5_000),  # 40 rows, 1.7 KB
+    "/api/price-check/{league}/currency:orb-of-alchemy": (300, 6_000),  # 76 rows, 2.1 KB
 }
 # Endpoints about one league must not read more as other leagues' history accumulates,
 # except a row per league in league lists.
 ONE_LEAGUE_ENDPOINTS = [
     "/api/status",
     "/api/missed/{league}",
+    "/api/price-check/{league}",
+    "/api/price-check/{league}/currency:orb-of-alchemy",
 ]
 PER_LEAGUE_ROWS = 2
 

@@ -314,3 +314,50 @@ def test_the_retired_farming_history_is_dropped_from_the_site_and_the_backup(loc
     assert not _has_table(dbs["eb_site"], "item_day_history")
     assert not _has_table(dbs["eb_backup"], "item_day_history")
     assert_same(dbs["eb_site"], dbs["eb_backup"])
+
+
+def _price_paths(con, built_at: datetime, leagues: list[str]) -> None:
+    """Price check's tables as `eb price-check build` leaves them (a few rows)."""
+    for table in ("price_path_league", "price_path", "price_path_constant"):
+        db.execute(con, f"DELETE FROM {table}")
+    for lg in leagues:
+        db.execute(
+            con,
+            "INSERT INTO price_path_league VALUES (?, ?, 'currency:x', '[-0.1]', '[-0.2]')",
+            [lg, built_at],
+        )
+    db.execute(
+        con, "INSERT INTO price_path VALUES ('currency:x', 0, -0.1, ?, -0.2, ?)", [len(leagues)] * 2
+    )
+    db.execute(
+        con,
+        "INSERT INTO price_path_constant VALUES ('days 0-2', TRUE, 'h24', 0.9, -0.4, 0.3, ?, ?)",
+        [",".join(leagues), built_at],
+    )
+
+
+def test_price_check_paths_are_backed_up_once_a_league(local, dbs, monkeypatch):  # noqa: F811
+    """Seeded with the paths, then a league captured: each sync sends them only when
+    they changed, and a pass where nothing did reads back only the stamps."""
+    s, server = local
+    with db.session(s.db_path) as con:
+        _price_paths(con, datetime(2026, 10, 24, 9), ["Keepers", "Mirage"])
+    _seed(s, dbs["eb_site"])
+    reads = BackupReads(monkeypatch)
+    first, _ = run(hosted(s, dbs), server, 9)
+    assert "price paths" in first.backup.tables
+    assert_same(dbs["eb_site"], dbs["eb_backup"])
+
+    before = reads.bytes
+    second, _ = run(hosted(s, dbs), server, 10)
+    assert "price paths" not in second.backup.tables
+    assert reads.bytes - before < 2_000, reads.bytes - before
+
+    with psycopg.connect(dbs["eb_site"], autocommit=True) as con:  # the pipeline's capture
+        db.execute(
+            con,
+            "INSERT INTO price_path_league VALUES ('Allflame', now(), 'currency:x', '[0.1]', '[0.2]')",
+        )
+    assert backup.back_up(hosted(s, dbs)).tables == ["price paths"]
+    assert_same(dbs["eb_site"], dbs["eb_backup"])
+    assert not backup.back_up(hosted(s, dbs)).changed

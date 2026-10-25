@@ -655,6 +655,84 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "HourEffect": {
+        "description": "What timing is worth in a price profile (finding 6), as fractions of the price:\nbest hour over the 24-hour average (`gain`) and over the worst (`gap`), UTC hours,\nthe noise floor (`null95`); \"small\" means time of day barely matters.",
+        "properties": {
+          "best": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Best"
+          },
+          "gain": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gain"
+          },
+          "gap": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gap"
+          },
+          "null95": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Null95"
+          },
+          "verdict": {
+            "enum": [
+              "small",
+              "worth_it"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          },
+          "worst": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worst"
+          }
+        },
+        "required": [
+          "gain",
+          "gap",
+          "best",
+          "worst",
+          "null95",
+          "verdict"
+        ],
+        "title": "HourEffect",
+        "type": "object"
+      },
       "LaunchPick": {
         "properties": {
           "buy_divine": {
@@ -736,6 +814,51 @@
           "live_divine"
         ],
         "title": "LaunchPick",
+        "type": "object"
+      },
+      "LaunchPremium": {
+        "description": "Past leagues' launch windows against the settled price (days 12\u201314), in Divines:\nthe median over leagues (3.4 is three and a half times as much).",
+        "properties": {
+          "day1": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day1"
+          },
+          "days2_4": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days2 4"
+          },
+          "days5_10": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days5 10"
+          }
+        },
+        "required": [
+          "day1",
+          "days2_4",
+          "days5_10"
+        ],
+        "title": "LaunchPremium",
         "type": "object"
       },
       "LaunchWindow": {
@@ -913,6 +1036,115 @@
           "divine_chaos"
         ],
         "title": "LiveLeague",
+        "type": "object"
+      },
+      "MechanicHours": {
+        "properties": {
+          "best": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Best"
+          },
+          "gain": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gain"
+          },
+          "gap": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gap"
+          },
+          "items": {
+            "title": "Items",
+            "type": "integer"
+          },
+          "null95": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Null95"
+          },
+          "price": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Price",
+            "type": "array"
+          },
+          "stability": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stability"
+          },
+          "verdict": {
+            "enum": [
+              "small",
+              "worth_it"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          },
+          "worst": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worst"
+          }
+        },
+        "required": [
+          "gain",
+          "gap",
+          "best",
+          "worst",
+          "null95",
+          "verdict",
+          "price",
+          "items",
+          "stability"
+        ],
+        "title": "MechanicHours",
         "type": "object"
       },
       "MissedCard": {
@@ -1507,6 +1739,640 @@
         "title": "Mover",
         "type": "object"
       },
+      "PriceCheckIndex": {
+        "description": "The search list and the movers, one per data version.",
+        "properties": {
+          "day_offset": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day Offset"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PriceCheckListItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "latest_hour": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Hour"
+          },
+          "league": {
+            "title": "League",
+            "type": "string"
+          },
+          "movers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Movers",
+            "type": "array"
+          },
+          "movers_mode": {
+            "enum": [
+              "calls",
+              "moves"
+            ],
+            "title": "Movers Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "league",
+          "latest_hour",
+          "day_offset",
+          "items",
+          "movers",
+          "movers_mode"
+        ],
+        "title": "PriceCheckIndex",
+        "type": "object"
+      },
+      "PriceCheckItem": {
+        "description": "One item, one per data version.",
+        "properties": {
+          "change_24h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change 24H"
+          },
+          "day_offset": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day Offset"
+          },
+          "hours": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SellHours"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "impact": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StackImpact"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "latest_hour": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Hour"
+          },
+          "launch_premium": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LaunchPremium"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "outlook": {
+            "$ref": "#/components/schemas/PriceOutlook"
+          },
+          "series": {
+            "items": {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              ],
+              "type": "array"
+            },
+            "title": "Series",
+            "type": "array"
+          },
+          "stack": {
+            "$ref": "#/components/schemas/StackMarkets"
+          },
+          "thick": {
+            "title": "Thick",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "item_id",
+          "name",
+          "label",
+          "latest_hour",
+          "day_offset",
+          "thick",
+          "change_24h",
+          "series",
+          "outlook",
+          "stack",
+          "launch_premium",
+          "hours",
+          "impact"
+        ],
+        "title": "PriceCheckItem",
+        "type": "object"
+      },
+      "PriceCheckListItem": {
+        "description": "One row of the search list. Prices in Chaos (the browser converts with\n`divine_chaos`).",
+        "properties": {
+          "change_24h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change 24H"
+          },
+          "chaos": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chaos"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "verdict_24h": {
+            "enum": [
+              "sell",
+              "hold",
+              "none"
+            ],
+            "title": "Verdict 24H",
+            "type": "string"
+          },
+          "volume_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volume H"
+          }
+        },
+        "required": [
+          "item_id",
+          "name",
+          "label",
+          "chaos",
+          "volume_h",
+          "verdict_24h",
+          "change_24h"
+        ],
+        "title": "PriceCheckListItem",
+        "type": "object"
+      },
+      "PriceHorizon": {
+        "description": "One horizon's outlook, in Divines, as fractions (\u22120.03 is \u22123%): the typical\nchange (weight \u00d7 the item's past-league path from this point) and the band past\nleagues' residuals give it. `state` \"judged\": the model ran (the verdict may still\nbe \"none\"); \"later\": outside the days past leagues' paths cover (after about day 13\nfor 24 hours, day 11 for 3 days); \"no_history\": under 2 past leagues have the item\nhere. Only \"judged\" carries a band.",
+        "properties": {
+          "basis": {
+            "const": "item",
+            "title": "Basis",
+            "type": "string"
+          },
+          "high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "High"
+          },
+          "leagues": {
+            "title": "Leagues",
+            "type": "integer"
+          },
+          "low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Low"
+          },
+          "state": {
+            "enum": [
+              "judged",
+              "later",
+              "no_history"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "typical": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Typical"
+          },
+          "verdict": {
+            "enum": [
+              "sell",
+              "hold",
+              "none"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "verdict",
+          "state",
+          "typical",
+          "low",
+          "high",
+          "leagues",
+          "basis"
+        ],
+        "title": "PriceHorizon",
+        "type": "object"
+      },
+      "PriceOutlook": {
+        "properties": {
+          "d3": {
+            "$ref": "#/components/schemas/PriceHorizon"
+          },
+          "h24": {
+            "$ref": "#/components/schemas/PriceHorizon"
+          },
+          "unit": {
+            "const": "divine",
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "h24",
+          "d3",
+          "unit"
+        ],
+        "title": "PriceOutlook",
+        "type": "object"
+      },
+      "SellHours": {
+        "description": "Hour-of-day profiles from past leagues for the league's phase (a constant): 24\nvalues each by UTC hour, a price's fraction over its centred 24-hour average.",
+        "properties": {
+          "days": {
+            "title": "Days",
+            "type": "integer"
+          },
+          "divine": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Divine",
+            "type": "array"
+          },
+          "divine_effect": {
+            "$ref": "#/components/schemas/HourEffect"
+          },
+          "effect": {
+            "$ref": "#/components/schemas/HourEffect"
+          },
+          "effect_divine_market": {
+            "$ref": "#/components/schemas/HourEffect"
+          },
+          "leagues": {
+            "title": "Leagues",
+            "type": "integer"
+          },
+          "mechanics": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/MechanicHours"
+            },
+            "title": "Mechanics",
+            "type": "object"
+          },
+          "phase": {
+            "enum": [
+              "d0_2",
+              "d2_7",
+              "d7_14",
+              "later"
+            ],
+            "title": "Phase",
+            "type": "string"
+          },
+          "price": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Price",
+            "type": "array"
+          },
+          "price_divine_market": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Price Divine Market",
+            "type": "array"
+          },
+          "volume": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volume"
+          }
+        },
+        "required": [
+          "phase",
+          "leagues",
+          "days",
+          "price",
+          "price_divine_market",
+          "divine",
+          "volume",
+          "effect",
+          "effect_divine_market",
+          "divine_effect",
+          "mechanics"
+        ],
+        "title": "SellHours",
+        "type": "object"
+      },
+      "StackImpact": {
+        "description": "Finding 7: no calibrated price drop (`y` null); a stack is shown as hours of the\nmarket's trading (Q / volume_h), banded at `bands`.",
+        "properties": {
+          "bands": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Bands",
+            "type": "array"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "y": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Y"
+          }
+        },
+        "required": [
+          "y",
+          "bands",
+          "note"
+        ],
+        "title": "StackImpact",
+        "type": "object"
+      },
+      "StackMarket": {
+        "description": "One market's recent trading for an item: `price` in that market's currency\n(Chaos, or Divines in the Divine market; median, latest 24 hours), units traded an\nhour, the typical hourly swing (informative only) and the share of hours traded\n(latest 3 days).",
+        "properties": {
+          "hours_traded": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hours Traded"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price"
+          },
+          "sigma_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sigma H"
+          },
+          "volume_h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volume H"
+          }
+        },
+        "required": [
+          "price",
+          "volume_h",
+          "sigma_h",
+          "hours_traded"
+        ],
+        "title": "StackMarket",
+        "type": "object"
+      },
+      "StackMarkets": {
+        "properties": {
+          "chaos": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StackMarket"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "divine": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StackMarket"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "chaos",
+          "divine"
+        ],
+        "title": "StackMarkets",
+        "type": "object"
+      },
       "Status": {
         "properties": {
           "data_version": {
@@ -1789,6 +2655,101 @@
         "summary": "Missed Opportunities",
         "tags": [
           "live"
+        ]
+      }
+    },
+    "/api/price-check/{league}": {
+      "get": {
+        "description": "The search list (every core-pool exchange item the league has traded: price now,\nunits an hour, 24-hour verdict and move in Divines) and the movers: the strongest\n24-hour calls in the launch fortnight, else the biggest 24-hour moves.",
+        "operationId": "price_check_index_api_price_check__league__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "league",
+            "required": true,
+            "schema": {
+              "title": "League",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceCheckIndex"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Price Check Index",
+        "tags": [
+          "price check"
+        ]
+      }
+    },
+    "/api/price-check/{league}/{item_id}": {
+      "get": {
+        "description": "One item: its hourly series over the hosted window, the outlook for the next 24\nhours and 3 days (judged in Divines), the stack seller's inputs, its launch premium\nand the best-hour inputs. 404 for an item the league's list doesn't hold.",
+        "operationId": "price_check_item_api_price_check__league___item_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "league",
+            "required": true,
+            "schema": {
+              "title": "League",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceCheckItem"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Price Check Item",
+        "tags": [
+          "price check"
         ]
       }
     },

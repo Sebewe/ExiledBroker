@@ -29,6 +29,8 @@ from exiledbroker.services import (
     market,
     missed,
     overview,
+    price_check,
+    price_paths,
     prices,
     sell_helper,
 )
@@ -39,6 +41,7 @@ from test_live_pipeline import LAUNCH, PAGES, store_reference_data
 PG_URL = os.environ.get("EB_TEST_POSTGRES_URL")
 pytestmark = pytest.mark.skipif(not PG_URL, reason="EB_TEST_POSTGRES_URL is not set")
 LEAGUE = "Mirage"
+ITEM = "currency:orb-of-alchemy"
 LOCAL: dict = {}  # where the engines fixture's DuckDB file lives
 BIG_TABLES = {"price_observation", "cross_market_hour"}
 
@@ -121,6 +124,18 @@ def _cases(duck) -> dict:
         "backtest.report": lambda c: services_backtest.report(c),
         "sell_helper.markets": lambda c: sell_helper.markets(c, LEAGUE, latest, item_ids),
         "sell_helper.report": lambda c: sell_helper.report(c),
+        "price_paths.load": lambda c: price_paths.load(c, LEAGUE)[0],
+        "price_paths.load(hours)": lambda c: price_paths.load(c, LEAGUE)[1],
+        "price_paths.captured": lambda c: price_paths.captured(c),
+        "price_check.league_state": lambda c: price_check.league_state(c, LEAGUE),
+        "price_check.items": lambda c: price_check.items(c, LEAGUE),
+        "price_check.features": lambda c: price_check.features(c, LEAGUE, latest),
+        "price_check.features(item)": lambda c: price_check.features(c, LEAGUE, latest, ITEM),
+        "price_check.series": lambda c: price_check.series(c, LEAGUE, ITEM),
+        "price_check.stack": lambda c: price_check.stack(c, LEAGUE, latest, ITEM, 30),
+        "price_check.launch_premium": lambda c: price_check.launch_premium(c, ITEM),
+        "price_check.paths": lambda c: price_check.paths(c, 2),
+        "price_check.last_bins": lambda c: price_check.last_bins(c),
     }
 
 
@@ -168,6 +183,10 @@ LIVE_QUERIES = [
     "divination.hourly_turn_ins(since)",
     "cross_market.hourly(since)",
     "missed.missed",
+    "price_check.features",
+    "price_check.features(item)",  # one item's view: by league, item and time
+    "price_check.series",
+    "price_check.stack",
 ]
 
 
@@ -314,7 +333,7 @@ def test_api_answers_the_same_on_postgres(engines, monkeypatch):
         deps.reset()
         client = TestClient(app_module.create_app())
         out = {}
-        for path in endpoints(LEAGUE)[1:]:  # status carries timestamps of its own
+        for path in endpoints(LEAGUE, ITEM)[1:]:  # status carries timestamps of its own
             r = client.get(path)
             assert r.status_code == 200, (url, path, r.text)
             out[path] = r.json()

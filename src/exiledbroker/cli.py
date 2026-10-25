@@ -615,6 +615,36 @@ def farming_build() -> None:
         )
 
 
+price_check_app = typer.Typer(
+    help="Price check's verdict: past leagues' paths and the model's constants (finding 9).",
+    no_args_is_help=True,
+)
+app.add_typer(price_check_app, name="price-check")
+
+
+@price_check_app.command("build")
+def price_check_build() -> None:
+    """Reduce every league with a complete launch fortnight to its own price paths (per
+    item and half-day of the league, the next 24 hours' and 3 days' change in Divines),
+    keep their medians where at least 2 leagues have them, and refit the verdict's
+    weights and bands (needs numpy). Copy the tables to the site with `eb site seed`.
+    Reads only what's loaded; makes no requests."""
+    from exiledbroker.services import price_paths
+
+    settings = get_settings()
+    started = time.perf_counter()
+    with db.session(settings.db_path) as con:
+        db.init_schema(con)
+        out = price_paths.build(con, settings)
+    if not out["leagues"]:
+        typer.echo("No league with a complete launch fortnight loaded yet.")
+        raise typer.Exit(1)
+    typer.echo(
+        f"Built from {', '.join(out['leagues'])} in {time.perf_counter() - started:.0f} s: "
+        f"{out['paths']:,} paths for {out['items']:,} items, {out['constants']} constants."
+    )
+
+
 backtest_app = typer.Typer(help="Would following the site's tools have paid?")
 app.add_typer(backtest_app, name="backtest")
 

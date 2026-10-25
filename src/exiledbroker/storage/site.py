@@ -11,8 +11,9 @@ hosted pipeline.
 Re-seeding a league replaces that league's rows only. Shared tables (items, card
 and price mappings, reference data) are upserted, so other leagues' rows survive. The
 tables built from past leagues the site doesn't hold (the launch tables, the backtest
-and farming reports) are replaced whole: the local copy holds every captured league
-(`eb launch picks`, `eb backtest run`, `eb farming build`)."""
+and farming reports, Price check's paths) are replaced whole: the local copy holds
+every captured league (`eb launch picks`, `eb backtest run`, `eb farming build`,
+`eb price-check build`)."""
 
 from dataclasses import dataclass
 from datetime import UTC
@@ -36,7 +37,7 @@ SHARED_TABLES = {
     "reference_data": ["key"],
 }
 # Derived from the research database's history and replaced whole (services/launch_picks,
-# analysis/backtest, services/sell_helper). A league switch keeps them.
+# analysis/backtest, services/sell_helper, services/price_paths). A league switch keeps them.
 REPLACED_TABLES = [
     "launch_history",
     "launch_window",
@@ -44,6 +45,9 @@ REPLACED_TABLES = [
     "launch_pick_league",
     "backtest_report",
     "farming_report",
+    "price_path_league",
+    "price_path",
+    "price_path_constant",
 ]
 
 

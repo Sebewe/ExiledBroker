@@ -32,13 +32,19 @@ def update(s, server, hours_in: int):
         return sync_live(c, s, LEAGUE, now=now, earliest=cx.from_ts(LAUNCH - 72 * 3600))
 
 
-def endpoints(league: str) -> list[str]:
-    """Everything the API serves: exactly what the site's pages request."""
+ITEM = "currency:orb-of-alchemy"  # trades in the replay from its first hours
+
+
+def endpoints(league: str, item: str | None = None) -> list[str]:
+    """Everything the API serves: exactly what the site's pages request (Price check's
+    item view with `item`)."""
     return [
         "/api/status",
         f"/api/missed/{league}",
         "/api/launch/picks",
         "/api/backtest",
+        f"/api/price-check/{league}",
+        *([f"/api/price-check/{league}/{item}"] if item else []),
     ]
 
 
@@ -69,7 +75,9 @@ def test_every_endpoint_as_a_league_arrives(client, settings):  # noqa: F811
     assert update(settings, server, 0).state == "not_running"
     for hours_in in (1, 2, 3, 6, 12, 24, 30):
         assert update(settings, server, hours_in).state == "updated"
-        for path in endpoints(LEAGUE):
+        listed = client.get(f"/api/price-check/{LEAGUE}").json()["items"]
+        item = listed[0]["item_id"] if listed else None
+        for path in endpoints(LEAGUE, item):
             r = client.get(path)
             assert r.status_code == 200, (hours_in, path, r.text)
         status = client.get("/api/status").json()
@@ -130,14 +138,20 @@ def test_default_pages_are_precomputed(client, settings, monkeypatch):  # noqa: 
     from exiledbroker.api import warm
 
     update(settings, FakeExchange(PAGES, now=LAUNCH), 30)
-    assert warm.warm() >= 4  # league names, launch picks, backtest, the recap
+    # League names, launch picks, backtest, the recap, Price check's list and its movers.
+    assert warm.warm() >= 5
     monkeypatch.setattr(deps, "VERSION_TTL", 60.0)
-    # Exactly the requests the frontend makes on first load (web/src/api/queries.ts).
+    movers = client.get(f"/api/price-check/{LEAGUE}").json()["movers"]
+    assert movers
+    # Exactly the requests the frontend makes on first load (web/src/api/queries.ts),
+    # and the movers a Price check visitor opens.
     page_loads = [
         "/api/status",
         f"/api/missed/{LEAGUE}",
         "/api/launch/picks",
         "/api/backtest",
+        f"/api/price-check/{LEAGUE}",
+        *[f"/api/price-check/{LEAGUE}/{i}" for i in movers],
     ]
     for path in page_loads:
         with db.metered() as meter:
@@ -161,7 +175,8 @@ def test_validation(client, settings):  # noqa: F811
 def test_only_what_the_pages_request_is_served(client, settings):  # noqa: F811
     """No endpoint takes free-form arguments: each would be computed from the
     database for every new combination, and on Supabase that's billed egress any
-    visitor could run up. The API is exactly the site's four requests."""
+    visitor could run up. The API is exactly the site's requests; Price check's item is
+    bounded to the league's list (the core pool's exchange items it has traded)."""
     from exiledbroker.api import app as app_module
 
     paths = set(app_module.create_app().openapi()["paths"]) - {"/api/health"}
@@ -170,6 +185,8 @@ def test_only_what_the_pages_request_is_served(client, settings):  # noqa: F811
         "/api/missed/{league}",
         "/api/launch/picks",
         "/api/backtest",
+        "/api/price-check/{league}",
+        "/api/price-check/{league}/{item_id}",
     }
     update(settings, FakeExchange(PAGES, now=LAUNCH), 3)
     retired = [f"/api/live/{LEAGUE}/loops", f"/api/market/{LEAGUE}/hourly", "/api/leagues"]

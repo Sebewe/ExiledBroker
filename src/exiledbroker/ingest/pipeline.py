@@ -13,7 +13,8 @@ with Postgres attached (`db.site_writer`). Each pass:
 2. loads the newly published hours (`live.sync_live`, which records the run and
    prunes pages that left the window);
 3. once the live league's launch fortnight is over, adds it to the Launch history and
-   rebuilds the picks (`launch_picks.refresh`);
+   rebuilds the picks (`launch_picks.refresh`), and adds its paths to Price check's
+   (`price_paths.refresh`);
 4. once the live league has data, drops any other league's rows (a league switch;
    what was built from them, the Launch history, stays);
 5. with EB_BACKUP_URL set, syncs the site's database to the off-site backup
@@ -33,7 +34,7 @@ from exiledbroker.ingest import core_pool, reference
 from exiledbroker.ingest import currency_exchange as cx
 from exiledbroker.ingest.http import PoliteClient
 from exiledbroker.ingest.live import LiveStatus, sync_live
-from exiledbroker.services import launch_picks
+from exiledbroker.services import launch_picks, price_paths
 from exiledbroker.services.live import live_leagues
 from exiledbroker.storage import backup as backup_mod
 from exiledbroker.storage import db, site
@@ -51,6 +52,7 @@ class PipelineResult:
     league: str
     live: LiveStatus
     picks_from: list[str] | None = None  # the picks were rebuilt from these leagues
+    paths_from: str | None = None  # Price check's paths gained this league
     dropped: list[str] = field(default_factory=list)
     backup: backup_mod.SyncResult | None = None  # with EB_BACKUP_URL
     backup_error: str | None = None  # the backup failed; the pass didn't
@@ -59,6 +61,8 @@ class PipelineResult:
         parts = [str(self.live)]
         if self.picks_from:
             parts.append(f"Launch picks rebuilt from {', '.join(self.picks_from)}.")
+        if self.paths_from:
+            parts.append(f"Price check's paths now include {self.paths_from}.")
         if self.dropped:
             parts.append(f"Dropped {', '.join(self.dropped)} from the site.")
         if self.backup is not None:
@@ -174,5 +178,6 @@ def _pass(
         return result  # e.g. the announced league has no trades yet: keep the old one
     with db.site_writer(settings) as con:
         result.picks_from = launch_picks.refresh(con, live=name)
+        result.paths_from = price_paths.refresh(con, name, settings)
         result.dropped = site.drop_leagues(con, name)
     return result

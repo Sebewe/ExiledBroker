@@ -19,7 +19,8 @@ transaction on `dst` (always Postgres):
   differs;
 - the tables built from past leagues (`site.REPLACED_TABLES`), each group replaced when
   its stamp (a few counts and build times, `_stamps`) differs: the Launch tables, the
-  backtest report and the farming report (the hour-of-day and stack constants);
+  backtest report, the farming report (the hour-of-day and stack constants) and Price
+  check's paths (once a league: ~25k rows, ~3 MB);
 - the raw pages of the window (from `src`'s `exchange_page`, or from disk for the
   local copy), and none outside it;
 - leagues `dst` has and `src` doesn't: dropped (a league switch).
@@ -230,7 +231,8 @@ def _sync_reference(src, dst) -> bool:
 # rebuilt together, each replaced whole when its stamp differs.
 LAUNCH_TABLES = ["launch_history", "launch_window", "launch_pick", "launch_pick_league"]
 REPORTS = ["backtest_report", "farming_report"]
-assert {*LAUNCH_TABLES, *REPORTS} == set(site.REPLACED_TABLES)
+PRICE_TABLES = ["price_path_league", "price_path", "price_path_constant"]  # Price check's
+assert {*LAUNCH_TABLES, *REPORTS, *PRICE_TABLES} == set(site.REPLACED_TABLES)
 
 
 def _stamps(con) -> dict:
@@ -242,6 +244,12 @@ def _stamps(con) -> dict:
     out = {"launch tables": (tuple(picks), tuple(sorted(history)))}
     for table in REPORTS:
         out[table] = tuple(db.rows(con, f"SELECT count(*), max(built_at) FROM {table}")[0])
+    # Price check's paths change when a league is captured (locally, or by the pipeline
+    # once the live league's fortnight is over) and its constants when they're refitted.
+    captured = db.rows(con, "SELECT league, count(*) FROM price_path_league GROUP BY league")
+    paths = db.scalar(con, "SELECT count(*) FROM price_path")
+    fitted = db.rows(con, "SELECT count(*), max(built_at) FROM price_path_constant")[0]
+    out["price paths"] = (tuple(sorted(captured)), paths, tuple(fitted))
     return out
 
 
@@ -266,6 +274,10 @@ def _sync_built(src, dst) -> list[str]:
         if ours[table] != theirs[table]:
             _replace(src, dst, table)
             updated.append(table.replace("_", " "))
+    if ours["price paths"] != theirs["price paths"]:
+        for table in PRICE_TABLES:
+            _replace(src, dst, table)
+        updated.append("price paths")
     return updated
 
 

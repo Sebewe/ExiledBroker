@@ -305,3 +305,46 @@ CREATE TABLE IF NOT EXISTS farming_report (
     built_at  TIMESTAMP NOT NULL,
     body      VARCHAR NOT NULL
 );
+
+-- Price check's verdict (finding 9, services/price_paths.py, `eb price-check build`).
+-- Each finished league's own path: per item, its median change in Divines from each
+-- half-day bin of the league (bin = hour since launch // 12) over the next 24 hours
+-- and 3 days, as JSON lists indexed by bin (null where it had none). Captured once a
+-- league's launch fortnight is over (locally, or by the hosted pipeline), so the
+-- served paths can be rebuilt without the past leagues' hours.
+CREATE TABLE IF NOT EXISTS price_path_league (
+    league        VARCHAR NOT NULL,
+    league_start  TIMESTAMP,
+    item_id       VARCHAR NOT NULL,
+    h24           VARCHAR NOT NULL,  -- JSON: log change over 24 hours, by bin
+    d3            VARCHAR NOT NULL,  -- JSON: log change over 3 days, by bin
+    PRIMARY KEY (league, item_id)
+);
+
+-- What the site reads: per item and bin, the median over the captured leagues of each
+-- league's path, and how many leagues it rests on (only where at least 2 have it).
+CREATE TABLE IF NOT EXISTS price_path (
+    item_id     VARCHAR NOT NULL,
+    bin         INTEGER NOT NULL,
+    h24         DOUBLE PRECISION,
+    h24_leagues INTEGER,
+    d3          DOUBLE PRECISION,
+    d3_leagues  INTEGER,
+    PRIMARY KEY (item_id, bin)
+);
+
+-- The model's fitted constants per phase, market thickness and horizon: the path's
+-- weight and the band's residual quantiles (low, high; log changes). Fitted locally
+-- (numpy) by `eb price-check build`; the verdict thresholds are in code
+-- (analysis/price_outlook.SHIP).
+CREATE TABLE IF NOT EXISTS price_path_constant (
+    phase     VARCHAR NOT NULL,
+    thick     BOOLEAN NOT NULL,
+    horizon   VARCHAR NOT NULL,  -- 'h24' | 'd3'
+    weight    DOUBLE PRECISION NOT NULL,
+    low       DOUBLE PRECISION,
+    high      DOUBLE PRECISION,
+    leagues   VARCHAR NOT NULL,  -- the leagues it was fitted on, oldest first
+    built_at  TIMESTAMP NOT NULL,
+    PRIMARY KEY (phase, thick, horizon)
+);

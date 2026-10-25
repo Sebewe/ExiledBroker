@@ -319,10 +319,10 @@ class BacktestFlip(BaseModel):
 BacktestReport.model_rebuild()
 
 
-# --- The sell helper (services/sell_helper.py; kept from the Farming page for Price check) -
+# --- Price check (services/price_check.py; the sell helper: services/sell_helper.py) ------
 
 
-class FarmingMarket(BaseModel):
+class StackMarket(BaseModel):
     """One market's recent trading for an item: `price` in that market's currency
     (Chaos, or Divines in the Divine market; median, latest 24 hours), units traded an
     hour, the typical hourly swing (informative only) and the share of hours traded
@@ -353,7 +353,7 @@ class MechanicHours(HourEffect):
     stability: float | None
 
 
-class FarmingHours(BaseModel):
+class SellHours(BaseModel):
     """Hour-of-day profiles from past leagues for the league's phase (a constant): 24
     values each by UTC hour, a price's fraction over its centred 24-hour average."""
 
@@ -370,10 +370,97 @@ class FarmingHours(BaseModel):
     mechanics: dict[str, MechanicHours]  # only baskets whose own profile holds
 
 
-class FarmingImpact(BaseModel):
+class StackImpact(BaseModel):
     """Finding 7: no calibrated price drop (`y` null); a stack is shown as hours of the
     market's trading (Q / volume_h), banded at `bands`."""
 
     y: float | None
     bands: list[float]
     note: str | None
+
+
+Verdict = Literal["sell", "hold", "none"]
+
+
+class PriceCheckListItem(BaseModel):
+    """One row of the search list. Prices in Chaos (the browser converts with
+    `divine_chaos`)."""
+
+    item_id: str
+    name: str
+    label: str | None  # for the search box: the mechanic that drops it, else its group
+    chaos: float | None  # the price now: median of its traded hours in the latest 6
+    volume_h: float | None  # units traded an hour in its Chaos market, latest 3 days
+    verdict_24h: Verdict
+    change_24h: float | None  # the latest 24 hours' move, in Divines (−0.08 is −8%)
+
+
+class PriceCheckIndex(BaseModel):
+    """The search list and the movers, one per data version."""
+
+    league: str
+    latest_hour: datetime | None
+    day_offset: float | None  # days since launch of the latest hour; null before trades
+    items: list[PriceCheckListItem]  # by name
+    movers: list[str]  # item ids, ≤ 20
+    # "calls": the strongest 24-hour Sell / Hold calls; "moves": no call (after the
+    # launch fortnight, or none clear), so the biggest 24-hour moves in Divines among
+    # thick markets, with no labels.
+    movers_mode: Literal["calls", "moves"]
+
+
+class PriceHorizon(BaseModel):
+    """One horizon's outlook, in Divines, as fractions (−0.03 is −3%): the typical
+    change (weight × the item's past-league path from this point) and the band past
+    leagues' residuals give it. `state` "judged": the model ran (the verdict may still
+    be "none"); "later": outside the days past leagues' paths cover (after about day 13
+    for 24 hours, day 11 for 3 days); "no_history": under 2 past leagues have the item
+    here. Only "judged" carries a band."""
+
+    verdict: Verdict
+    state: Literal["judged", "later", "no_history"]
+    typical: float | None
+    low: float | None
+    high: float | None
+    leagues: int  # past leagues behind the path
+    basis: Literal["item"]  # the item's own path (finding 9: no group fallback)
+
+
+class PriceOutlook(BaseModel):
+    h24: PriceHorizon
+    d3: PriceHorizon
+    unit: Literal["divine"]  # the verdict judges in Divines (decided 2026-10-25)
+
+
+class StackMarkets(BaseModel):
+    chaos: StackMarket | None
+    divine: StackMarket | None
+
+
+class LaunchPremium(BaseModel):
+    """Past leagues' launch windows against the settled price (days 12–14), in Divines:
+    the median over leagues (3.4 is three and a half times as much)."""
+
+    day1: float | None
+    days2_4: float | None
+    days5_10: float | None
+
+
+class PriceCheckItem(BaseModel):
+    """One item, one per data version."""
+
+    item_id: str
+    name: str
+    label: str | None
+    latest_hour: datetime | None
+    day_offset: float | None
+    thick: bool  # finding 9's thick market (latest 3 days)
+    change_24h: float | None  # in Divines
+    # Traded hours over the hosted window (launch fortnight + latest 14 days): [hour,
+    # Chaos, Divines at that hour's rate]; lines break where hours are missing.
+    series: list[tuple[datetime, float | None, float | None]]
+    outlook: PriceOutlook
+    stack: StackMarkets
+    launch_premium: LaunchPremium | None
+    hours: SellHours | None  # the best-hour sentence's inputs (null until built)
+    impact: StackImpact | None
