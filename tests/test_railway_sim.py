@@ -79,6 +79,10 @@ def test_visits_follow_the_daily_model():
     per_user = len(visits) / 1000
     assert 2.7 < per_user < 3.3  # about 3 a day
     assert all(v[3][0] == "missed" for v in visits)  # every visit lands on the landing page
+    # ... and price-checks at least one item (the user: a few every session).
+    assert all(v[3][1] == "price_check" and "item" in v[3] for v in visits)
+    items = sum(v[3].count("item") for v in visits) / len(visits)
+    assert 2.7 < items < 3.5
     hours = [datetime.fromtimestamp(v[1], UTC).hour for v in visits]
     assert hours.count(19) > 2 * hours.count(3)  # evenings busier than nights
 
@@ -99,7 +103,15 @@ def test_visitors_ask_only_for_what_the_api_serves():
     b.status = {
         "leagues": [{"name": "Next", "latest_hour": None}, {"name": "Allflame", "latest_hour": "x"}]
     }
-    asks = {page: site.endpoint(page, b) for page in ["missed", *loadgen.OTHER_PAGES]}
+    b.items = [("currency:orb-of-alchemy", 900.0), ("currency:a-chilling-wind", None)]
+    b.movers = ["currency:mortal-rage"]
+    pages = ["missed", "price_check", "item", *loadgen.OTHER_PAGES]
+    asks = {page: site.endpoint(page, b) for page in pages}
+    assert asks["price_check"] == ("price_check", "/api/price-check/Allflame")
+    assert asks["item"][1] in {
+        "/api/price-check/Allflame/currency%3Aorb-of-alchemy",
+        "/api/price-check/Allflame/currency%3Amortal-rage",
+    }  # never an item that doesn't trade
     assert asks["loops"] == asks["cards"] == asks["missed"] == ("missed", "/api/missed/Allflame")
     assert asks["conversions"] is None and asks["about"] is None  # static pages
     assert all(served(url) for kind, url in filter(None, asks.values())), asks

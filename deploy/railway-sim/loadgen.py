@@ -11,6 +11,11 @@ leaving the tab open a while. Each visitor's browser mirrors web/src:
 - /api/status is checked only when a new hour is due (lib/schedule.ts, ported below);
 - a page's data is fetched only when the data version changed since it was cached.
 
+Every visit price-checks a few items (the user: "a few times every session", likely
+different items each time): the Price check list, then ITEMS_PER_VISIT items on
+average (at least one), picked from the movers or the most traded, so most item views
+are a response no one else asked for this hour.
+
 Time runs on the simulation's clock: `seconds_per_hour` real seconds per simulated
 hour (60 compresses a day into 24 minutes). Every response is counted: bytes on the
 wire (plus HEADER_BYTES for headers and TLS framing) are what Railway would bill as
@@ -21,6 +26,7 @@ import random
 import re
 import statistics
 import time
+import urllib.parse
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -31,6 +37,8 @@ MIN = 60.0
 HOUR = 3600.0
 VISITS_PER_DAY = 3.0
 PAGES_PER_VISIT = 3.0
+ITEMS_PER_VISIT = 3.0  # Price check items opened per visit (mean; at least one)
+MOVER_SHARE = 0.4  # of those, opened from the movers; the rest by how much they trade
 VISIT_MINUTES = 15.0
 CACHE_HOURS = 6.0
 HEADER_BYTES = 400  # response headers + TLS framing, per response
@@ -126,6 +134,13 @@ class Browser:
     status_at: float = 0.0  # sim time it was fetched
     data: dict = field(default_factory=dict)  # endpoint → data version cached
     saved_at: float = 0.0
+    rng: random.Random = field(default_factory=random.Random)
+    # Price check: the list's items (id, units an hour) and movers, from its response.
+    items: list = field(default_factory=list)
+    movers: list = field(default_factory=list)
+    current: tuple[str, str] | None = (
+        None  # (kind, URL) the open page shows: refetched on a new version
+    )
 
 
 @dataclass
@@ -230,19 +245,44 @@ class Site:
             return "backtest", "/api/backtest"
         if page in ("missed", "loops", "cards") and live:
             return "missed", f"/api/missed/{live[0]}"
+        if page == "price_check" and live:
+            return "price_check", f"/api/price-check/{live[0]}"
+        if page == "item" and live:
+            item = self.pick(b)
+            if item:
+                return "item", f"/api/price-check/{live[0]}/{urllib.parse.quote(item, safe='')}"
         return None  # a static page, or no league yet
+
+    @staticmethod
+    def pick(b: Browser) -> str | None:
+        """An item to price-check: a mover, or one of the items weighted by how much it
+        trades (people look up what they hold, which is mostly what trades)."""
+        if b.movers and b.rng.random() < MOVER_SHARE:
+            return b.rng.choice(b.movers)
+        traded = [(i, v) for i, v in b.items if v]
+        if not traded:
+            return b.rng.choice(b.movers) if b.movers else None
+        ids, volume = zip(*traded, strict=True)
+        return b.rng.choices(ids, weights=[v**0.5 for v in volume])[0]
 
     async def view(self, page: str, b: Browser) -> None:
         ep = self.endpoint(page, b)
         if ep is None or not b.status:
             return
-        kind, url = ep
-        version = b.status.get("data_version")
+        await self.fetch(*ep, b)
+
+    async def fetch(self, kind: str, url: str, b: Browser) -> None:
+        b.current = (kind, url)
+        version = b.status.get("data_version") if b.status else None
         if b.data.get(url) == version:
             return  # cached for this data version
         r = await self.get(kind, url)
         if r is not None and r.status_code == 200:
             b.data[url] = version
+            if kind == "price_check":
+                doc = r.json()
+                b.items = [(x["item_id"], x.get("volume_h")) for x in doc.get("items", [])]
+                b.movers = list(doc.get("movers", []))
 
 
 def plan_visits(
@@ -261,12 +301,14 @@ def plan_visits(
                 if rng.random() < HOUR_WEIGHTS[hour % 24] / max(HOUR_WEIGHTS):
                     break
             open_s = min(max(rng.expovariate(1 / (VISIT_MINUTES * MIN)), 2 * MIN), 60 * MIN)
-            pages = ["missed"] + rng.choices(
+            items = ["item"] * max(_poisson(rng, ITEMS_PER_VISIT), 1)
+            others = rng.choices(
                 list(OTHER_PAGES),
                 weights=list(OTHER_PAGES.values()),
                 k=_poisson(rng, PAGES_PER_VISIT - 1),
             )
-            visits.append((u, t, open_s, pages[:6]))
+            pages = ["missed", "price_check", *items[:8], *others[:4]]
+            visits.append((u, t, open_s, pages))
     return sorted(visits, key=lambda v: v[1])
 
 
@@ -302,7 +344,6 @@ async def visit(
     for i, page in enumerate(pages):
         await clock.sleep_until(start + i * step)
         await site.view(page, b)
-    current = pages[-1]
     # The tab stays open: status checks when due; a new version refetches the page.
     while b.status is not None:
         due = b.status_at + next_check_in(b.status, b.status_at, clock.now(), b.jitter)
@@ -311,8 +352,8 @@ async def visit(
         await clock.sleep_until(due)
         before = b.status.get("data_version")
         await site.status(b, clock.now())
-        if b.status and b.status.get("data_version") != before:
-            await site.view(current, b)
+        if b.status and b.status.get("data_version") != before and b.current:
+            await site.fetch(*b.current, b)
     b.saved_at = clock.now()
 
 
@@ -344,7 +385,9 @@ async def run(
         ]
     else:
         plan = plan_visits(users, clock.sim_start, sim_hours, rng)
-    browsers = [Browser(jitter=rng.random() * 90) for _ in range(users)]
+    browsers = [
+        Browser(jitter=rng.random() * 90, rng=random.Random(rng.random())) for _ in range(users)
+    ]
     limits = httpx.Limits(max_connections=200, max_keepalive_connections=100)
     async with httpx.AsyncClient(
         base_url=base_url, timeout=30, limits=limits, headers={"Accept-Encoding": "gzip"}
