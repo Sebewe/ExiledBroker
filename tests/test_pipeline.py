@@ -17,11 +17,12 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from exiledbroker.analysis import price_outlook as po
 from exiledbroker.config import Settings
 from exiledbroker.ingest import currency_exchange as cx
 from exiledbroker.ingest import pipeline
 from exiledbroker.ingest.live import sync_live
-from exiledbroker.services import launch_picks
+from exiledbroker.services import launch_picks, price_paths
 from exiledbroker.storage import backup, db, site
 from test_currency_exchange import FakeExchange, client_for
 from test_live_pipeline import LAUNCH, PAGES, store_reference_data
@@ -211,6 +212,45 @@ def _past_league(con) -> None:
     )
 
 
+def _past_paths(con, league: str = "Old") -> None:
+    """A past league's paths as `eb price-check build` leaves them: a flat fall at every
+    bin for every item the replay trades."""
+    path = json.dumps([-0.1] * 26)
+    ids = [r[0] for r in db.rows(con, "SELECT DISTINCT item_id FROM cross_market_hour")]
+    for i in ids:
+        db.execute(
+            con,
+            f"INSERT INTO {price_paths.LEAGUES} VALUES (?, ?, ?, ?, ?)",
+            [league, datetime(2026, 1, 1), i, path, path],
+        )
+
+
+def test_a_finished_league_joins_price_checks_paths_once(seeded, monkeypatch):
+    """The league switch's other half (docs/price-check.md, F): once the live league's
+    fortnight is over the pass adds its own paths to Price check's medians, so the next
+    league's verdicts include it. The server only has the live window and the reduced
+    paths; the capture reads the league's launch fortnight, which it keeps. (The replay's
+    30 hours hold no 24-hour change, so the horizons are shortened to 6 and 12 hours.)"""
+    s, server = seeded
+    monkeypatch.setattr(po, "HORIZONS", {"h24": 6, "d3": 12})
+    with db.session(s.db_path) as con:
+        _past_paths(con)
+    early, _ = run(s, server, 20)  # day 0: the fortnight isn't over
+    assert early.paths_from is None
+    with db.session(s.db_path, read_only=True) as con:
+        assert price_paths.captured(con) == ["Old"]
+    monkeypatch.setattr(launch_picks, "_fortnight_over", lambda c, lg: True)
+    done, requests = run(s, server, 30)
+    assert done.paths_from == LEAGUE and "Price check's paths now include Mirage" in str(done)
+    assert len(requests) == done.live.fetched  # the capture fetched nothing
+    with db.session(s.db_path, read_only=True) as con:
+        assert price_paths.captured(con) == ["Old", LEAGUE]
+        served = db.frame(con, f"SELECT * FROM {price_paths.PATHS}")
+    assert served.height and (served["h24_leagues"].drop_nulls() == 2).all()
+    again, _ = run(s, server, 30)
+    assert again.paths_from is None  # captured once
+
+
 def test_the_retired_farming_history_is_dropped(seeded):
     """A database from before the Farming page's removal still holds item_day_history:
     the pass's schema drops it (on Postgres too: tests/test_backup.py)."""
@@ -358,3 +398,41 @@ def test_a_pass_never_copies_a_whole_table_out_of_postgres(local, pg, monkeypatc
             and not any(c in q for c in ('"observed_at"', '"item_id" ='))
         ]
         assert not whole, (table, whole[:1])
+
+
+@needs_pg
+def test_a_finished_league_joins_price_checks_paths_on_postgres(local, pg, monkeypatch, capfd):
+    """The same capture on the site's Postgres: the fortnight's hours are read on
+    Postgres itself (`db.pushdown`), never copied out through DuckDB's scanner, and only
+    the reduced paths are written back."""
+    import psycopg
+
+    s, server = local
+    monkeypatch.setattr(po, "HORIZONS", {"h24": 6, "d3": 12})
+    _seed(s, pg["eb_site"])
+    with psycopg.connect(pg["eb_site"], autocommit=True) as con:
+        _past_paths(con)
+    hosted = s.model_copy(update={"database_url": pg["eb_site"]})
+    monkeypatch.setattr(launch_picks, "_fortnight_over", lambda c, lg: True)
+    monkeypatch.setattr(db, "SHOW_PG_QUERIES", True)
+    capfd.readouterr()
+    result, _ = run(hosted, server, 30)
+    ctypes.CDLL(None).fflush(None)  # DuckDB prints from C, to stderr
+    sent = capfd.readouterr().err
+    assert result.paths_from == LEAGUE
+    with psycopg.connect(pg["eb_site"]) as con:
+        assert price_paths.captured(con) == ["Old", LEAGUE]
+        served = db.frame(con, f"SELECT * FROM {price_paths.PATHS}")
+    assert served.height and (served["h24_leagues"].drop_nulls() == 2).all()
+    copies = [q for q in sent.split("\n\n") if q.lstrip().startswith("COPY (SELECT")]
+    assert copies  # the debug output was captured
+    for table in ("price_observation", "cross_market_hour", "exchange_page"):
+        whole = [
+            q
+            for q in copies
+            if f'"public"."{table}"' in q
+            and not any(c in q for c in ('"observed_at"', '"item_id" ='))
+        ]
+        assert not whole, (table, whole[:1])
+    again, _ = run(hosted, server, 30)
+    assert again.paths_from is None

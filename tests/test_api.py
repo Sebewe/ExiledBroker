@@ -157,6 +157,18 @@ def test_default_pages_are_precomputed(client, settings, monkeypatch):  # noqa: 
         with db.metered() as meter:
             assert client.get(path).status_code == 200
         assert not meter.queries, (path, [q.sql for q in meter.queries])
+    # Any other item is built on its first request (not warmed: ~900 cached responses
+    # would hold the LRU for one data version), then served from the cache.
+    listed = client.get(f"/api/price-check/{LEAGUE}").json()["items"]
+    others = [x["item_id"] for x in listed if x["item_id"] not in movers]
+    assert others
+    path = f"/api/price-check/{LEAGUE}/{others[0]}"
+    with db.metered() as first:
+        assert client.get(path).status_code == 200
+    assert first.queries
+    with db.metered() as again:
+        assert client.get(path).status_code == 200
+    assert not again.queries
 
 
 def test_cache_is_bounded():

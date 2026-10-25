@@ -9,7 +9,7 @@ is wiped. Data: the replay fixture (Mirage's first 30 hours) loaded into DuckDB 
 real pipeline, then copied over."""
 
 import os
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import polars as pl
 import pytest
@@ -17,6 +17,7 @@ from polars.testing import assert_frame_equal
 
 from exiledbroker.analysis import backtest
 from exiledbroker.analysis import launch_patterns as lp
+from exiledbroker.analysis import price_outlook as po
 from exiledbroker.config import Settings
 from exiledbroker.ingest import currency_exchange as cx
 from exiledbroker.ingest.live import sync_live
@@ -59,6 +60,7 @@ def engines(tmp_path_factory):
         sync_live(client, s, LEAGUE, now=now, earliest=cx.from_ts(LAUNCH - 72 * 3600))
     with db.session(s.db_path) as con:  # `eb backtest run`, so its report is seeded too
         backtest.store(con, backtest.build(con))
+        _price_check_tables(con)
 
     pg = psycopg.connect(PG_URL, autocommit=True)
     pg.execute("DROP SCHEMA public CASCADE")
@@ -69,6 +71,38 @@ def engines(tmp_path_factory):
     yield duck, pg
     duck.close()
     pg.close()
+
+
+def _price_check_tables(con) -> None:
+    """What `eb price-check build`, `eb launch picks` and `eb farming build` leave for
+    Price check, in miniature: every item's path at each bin of the fortnight (3 leagues
+    each, a fall of 20%), the fitted constants, a few leagues' launch prices for ITEM
+    and the stack seller's impact note. Seeded to Postgres with everything else, so the
+    verdict, the band and the launch prices are compared between the engines too."""
+    ids = [r[0] for r in db.rows(con, "SELECT DISTINCT item_id FROM cross_market_hour")]
+    for i in ids:
+        for bin_ in range(28):
+            db.execute(con, "INSERT INTO price_path VALUES (?, ?, -0.2, 3, -0.3, 3)", [i, bin_])
+    built = datetime(2026, 10, 25, 9)
+    for phase, _, _ in po.PHASES:
+        for thick in (False, True):
+            for horizon in po.HORIZONS:
+                db.execute(
+                    con,
+                    "INSERT INTO price_path_constant VALUES (?, ?, ?, 0.9, -0.1, 0.1, 'A,B,C', ?)",
+                    [phase, thick, horizon, built],
+                )
+    for k, league in enumerate("ABC"):
+        for window, divine in (("day1", 0.03 + k / 100), ("days2_4", 0.02), ("sell", 0.01)):
+            db.execute(
+                con,
+                "INSERT INTO launch_history VALUES (?, ?, ?, ?, ?, 1.0)",
+                [league, datetime(2025, 1 + k, 1), ITEM, window, divine],
+            )
+    db.execute(
+        con, "INSERT INTO price_path_league VALUES ('A', ?, ?, '[-0.2]', '[-0.3]')", [built, ITEM]
+    )
+    sell_helper.store_report(con, {"impact": sell_helper.IMPACT, "phases": [], "hours": {}})
 
 
 def _cases(duck) -> dict:
@@ -137,7 +171,24 @@ def _cases(duck) -> dict:
         "price_check.launch_prices": lambda c: price_check.launch_prices(c, ITEM),
         "price_check.paths": lambda c: price_check.paths(c, 2),
         "price_check.last_bins": lambda c: price_check.last_bins(c),
+        "price_check.constants": lambda c: price_check.constants(c),
     }
+
+
+def test_the_seed_copies_every_table_price_check_reads(engines):
+    """`eb site seed` copied Price check's own tables and the ones its services read
+    (the Launch history for the launch prices, the stack seller's report), row for row."""
+    duck, pg = engines
+    for table in site.REPLACED_TABLES:
+        assert db.scalar(pg, f"SELECT count(*) FROM {table}") == db.scalar(
+            duck, f"SELECT count(*) FROM {table}"
+        ), table
+    for table in (*price_paths.TABLES, "launch_history", "farming_report"):
+        assert db.scalar(pg, f"SELECT count(*) FROM {table}") > 0, table
+    # Served from Postgres, the verdict and the launch prices are the ones the paths give.
+    assert price_check.constants(pg) == price_check.constants(duck) != {}
+    got = price_check.launch_prices(pg, ITEM)
+    assert got is not None and got["day1"]["leagues"] == 3
 
 
 def _normalized(df: pl.DataFrame) -> pl.DataFrame:

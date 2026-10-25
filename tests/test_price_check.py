@@ -2,15 +2,18 @@
 (services/price_paths.py), the page's two documents (services/price_check.py) and
 their endpoints, on the real-data replay (Mirage's first 30 hours) and synthetic paths."""
 
+import inspect
 import math
+import re
 from datetime import datetime
 
 import polars as pl
 import pytest
 
 from exiledbroker.analysis import price_outlook as po
-from exiledbroker.services import price_check, price_paths
-from exiledbroker.storage import db
+from exiledbroker.ingest import core_pool
+from exiledbroker.services import price_check, price_paths, sell_helper
+from exiledbroker.storage import db, site
 from test_api import LEAGUE, client, update  # noqa: F401
 from test_currency_exchange import FakeExchange
 from test_live_pipeline import LAUNCH, PAGES, settings  # noqa: F401
@@ -98,6 +101,40 @@ def test_refresh_waits_for_the_fortnight_and_captures_once(loaded, monkeypatch):
         assert price_paths.rebuild(con) == 0
         assert price_paths.refresh(con, LEAGUE) is None  # already captured
         assert price_paths.refresh(con, None) is None
+
+
+def _tables_read(module) -> set[str]:
+    """Tables a module's SQL reads (FROM / JOIN), constants like `{PATHS}` resolved."""
+    src = inspect.getsource(module)
+    found = set()
+    for braced, plain in re.findall(
+        r"\b(?:FROM|JOIN)\s+(?:\{([\w.]+)\}|(\w+))", src, flags=re.IGNORECASE
+    ):
+        if braced:
+            obj = module
+            for part in braced.split("."):
+                obj = getattr(obj, part, None)
+            plain = obj if isinstance(obj, str) else ""
+        found.add(plain)
+    return found
+
+
+def test_every_table_price_check_reads_is_in_the_schema_and_seeded():
+    """Workstream F's seed audit: a table the Price check services read (or the ones
+    they call: the core pool, the sell helper) must exist in schema.sql and be copied
+    by `eb site seed`, or the hosted page would read an empty table (or fail)."""
+    from importlib import resources
+
+    schema = resources.files("exiledbroker.storage").joinpath("schema.sql").read_text()
+    in_schema = set(re.findall(r"CREATE TABLE IF NOT EXISTS (\w+)", schema))
+    read = set()
+    for module in (price_check, price_paths, sell_helper, core_pool):
+        read |= _tables_read(module) & in_schema
+    assert {"cross_market_hour", "price_path", "price_path_constant", "farming_report"} <= read
+    assert {"launch_history", "exchange_hour_loaded", "tracked_item", "reference_data"} <= read
+    seeded = {*site.LEAGUE_TABLES, *site.SHARED_TABLES, *site.REPLACED_TABLES}
+    assert read <= seeded, sorted(read - seeded)
+    assert set(price_paths.TABLES) <= set(site.REPLACED_TABLES)
 
 
 # --- The outlook ------------------------------------------------------------------------
