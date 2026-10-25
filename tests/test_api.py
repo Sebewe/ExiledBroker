@@ -253,6 +253,43 @@ def test_frontend_caching(tmp_path, settings):  # noqa: F811
         assert c.get(path).headers["cache-control"] == "no-cache"
 
 
+def test_every_response_is_marked_as_the_apps(tmp_path, settings):  # noqa: F811
+    """Cloudflare's fallback Worker replaces a 5xx only when it lacks X-EB-Origin: app,
+    so the app's own answers (JSON errors, static files, 304s, gzip) must all carry it."""
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text("<div id=root></div>")
+    js = "console.log(1);" * 200
+    (dist / "assets" / "app-abc123.js").write_text(js)
+    (dist / "assets" / "app-abc123.js.gz").write_bytes(gzip.compress(js.encode()))
+    settings.db_path.unlink()  # no data yet: /api/status answers 503
+    deps.reset()
+    c = TestClient(app_module.create_app(web_dist=dist))
+    responses = [
+        c.get("/"),
+        c.get("/launch"),
+        c.get("/assets/app-abc123.js"),
+        c.get("/assets/app-abc123.js", headers={"Accept-Encoding": "identity"}),
+        c.get("/api/health"),
+        c.get("/api/status"),  # 503: no data yet
+        c.get("/api/missed/Nowhere"),  # 404/503
+        c.get("/api/nope"),  # 404
+        c.get("/api/health", headers={"Origin": "http://example.com"}),  # CORS
+        c.post("/api/health"),  # 405
+    ]
+    assert {r.status_code for r in responses} >= {200, 404, 405, 503}
+    assert all(r.headers.get("x-eb-origin") == "app" for r in responses)
+    # one header, not duplicated by the several middlewares
+    assert all(r.headers.get_list("x-eb-origin") == ["app"] for r in responses)
+
+
+def test_a_304_is_marked_too(client, settings):  # noqa: F811
+    update(settings, FakeExchange(PAGES, now=LAUNCH), 2)
+    first = client.get(f"/api/missed/{LEAGUE}")
+    again = client.get(f"/api/missed/{LEAGUE}", headers={"If-None-Match": first.headers["etag"]})
+    assert again.status_code == 304 and again.headers["x-eb-origin"] == "app"
+
+
 def test_frontend_types_are_up_to_date():
     """web/openapi.json (the source of the frontend's TS types) matches the API.
     If this fails: `cd web && npm run gen:api`, then fix any type errors it shows."""

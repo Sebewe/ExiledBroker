@@ -40,6 +40,8 @@ Supabase (another provider, free tier): the off-site backup, read only to restor
 
 Not deployed yet.
 
+**In front of it (planned):** Cloudflare's free plan with a small Worker ([deploy/cloudflare/](../deploy/cloudflare/README.md), built, not deployed) that shows a static "Something went wrong, we're investigating" page when Railway can't answer (a hard usage limit, a deploy, a crash). It tells the app's own errors from Railway's by the `X-EB-Origin: app` header the web service stamps on every response. Visitors make ~30 requests a day, so the Worker's free 100,000 requests a day covers ~3,000 visitors; it doesn't change Railway's bill.
+
 ## The Railway bill
 
 Simulated with `deploy/railway-sim/` (Railway's per-minute rates, read 2026-10-23: memory $10/GB-month, CPU $20/vCPU-month, volumes $0.15/GB-month, egress $0.05/GB; Hobby is $5 a month including $5 of usage). Visitors follow the real browser model (`web/src/lib/schedule.ts`, the 6 h saved cache, assets cached for a year after the first visit); a day is compressed to an hour of real time, with a pipeline pass each simulated hour against the GGG stand-in. Projected to a month, current layout (web + Railway's Postgres + the pipeline cron, no volume), with the Farming page in the visitors' browsing, measured 2026-10-25:

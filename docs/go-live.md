@@ -65,7 +65,7 @@ What the last four switches on disk show (Settlers → Mercenaries → Keepers �
 
 - [ ] Railway usage settings: an email alert (e.g. $7) and a hard limit (e.g. $10). The hard limit stops the services.
 - [ ] Per-service resource caps in Railway (e.g. web 512 MB, pipeline 1 GB), so a runaway is contained before it reaches the limit.
-- [ ] **The fallback page can't live on Railway**, since a hard limit stops everything there. Put the domain behind Cloudflare (free). A small Worker passes requests to Railway and returns a static "Something went wrong, we're investigating" page when the origin is down or erroring. It also covers deploys and crashes.
+- [ ] **The fallback page can't live on Railway**, since a hard limit stops everything there. Put the domain behind Cloudflare (free). A small Worker passes requests to Railway and returns a static "Something went wrong, we're investigating" page when the origin is down or erroring. It also covers deploys and crashes. **Built ([deploy/cloudflare/](../deploy/cloudflare/README.md)), not deployed:** the app stamps `X-EB-Origin: app` on every response, and the Worker replaces only errors without it (and failed or 15 s-slow fetches). To do: deploy the app first, then `wrangler deploy`, proxy the DNS record, and check it once by stopping the web service.
 - [ ] Pipeline failure alert: a failed cron pass shows in Railway, and the site shows its stale-feed state. Add an email or uptime ping so someone hears about it.
 
 ### 6. Before flipping DNS

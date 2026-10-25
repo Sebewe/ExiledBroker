@@ -1,0 +1,27 @@
+# The fallback Worker. Deploy with `npx wrangler deploy` from this folder (README.md).
+name = "exiledbroker-fallback"
+main = "worker.mjs"
+compatibility_date = "2026-10-01"
+
+# Run on every request to the site. Replace both with your domain (it must be a zone
+# on your Cloudflare account, with its DNS record proxied: the orange cloud).
+routes = [
+  { pattern = "example.com/*", zone_name = "example.com" },
+  # { pattern = "www.example.com/*", zone_name = "example.com" },
+]
+
+# Bundle fallback.html as a string for worker.mjs to import.
+[[rules]]
+type = "Text"
+globs = ["**/*.html"]
+fallthrough = true
+
+[vars]
+# The Railway web service's own address (Settings > Networking > the *.up.railway.app
+# domain), no trailing slash. The Worker sends every request here, whatever the domain's
+# DNS says, so Railway's certificate for the custom domain doesn't matter.
+ORIGIN = "https://your-web-service.up.railway.app"
+# How long to wait for the origin's response headers before showing the fallback page.
+# The slowest legitimate answer is a cold table in a few seconds; 15 s leaves room
+# without making visitors wait on a dead origin for long (Cloudflare gives up at 100 s).
+TIMEOUT_MS = "15000"

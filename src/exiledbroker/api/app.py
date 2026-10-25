@@ -17,6 +17,29 @@ from exiledbroker import __version__
 from exiledbroker.api.routes import live, market, price_check
 from exiledbroker.config import get_settings
 
+ORIGIN_HEADER = b"x-eb-origin"
+
+
+class MarkOrigin:
+    """Stamps `X-EB-Origin: app` on every response this app sends (API, static files,
+    errors, 304s). Cloudflare's fallback Worker (deploy/cloudflare/) uses it to tell the
+    app's own 503/404/422 answers from Railway's edge errors: a 5xx without it means the
+    origin is down. Plain ASGI, so bodies are streamed untouched."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+
+        async def send_marked(message):
+            if message["type"] == "http.response.start":
+                message["headers"] = [*message.get("headers", []), (ORIGIN_HEADER, b"app")]
+            await send(message)
+
+        await self.app(scope, receive, send_marked)
+
 
 def create_app(web_dist: Path | None = None) -> FastAPI:
     settings = get_settings()
@@ -42,6 +65,7 @@ def create_app(web_dist: Path | None = None) -> FastAPI:
     )
     # Tables arrive pre-gzipped from the cache (api/deps.py); this covers the rest.
     app.add_middleware(GZipMiddleware, minimum_size=1000)
+    app.add_middleware(MarkOrigin)  # outermost, so it covers every response
     api = APIRouter(prefix="/api")
 
     @api.get("/health", tags=["meta"])

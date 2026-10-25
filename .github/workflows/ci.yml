@@ -82,6 +82,17 @@ jobs:
       - run: npm test
       - run: npm run build
 
+  # The Cloudflare fallback Worker (deploy/cloudflare/): node:test with a stubbed fetch.
+  worker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node --test "deploy/cloudflare/*.test.mjs"
+
   # The image Railway runs builds (not pushed anywhere).
   image:
     runs-on: ubuntu-latest
