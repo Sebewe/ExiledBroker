@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { FarmingItem } from '../api/farming'
-import { busiestHours, hoursOfTrading, impactBand, localHour, profileFor, stackInMarkets, tradingTime } from './impact'
+import type { FarmingItem } from '../api/client'
+import { bandsOf, busiestHours, defaultItem, hoursOfTrading, impactBand, localHour, perHour, profileFor, spreadOver, stackInMarkets, swing, tradingTime } from './impact'
 
 const item = (divine: FarmingItem['divine']): FarmingItem => ({
   item_id: 'currency:splinter-of-xoph',
@@ -36,6 +36,13 @@ describe('impactBand', () => {
 
   it("follows the response's bands", () => {
     expect([0.3, 1, 3].map((h) => impactBand(h, [0.5, 2]))).toEqual(['low', 'medium', 'high'])
+  })
+
+  it("takes the response's two edges, else the contract's", () => {
+    expect(bandsOf({ y: null, bands: [0.5, 2], note: null })).toEqual([0.5, 2])
+    expect(bandsOf(null)).toEqual([0.25, 1])
+    expect(bandsOf({ y: null, bands: [0.5], note: null })).toEqual([0.25, 1])
+    expect(bandsOf({ y: null, bands: [2, 0.5], note: null })).toEqual([0.25, 1])
   })
 })
 
@@ -80,6 +87,29 @@ describe('tradingTime', () => {
   })
 })
 
+describe('the sell helper in words', () => {
+  it('gives a small swing in percent and a large one as a factor', () => {
+    expect([null, 0.031, 0.29, 0.3, 0.8, 2.3].map(swing)).toEqual(['–', '±3%', '±29%', '×1.3 either way', '×2.2 either way', '×10 either way'])
+  })
+
+  it('never reads a trickle as no trades', () => {
+    expect([0.01, 0.07, 3.25, 46000].map(perHour)).toEqual(['under 0.1', '0.1', '3.3', '46,000'])
+  })
+
+  it('spreads a top-band stack over at least two hours, days past two days', () => {
+    expect([1, 1.6, 7.2, 48, 49].map(spreadOver)).toEqual(['at least 2 hours', 'at least 2 hours', 'at least 8 hours', 'at least 48 hours', 'several days'])
+  })
+
+  it('opens on the item with the most Chaos traded an hour', () => {
+    const cheap = { ...item(null), item_id: 'a', chaos: { price: 0.1, volume_h: 1000, sigma_h: null, hours_traded: 1 } }
+    const dear = { ...item(null), item_id: 'b', chaos: { price: 50, volume_h: 10, sigma_h: null, hours_traded: 1 } }
+    const unpriced = { ...item(null), item_id: 'c', chaos: null }
+    expect(defaultItem([unpriced, cheap, dear])?.item_id).toBe('b')
+    expect(defaultItem([unpriced])?.item_id).toBe('c')
+    expect(defaultItem([])).toBeUndefined()
+  })
+})
+
 describe('busiestHours', () => {
   it('finds the busiest and quietest four hours, across midnight', () => {
     // Busy 22:00–02:00 UTC, quiet 10:00–14:00.
@@ -115,12 +145,12 @@ describe('profileFor', () => {
     effect_divine_market: effect,
     divine_effect: effect,
     mechanics: {
-      essence: { ...effect, gain: 0.09, price: own, items: 42, stability: 0.9, shown: true },
-      breach: { ...effect, price: own, items: 20, stability: 0.2, shown: false },
+      essence: { ...effect, gain: 0.09, price: own, items: 42, stability: 0.9 },
     },
   }
 
   it("uses the item's mechanic's own profile where it holds, else the pooled one", () => {
+    // The response leaves out the baskets whose own profile doesn't hold (here Breach).
     expect(profileFor(hours, ['legion', 'essence'])).toMatchObject({ mechanic: 'essence', price: own, effect: { gain: 0.09 } })
     expect(profileFor(hours, ['breach'])).toMatchObject({ mechanic: null, price: pooled, effect: { gain: 0.02 } })
     expect(profileFor(hours, [])).toMatchObject({ mechanic: null, price: pooled })

@@ -9,8 +9,8 @@ import type {
   FarmingOutlook,
   HourEffect,
   OutlookWindowId,
-} from '../api/farming'
-import type { Upcoming } from '../api/client'
+  Upcoming,
+} from '../api/client'
 import { useFarming, useServerNow, useStatus } from '../api/queries'
 import { Field, NumberField, Segmented, Select, Toolbar } from '../components/Controls'
 import { FreshnessBanner } from '../components/Freshness'
@@ -18,7 +18,7 @@ import { Notice } from '../components/Notice'
 import { Empty, Meter } from '../components/Opportunity'
 import { PageHeader } from '../components/Section'
 import { count, duration, pct, price, signedPct, tone, utcHour } from '../lib/format'
-import { busiestHours, DEFAULT_BANDS, localHour, profileFor, stackInMarkets, tradingTime, type ImpactBand, type MarketStack } from '../lib/impact'
+import { bandsOf, busiestHours, defaultItem, localHour, perHour, spreadOver, swing, profileFor, stackInMarkets, tradingTime, type Bands, type ImpactBand, type MarketStack } from '../lib/impact'
 import { makeMoney, type Money } from '../lib/money'
 import { queryFallback } from '../lib/queryFallback'
 import { useLeague } from '../lib/useLeague'
@@ -216,7 +216,7 @@ function MechanicCard({ m, rank, money }: { m: FarmingMechanic; rank: number; mo
           'No usual range to compare with.'
         ) : (
           <>
-            <span className="num font-medium text-text">{signedPct(rel, 0)}</span> {rel >= 0 ? 'above' : 'below'} where it usually is by now
+            <span className="num font-medium text-text">{pct(Math.abs(rel), 0)}</span> {rel >= 0 ? 'above' : 'below'} where it usually is by now
           </>
         )}
       </p>
@@ -353,8 +353,9 @@ function SellHelper({
   const sorted = [...items].sort((a, b) => a.name.localeCompare(b.name))
   const [itemParam, setItem] = useParam<string>('item', '')
   const [qty, setQty] = useNumberParam('qty', DEFAULT_QTY)
-  const item = sorted.find((x) => x.item_id === itemParam) ?? sorted[0]
+  const item = sorted.find((x) => x.item_id === itemParam) ?? defaultItem(sorted)
   const mechanicName = new Map(mechanics.map((m) => [m.id, m.name]))
+  const groups = itemGroups(sorted, mechanicName)
   return (
     <Block
       id="sell"
@@ -375,10 +376,14 @@ function SellHelper({
                   onChange={(e) => setItem(e.target.value)}
                   className="h-9 max-w-[16rem] min-w-40 cursor-pointer rounded-md border border-border bg-surface px-2.5 text-sm"
                 >
-                  {sorted.map((x) => (
-                    <option key={x.item_id} value={x.item_id}>
-                      {x.name}
-                    </option>
+                  {groups.map(([group, xs]) => (
+                    <optgroup key={group} label={group}>
+                      {xs.map((x) => (
+                        <option key={x.item_id} value={x.item_id}>
+                          {x.name}
+                        </option>
+                      ))}
+                    </optgroup>
                   ))}
                 </select>
               )}
@@ -388,12 +393,23 @@ function SellHelper({
               <p className="pb-2 text-xs text-faint">Drops from {item.mechanics.map((id) => mechanicName.get(id) ?? id).join(', ')}</p>
             )}
           </Toolbar>
-          <Stack item={item} qty={qty} bands={impact?.bands ?? DEFAULT_BANDS} note={impact?.note ?? DEFAULT_NOTE} money={money} divineChaos={divineChaos} />
+          <Stack item={item} qty={qty} bands={bandsOf(impact)} note={impact?.note ?? DEFAULT_NOTE} money={money} divineChaos={divineChaos} />
         </>
       )}
       <BestHours hours={hours} item={item} mechanicName={mechanicName} />
     </Block>
   )
+}
+
+/** The item list by mechanic (an item's first), mechanics and items in name order. */
+function itemGroups(sorted: FarmingItem[], mechanicName: Map<string, string>): [string, FarmingItem[]][] {
+  const groups = new Map<string, FarmingItem[]>()
+  for (const x of sorted) {
+    const id = x.mechanics[0]
+    const group = id == null ? 'Other' : (mechanicName.get(id) ?? id)
+    groups.set(group, [...(groups.get(group) ?? []), x])
+  }
+  return [...groups].sort(([a], [b]) => a.localeCompare(b))
 }
 
 const MARKET_NAME = { chaos: 'Chaos market', divine: 'Divine market' } as const
@@ -404,10 +420,10 @@ function bandEdge(hours: number) {
   return hours < 1 ? `${Math.round(hours * 60)} minutes` : `${count(hours, 1)} hours`
 }
 
-const LEAD: Record<ImpactBand, string> = {
-  low: 'it sells into the market as it is.',
-  medium: "a large part of the hour's trading, so it may take a while to sell at this price.",
-  high: "an hour's trading or more, so split it and list it over several hours.",
+const LEAD: Record<ImpactBand, (hours: number) => string> = {
+  low: () => 'it sells into the market as it is.',
+  medium: () => "a large part of the hour's trading, so it may take a while to sell at this price.",
+  high: (hours) => `an hour's trading or more, so split it and list it over ${spreadOver(hours)}.`,
 }
 
 /** The stack as hours of each market's trading (finding 7): the Chaos market first, since
@@ -422,7 +438,7 @@ function Stack({
 }: {
   item: FarmingItem
   qty: number
-  bands: FarmingImpact['bands']
+  bands: Bands
   note: string
   money: Money
   divineChaos: number | null | undefined
@@ -438,8 +454,9 @@ function Stack({
       {lead && (
         <p className="text-sm" aria-live="polite">
           {count(qty)} {item.name} is <span className="num font-semibold">{tradingTime(lead.hours)}</span> of the {MARKET_NAME[lead.market]}'s trading:{' '}
-          {LEAD[lead.band]}
+          {LEAD[lead.band](lead.hours)}
           {longer != null && longer >= 1.5 && ` The Divine market trades less of it: the same stack is ${count(longer, longer < 10 ? 1 : 0)} times as long there.`}
+          {longer != null && longer <= 1 / 1.5 && ` The Divine market trades ${count(1 / longer, longer > 0.1 ? 1 : 0)} times as much of it, so it sells faster there.`}
         </p>
       )}
       <div className="grid gap-3 sm:grid-cols-2">
@@ -472,7 +489,7 @@ function MarketCard({
   name: string
   stack: MarketStack | null
   qty: number
-  bands: FarmingImpact['bands']
+  bands: Bands
   money: Money
   missing: string
 }) {
@@ -486,8 +503,7 @@ function MarketCard({
   // The Divine market before there's a Divine rate: its own prices, in Divines. (A missing
   // price alone isn't that: it shows as a dash.)
   const inDivines = stack.market === 'divine' && stack.noRate
-  // Split across at least two hours: a stack of exactly an hour's trading is the top band.
-  const spread = stack.band === 'high' ? (stack.hours > 48 ? 'several days' : `at least ${Math.max(2, Math.ceil(stack.hours))} hours`) : null
+  const spread = stack.band === 'high' ? spreadOver(stack.hours) : null
   return (
     <section aria-label={name} className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-4">
       <div className="flex items-baseline justify-between gap-2">
@@ -508,7 +524,7 @@ function MarketCard({
       </p>
       <dl className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 text-sm">
         <dt className="text-muted">Trades an hour</dt>
-        <dd className="num text-right">{count(stack.volumeH, stack.volumeH < 10 ? 1 : 0)}</dd>
+        <dd className="num text-right">{perHour(stack.volumeH)}</dd>
         <dt className="text-muted">Price now</dt>
         <dd className="num text-right">{stack.unit == null ? '–' : `${inDivines ? price(stack.unit, 'divine') : money(stack.unitChaos)} each`}</dd>
         <dt className="text-muted">The stack at that price</dt>
@@ -516,7 +532,7 @@ function MarketCard({
           {inDivines ? price(stack.unit == null ? null : stack.unit * qty, 'divine') : money(stack.valueChaos)}
         </dd>
         <dt className="text-muted">Typical hourly swing</dt>
-        <dd className="num text-right">{stack.sigmaH == null ? '–' : `±${pct(stack.sigmaH, 0)}`}</dd>
+        <dd className="num text-right">{swing(stack.sigmaH)}</dd>
       </dl>
       {stack.unit == null ? (
         <p className="text-xs text-muted">No recent price here, so the stack can't be valued in this market.</p>
@@ -577,7 +593,7 @@ function BestHours({ hours, item, mechanicName }: { hours: FarmingHours | null; 
       {hours && <ConvertHint e={hours.divine_effect} />}
       {hours && (
         <p className="text-xs text-faint">
-          From {count(hours.leagues)} past league{hours.leagues === 1 ? '' : 's'}' {PHASE_TEXT[hours.phase]} ({count(hours.days)} league-days), in your time zone.
+          From {count(hours.leagues)} past {hours.leagues === 1 ? "league's" : "leagues'"} {PHASE_TEXT[hours.phase]} ({count(hours.days)} league-days), in your time zone.
         </p>
       )}
     </div>

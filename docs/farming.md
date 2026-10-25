@@ -25,10 +25,7 @@ Deadline: the next league launches in about a month, in parallel with [go-live](
    - `hours.report` and C's `impact` constant, shipped as a locally built report with a `stamp`, like `backtest_report`.
    - Then Postgres parity, `LIVE_QUERIES` and read budgets.
 2. **G, API:** `/api/farming/{league}`, warmed for each trading league; regenerate `openapi.json` and `schema.d.ts`.
-3. **H, follow-ups** (the page is built, three things are left):
-   - The sell helper still computes a percentage drop. Under finding 7, `impact.y` is null, so it would say "estimate isn't available": switch it to hours of trading in `impact.bands`.
-   - "Best time to sell" is a chart; B recommends one sentence plus the Divine conversion tip.
-   - Swap the hand-written types (`web/src/api/farming.ts`) for the generated ones, and check the page against `eb serve` on the replay fixture.
+3. **H, follow-ups: done (2026-10-24, `farm-h3`).** The sell helper shows hours of trading in `impact.bands`, best hours are a sentence plus the Divine tip, and the page uses the generated types. Checked end to end against `eb serve` on a copy of the research database (Allflame on day 90, Mirage on day 14).
 4. **I, pipeline, seed and backup:**
    - The pass calls `item_history.refresh` beside `launch_picks.refresh`.
    - `eb site seed` and the backup copy `item_day_history`: about 10 MB once, then ~2 MB a league.
@@ -336,10 +333,16 @@ D curves ──┘ (D can start on a provisional basket)
 **Built (2026-10-24, on `main`):**
 - **What's there:** `pages/Farming.tsx` with mechanic cards, the launch outlook, the sell helper and best hours. `lib/impact.ts` holds the sell helper's maths and the local-time hour profiles. The page has its route, nav link and `useFarming` hook.
 - **Tested:** every state (no data, no league, pre-launch countdown, waiting for trades, stale feed, no Divine market or rate, no usual after day 13). Checked at 375 px with device emulation.
-- **Types:** hand-written in `web/src/api/farming.ts` until G generates them.
+- **Types:** generated from the API (`Schemas['Farming']` and friends in `api/client.ts`); `useFarming` calls `api.GET('/api/farming/{league}')`. The schema's `impact.bands` is a list, so `lib/impact.bandsOf` takes its two edges (else the contract's ¼ h and 1 h). `MechanicHours` has no `shown` flag: the response carries only the baskets whose own profile holds.
 - **ECharts isn't used:** it left the site on 2026-10-23, so the hour bars are plain token-coloured elements.
 - **Contract:** the page follows B's `hours` and D's `premium`.
-- **Not yet done:** C's `impact` (hours of trading instead of a percentage) and B's advice to show best hours as a sentence. Both are listed under Status.
+- **Follow-ups (`farm-h2`, `farm-h3`):** C's `impact` as hours of trading, B's best hours as a sentence, the generated types.
+- **Checked on real data (2026-10-24, `farm-h3`):** `eb farming history` and `eb farming build` on a copy of the research database, then `eb serve` with the built page, at 375 px (device emulation) and 1280 px in both themes; no horizontal overflow. `/api/farming/Allflame` is 112 kB of JSON, 21 kB gzipped, built cold in about 0.1–0.4 s (26 queries, 41k rows read on DuckDB); a warmed request takes 2–5 ms, and `If-None-Match` gets a 304. What real data changed on the page:
+  - The sell helper opened on the alphabetically first item, a card that trades 0.1 an hour. It now opens on the item with the most Chaos traded an hour (Stacked Deck), and the item list is grouped by mechanic.
+  - The Divine market is the bigger one for some items (Stacked Deck 10×, lifeforce 15×): the lead sentence now says so, not only when it's smaller.
+  - A top-band stack's advice said "over several hours" for 75 days of trading: the lead and the card now share `spreadOver` (at least N hours, or several days).
+  - `sigma_h` is a log standard deviation and reaches 2.2 for thin items, which read as "±220%". From 0.3 on it reads as a factor, "×2.2 either way" (`lib/impact.swing`), and a trickle reads "under 0.1" an hour rather than "0".
+  - "−25% below where it usually is" lost its sign, and "1 past league'" its apostrophe s.
 
 ### I. Pipeline, seed and backup (after E, F)
 - **Owns:** `ingest/pipeline.py`, `storage/site.py` (seed and drop), `storage/backup.py` (new tables in the sync), `tests/test_pipeline.py`, `tests/test_backup.py`, `tests/test_league_switch.py` additions.
@@ -390,6 +393,6 @@ Give each agent this prompt, with its letter:
 - [ ] F: `services/farming.py`, Postgres parity, budgets
 - [ ] G: `/api/farming/{league}` cached and warmed
 - [x] H: Farming page, all states, 375 px (2026-10-24, on `main`; checked on a mock of the contract; best hours follow B's `hours`, the outlook D's `premium`)
-- [ ] H: follow-ups: sell helper as hours of trading (C's `impact`), best hours as a sentence (B), generated types and a check against `eb serve` once G lands
+- [x] H: follow-ups: sell helper as hours of trading (C's `impact`), best hours as a sentence (B), generated types and a check against `eb serve` once G lands (2026-10-24, `farm-h3`: checked on a copy of the research database, see H's "Checked on real data")
 - [ ] I: pipeline capture, seed, backup, league-switch replay, simulation bill
 - [ ] J: docs
