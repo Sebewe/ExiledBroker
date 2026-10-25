@@ -1,11 +1,17 @@
-import type { FarmingHours, FarmingImpact, FarmingItem, FarmingMarket, HourEffect, HourProfile } from '../api/client'
+import type { FarmingHours, HourEffect, HourProfile } from '../api/client'
 
-// The Farming page's sell helper, computed here so the typed quantity never reaches the
-// server (docs/farming.md, "The response contract"). Finding 7: hourly prices swing more
+// The stack seller (components/StackSeller: the Price check page, and the Farming page
+// until it's removed), computed here so the typed quantity never reaches the server
+// (docs/price-check.md, "The response contract"). Finding 7: hourly prices swing more
 // than a stack moves them, so no price drop can be calibrated. A stack is shown instead as
 // hours of the market's trading, Q / volume_h, banded by `impact.bands`.
 
 export type ImpactBand = 'low' | 'medium' | 'high'
+
+/** One market's recent trading for an item: what both pages' responses carry. */
+export type MarketStats = { price: number | null; volume_h: number | null; sigma_h: number | null; hours_traded: number | null }
+/** An item with its Chaos and Divine markets (null where it hasn't traded there). */
+export type StackItem = { chaos: MarketStats | null; divine: MarketStats | null }
 export type MarketId = 'chaos' | 'divine'
 
 /** Two band edges, in hours of trading: low below the first, high from the second. */
@@ -16,14 +22,14 @@ export const DEFAULT_BANDS: Bands = [0.25, 1]
 
 /** The response's bands (a list in the API's schema), or the contract's when it doesn't
  *  carry two increasing edges. */
-export function bandsOf(impact: FarmingImpact | null | undefined): Bands {
+export function bandsOf(impact: { bands?: readonly number[] | null; [field: string]: unknown } | null | undefined): Bands {
   const [low, high] = impact?.bands ?? []
   return low != null && high != null && low > 0 && high > low ? [low, high] : DEFAULT_BANDS
 }
 
 /** How many hours of this market's typical trading `qty` units amount to, or null when the
  *  market has no volume to judge by. */
-export function hoursOfTrading(m: FarmingMarket | null | undefined, qty: number): number | null {
+export function hoursOfTrading(m: MarketStats | null | undefined, qty: number): number | null {
   if (!m || !m.volume_h || !(m.volume_h > 0) || !(qty > 0)) return null
   return qty / m.volume_h
 }
@@ -57,7 +63,7 @@ export type MarketStack = {
   hoursTraded: number | null
 }
 
-function stack(market: MarketId, m: FarmingMarket | null, qty: number, bands: Bands, rate: number | null): MarketStack | null {
+function stack(market: MarketId, m: MarketStats | null, qty: number, bands: Bands, rate: number | null): MarketStack | null {
   const hours = hoursOfTrading(m, qty)
   if (hours == null || !m) return null
   const unitChaos = m.price == null || rate == null ? null : m.price * rate
@@ -78,7 +84,7 @@ function stack(market: MarketId, m: FarmingMarket | null, qty: number, bands: Ba
 /** A stack of `qty` in each market: the Chaos market first (it carries most of an item's
  *  trading), the Divine market as its own hours of trading. `divineChaos` only converts
  *  the Divine market's price; its hours need no rate. */
-export function stackInMarkets(item: FarmingItem, qty: number, divineChaos: number | null | undefined, bands: Bands = DEFAULT_BANDS) {
+export function stackInMarkets(item: StackItem, qty: number, divineChaos: number | null | undefined, bands: Bands = DEFAULT_BANDS) {
   const chaos = stack('chaos', item.chaos, qty, bands, 1)
   const divine = stack('divine', item.divine, qty, bands, divineChaos || null)
   return { chaos, divine }
@@ -136,11 +142,11 @@ export function busiestHours(volume: HourProfile | null | undefined, span = 4) {
 }
 
 /** Chaos traded an hour in the item's Chaos market (0 without a price). */
-export const chaosTraded = (x: FarmingItem) => (x.chaos?.price ?? 0) * (x.chaos?.volume_h ?? 0)
+export const chaosTraded = (x: StackItem) => (x.chaos?.price ?? 0) * (x.chaos?.volume_h ?? 0)
 
 /** The sell helper's first item: the one with the most Chaos traded an hour (what a farmer
  *  most likely holds a stack of), else the first. */
-export function defaultItem<T extends FarmingItem>(items: T[]): T | undefined {
+export function defaultItem<T extends StackItem>(items: T[]): T | undefined {
   return items.reduce<T | undefined>((best, x) => (best === undefined || chaosTraded(x) > chaosTraded(best) ? x : best), undefined)
 }
 
