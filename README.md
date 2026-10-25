@@ -27,7 +27,6 @@ The next league launches in about a month. Before then:
 
 - **Go live on Railway**: the checklist is [go-live.md](docs/go-live.md) (Postgres-only server, catch-up test, usage limits with a fallback page, rehearsed league switch).
 - **poe.ninja live poller** (phase 6). Uniques have no public sub-daily history, so it must be running at launch ([data.md](docs/data.md#sources)).
-- **Build the Farming report on the real data:** `eb farming build`, then `eb site seed` ([farming.md](docs/farming.md#status-2026-10-25)).
 - **Rerun the simulated Railway bill** with the Farming page in it ([hosting.md](docs/hosting.md#the-railway-bill)).
 - **Register the new league** once its name and date are announced (`eb exchange sync -l "<Name>" --start <date>`), so the site shows "waiting for the first trades" from launch.
 

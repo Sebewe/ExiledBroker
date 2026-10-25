@@ -19,7 +19,7 @@ Deadline: the next league launches in about a month, in parallel with [go-live](
 - **Data (E):** the page reads `cross_market_hour`, which holds every traded item, so the keep rule and loader don't change and no rebuild is needed. Past leagues come from `item_day_history`: 46,679 rows, about 10 MB on Postgres. It was captured on the 23-mechanic baskets: the dropped mechanics' rows are never read, and `eb farming history` trims them.
 
 **Left to do:**
-- **Build the report on the real database:** `eb farming build` (the local copy has `item_day_history` but no `farming_report` yet), then `eb site seed`. Without the report, the page has no hour-of-day profiles or stack bands.
+- ~~Build the report on the real database~~ (done 2026-10-25): the local copy fetched poe.ninja's ten Farming lists, which it had never stored (17 requests, 50 kB), so Delve and Expedition were missing and the other baskets were thinned; then `eb farming history` (723 items, 45,480 rows), `eb farming build` and `eb site seed`. Served from the compose Postgres, `/api/farming/Allflame` lists all 20 mechanics (21 kB gzipped, 0.36 s cold).
 - **Rerun the simulation's bill** (`deploy/railway-sim/run.py`) with the Farming page in the visitors and the cache fix (`farm-i2`): the web service was measured at ~190–220 MB with the fix, against 0.16–0.17 GB in [hosting.md](hosting.md#the-railway-bill)'s table. It runs for hours, so it's for the user to start.
 - **The page's place in the planned live/historical split** is still undecided.
 
