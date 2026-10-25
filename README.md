@@ -12,7 +12,7 @@ A Path of Exile market tool for league starts. It turns historical and live exch
 |---|---|---|
 | 0 | Scaffolding: package, CLI, schema, config, service layer | ✅ Done |
 | 1 | Historical ingest: daily poe.ninja dumps + hourly GGG exchange, league calendar, price mappings, core pool, divination cards | ✅ All 32 challenge leagues daily; hourly for the four exchange-era leagues and the current league (Allflame) |
-| 2 | Exploration: recurring launch-week patterns (`analysis/`), loops and card turn-ins (now on the Market recap) | 🟨 Tools built; [findings](docs/findings.md) |
+| 2 | Exploration: recurring launch-week patterns (`analysis/`), loops and card turn-ins (now on the Market recap) | ✅ Run across all five exchange-era leagues: what repeats is [finding 10](docs/findings.md#10-what-repeats-across-the-five-exchange-era-leagues) |
 | 3 | Patch corpus: scraper, extractor, review tool | ⬜ |
 | 4 | Baseline + backtest: first honest accuracy numbers | 🟨 The site's tools backtested at fair and harsh prices: Launch picks pay, hourly tools at best break even ([finding 4](docs/findings.md#4-backtest-the-launch-picks-pay-the-hourly-tools-at-best-break-even), the Backtest page) |
 | 5 | Signals: "farm X", "buy Y on day 2, sell day 6" | 🟨 The Farming page's mechanic ranking is retired (2026-10-25); the Price check page replaces it: one item's price in Chaos and Divines, a sell-or-hold verdict if one beats "no change", the stack seller and the best hour to sell ([findings 6–8](docs/findings.md), [price-check.md](docs/price-check.md)) |

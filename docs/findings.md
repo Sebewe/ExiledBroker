@@ -19,33 +19,46 @@ Recent leagues are the best reference: the economy changes every league, and the
 - **Stronger in the exchange era:** a median of 0.18–0.22× in Settlers, Mercenaries, Keepers and Mirage, against 0.27–0.33× in Necropolis and Affliction.
 - **Implication:** sell non-chase uniques as early as possible. Chase uniques are the exception, but there are too few to call it.
 - **Caveats:** daily data only (uniques aren't on the exchange); survivorship (a price is needed on both days); High-confidence filtering drops the thinnest markets.
+- **Uniques were dropped from scope on 2026-10-25** ([decisions.md](decisions.md#scope)): this finding stays as a record and isn't extended.
 
 ## 2. Items sold for Divines fetch more than the same items sold for Chaos (preliminary)
 
-*`cross_market.summarize` / `across_leagues` (the former Arbitrage page). All four exchange-era leagues.*
+*`cross_market.summarize` / `across_leagues` (the former Arbitrage page). All five exchange-era leagues, first 14 days each (Allflame added 2026-10-25, its days 0–13 only).*
 
-- **How common:** 63k–86k item-hours per league traded in both the Chaos and the Divine market.
-- **The gap:** the median price via Divines (X/Divine price × the hour's rate) was **13–19% above** the direct Chaos price.
-- **It survives worst-case prices.** Chaos → item → Divines → Chaos, buying at the hour's highest Chaos price, selling at its lowest Divine price and converting at its lowest rate, was still positive in **15–26% of item-hours** (over +2% in 14–25%). The reverse loop was positive in about 1%, so the premium runs one way.
-- **Recurring in all four leagues** (share of hours positive in the worst league): Rogue's Marker (66%), Essence Scarab of Stability (47%), Tainted Jeweller's Orb (46%), Timeless Eternal and Karui Emblems (~36%), Enkindling Orb (26%).
-- **With the page's defaults** (2% buffer, 1c floor): the Chaos-first loop paid in 17.2% of 297,778 cross-market item-hours, Divines-first in 0.9%. 21 items paid in at least 25% of hours in every league. Even a 50% buffer leaves 6.2% paying, which is the first thing to check in-game: an edge that size is either a persistent mispricing or a quirk of how GGG reports ratios.
+| First 14 days | Settlers | Mercenaries | Keepers | Mirage | Allflame |
+|---|---|---|---|---|---|
+| Item-hours in both markets | 63k | 79k | 75k | 86k | 91k |
+| Median gap, via Divines over Chaos | +19% | +17% | +13% | +17% | +17% |
+| Chaos-first loop positive at worst prices | 15% | 19% | 15% | 26% | 26% |
+| Divines-first loop positive | 0.7% | 1.0% | 1.5% | 1.2% | 1.4% |
+
+- **How common:** 63k–91k item-hours per league traded in both the Chaos and the Divine market.
+- **The gap:** the median price via Divines (X/Divine price × the hour's rate) was **13–19% above** the direct Chaos price. It is widest on days 0–2 in every league (+22% to +38%) and settles at +11% to +23% after.
+- **It survives worst-case prices.** Chaos → item → Divines → Chaos, buying at the hour's highest Chaos price, selling at its lowest Divine price and converting at its lowest rate, was still positive in **15–26% of item-hours** (over +2% in 14–25%). The reverse loop was positive in about 1%, so the premium runs one way. Allflame, like Mirage, sits at the top of the range: the premium hasn't shrunk as players got used to the exchange.
+- **Recurring in all five leagues** (share of hours positive in the worst league; Allflame in brackets, never the worst): Rogue's Marker (66%; 84%), Essence Scarab of Stability (47%; 50%), Tainted Jeweller's Orb (46%; 74%), Timeless Eternal and Karui Emblems (~36%; 86%, 70%), Enkindling Orb (26%; 31%).
+- **With the page's defaults** (2% buffer, items with 24 hours in both markets): the Chaos-first loop paid in 17.2% of 297,778 cross-market item-hours in the first four leagues, Divines-first in 0.9%; Allflame adds 89,794 item-hours at 24% and 1.3% (all five: 18.9% of 387,572). 21 items over 1c paid in at least 25% of hours in every league (still 21 with Allflame). Even a 50% buffer leaves 6.2% paying, which is the first thing to check in-game: an edge that size is either a persistent mispricing or a quirk of how GGG reports ratios.
+- **The paying items repeat** (finding 10): of the 35 items that paid in at least 25% of hours in all four earlier leagues, 33 did again in Allflame (the other two, Domination Scarab of Evolution and Expedition Scarab of Verisium Powder, barely traded in both markets there).
 - **Acting on it an hour late doesn't capture it** (finding 4): a loop that paid last hour pays again 39–60% of the time, but at worst-case prices the misses cost about as much as the wins bring in.
 - **Caveats:** these are hourly summaries, not an order book, so a gap within an hour doesn't prove one player could catch both sides. It isn't confirmed whether GGG's low/high ratios are executed trades or listings. Gold fees and integer trade ratios aren't modelled, and many items' overlap volume is small.
 
-## 3. In chaos, currency and cards inflate over the launch fortnight; farmed consumables deflate
+## 3. Currency and cards hold their value best over the launch fortnight, essences and scarabs worst; in Chaos, the level follows the Divine
 
-*`group_curves`, in Chaos. Median of each item's price ÷ its day-1 price, day 13.*
+*`group_curves` and `launch_curves` (24-hour buckets, items with at least 6 traded hours on day 1). Median of each item's price ÷ its day-1 price (the median of its first 24 hours), day 13, **Chaos / Divines**. Rerun 2026-10-25 with Allflame on today's core pool, which since 2026-10-22 puts catalysts, fragments and oils in the currency group, so its row is split.*
 
-| Group | Settlers | Mercenaries | Keepers | Mirage |
-|---|---|---|---|---|
-| Currency | 0.85 | 1.13 | 1.28 | 1.84 |
-| Divination cards | 0.83 | 1.73 | 1.09 | 2.29 |
-| High-tier essences | 0.79 | 0.55 | 0.49 | 1.38 |
-| Scarabs | 1.37 | 0.41 | 0.65 | 0.56 |
+| Group | Settlers | Mercenaries | Keepers | Mirage | Allflame |
+|---|---|---|---|---|---|
+| Currency list (with catalysts) | 0.93 / 0.43 | 1.09 / 0.60 | 1.12 / 0.85 | 1.80 / 0.55 | 2.73 / 1.00 |
+| Fragments | 1.09 / 0.50 | 1.07 / 0.60 | 0.81 / 0.65 | 1.72 / 0.58 | 2.13 / 0.78 |
+| Oils | 0.75 / 0.35 | 0.65 / 0.34 | 0.52 / 0.41 | 1.50 / 0.50 | 1.64 / 0.64 |
+| Divination cards | 0.83 / 0.38 | 1.73 / 0.88 | 1.09 / 0.85 | 2.29 / 0.70 | 1.79 / 0.65 |
+| High-tier essences | 0.79 / 0.38 | 0.56 / 0.32 | 0.49 / 0.41 | 1.42 / 0.47 | 1.15 / 0.44 |
+| Scarabs | 1.37 / 0.60 | 0.41 / 0.22 | 0.65 / 0.48 | 0.56 / 0.18 | 1.39 / 0.51 |
+| The Divine's Chaos price | ×2.27 (72 → 163c) | ×1.88 (98 → 183c) | ×1.33 (86 → 114c) | ×3.15 (84 → 266c) | ×2.85 (79 → 225c) |
 
-- **Currency** and **cards** inflate in chaos in three of four leagues. Settlers, the exchange's first league, is the exception.
-- **Essences and scarabs** mostly lose value, as expected for consumables whose supply grows with farming (exceptions: Mirage essences, Settlers scarabs).
-- **In Divines almost everything sinks**, because the Divine inflates fastest (86 → 266c in Mirage). That's why group timing defaults to Chaos.
+- **The order repeats; the level doesn't.** Of the four main groups (currency, cards, essences, scarabs), essences and scarabs are the two weakest in four of five leagues, as expected for consumables whose supply grows with farming, and the currency list and cards the two strongest. Settlers, the exchange's first league, is the exception both ways (scarabs strongest, cards about as weak as essences).
+- **In Chaos, a group's move mostly tracks the Divine.** Where the Divine climbed most (Mirage ×3.15, Allflame ×2.85), groups ended above their day-1 Chaos price: every one in Allflame, essences and scarabs included, and all but scarabs in Mirage. Where it climbed least (Keepers ×1.33), most groups ended below. So the earlier claim, that currency and cards inflate in Chaos while consumables deflate, **holds in only three of five leagues**: Allflame broke it, with essences ×1.15 and scarabs ×1.39.
+- **In Divines nearly everything sinks, in every league**: the median core-pool item ended at 0.44–0.65 of its day-1 price, essences at 0.32–0.47 every time; only Allflame's currency list held flat (1.00). That is why group timing defaults to Chaos, and why the Launch picks and Price check judge in Divines (finding 10).
+- The four-league version of this table (before 2026-10-22) had the 88-name currency list: 0.85, 1.13, 1.28, 1.84 in Chaos. The other rows are unchanged.
 
 ## 4. Backtest: the Launch picks pay; the hourly tools at best break even
 
@@ -359,6 +372,48 @@ The median move that followed a call: days 0–2 sells −24% (thin) / −31% (t
 - **What B stores: one small table, built locally from the exchange leagues' days 0–13 and seeded.** Per item and half-day bin of the league (`bin` = hour since launch // 12): the 24-hour path (bins 0–25) and the 3-day path (bins 0–21), each with its leagues count, only where at least 2 leagues have it: **35.3k item-bin-horizon rows for 827 items (19.4k rows with the two horizons as columns)**, item ids 28 bytes on average, so about 2–3 MB on Postgres with its primary key (item_id, bin), a one-off upload to the backup and nothing after (it changes only when a league finishes). Plus 12 constants (weight, band low and high per phase × thickness × horizon) and the thresholds, which can live in code (`price_outlook.build` returns both; `SHIP`). It grows by nothing per hour; when a league finishes, its fortnight is one more league in the medians (rebuild and reseed, like the Launch history).
 - **Not stored:** past leagues' later days (nothing to predict with), the dumps, pre-Settlers leagues, momentum and group paths.
 
+## 10. What repeats across the five exchange-era leagues
+
+*`launch_patterns.launch_curves` + `turning_points` (6- and 24-hour buckets, items with at least 6 traded hours on day 1) and `group_curves` on today's core pool (682 items: the currency list, fragments, oils, cards, essences, scarabs); `cross_market.summarize`'s per-item loop shares and `divination.turn_in_summary`'s per-card margins (both recomputed with `day_offset < 14`, since the services read every loaded hour and Allflame also has its latest 14 days); findings 4, 6, 8 and 9 for what they already ran on all five. Settlers, Mercenaries, Keepers, Mirage and Allflame, first 14 days each (all five have the full 336 hours). Walk-forward checks rank each league only from the leagues before it. Built 2026-10-25, read-only, under a minute in all.*
+
+**Holds in at least four of five leagues** (Settlers / Mercenaries / Keepers / Mirage / Allflame):
+
+| Pattern | Leagues | Numbers |
+|---|---|---|
+| The Divine climbs against Chaos | 5 of 5 | first 24 hours' median → day 13: ×2.27 / ×1.88 / ×1.33 / ×3.15 / ×2.85 (day 1 → day 13: ×1.16 to ×2.66) |
+| Most core-pool items lose value in Divines | 5 of 5 | median day 13 ÷ day 1: 0.44 / 0.56 / 0.65 / 0.46 / 0.65; only 26–38% of items rose |
+| Items peak in Divines in the first days | 5 of 5 | 70 / 56 / 61 / 63 / 55% of items peak on days 1–4 (18–29% on days 10–14); every group's median curve peaks on days 1–3.75, in all 20 group-leagues |
+| Which items rise and which fall repeats | 5 of 5 | an item's day-13 move against the previous league's: rank correlation 0.71 / 0.80 / 0.68 / 0.65; walk-forward from the median of earlier leagues 0.80 / 0.72 / 0.68 (Keepers, Mirage, Allflame), the right direction in Divines for 88 / 83 / 80% of items |
+| Essences and scarabs are the weakest groups, the currency list and cards the strongest | 4 of 5 (not Settlers) | finding 3 |
+| Items fetch more via Divines than via Chaos | 5 of 5 | median gap +19 / +17 / +13 / +17 / +17%, widest on days 0–2 in every league (+22% to +38%) |
+| The Chaos-first loop pays at worst prices, the reverse doesn't | 5 of 5 | 15 / 19 / 15 / 26 / 26% of item-hours against 0.7–1.5% |
+| The same loop items pay | 5 of 5 | 33 items paid in ≥ 25% of hours in every league (tattoos, Shrieking essences, Omens, Tainted orbs, Rogue's Marker, Timeless emblems, crests); an item's share against the previous league's: rank correlation 0.68–0.84; walk-forward, the earlier leagues' top 20 paid ≥ 25% of hours in the next league 70 / 95 / 95% of the time (median share 0.58 / 0.80 / 0.81 against 0.15 / 0.30 / 0.31 for all items) |
+| Card sets trade below their reward | 5 of 5 | median card's median-hour margin +17 / +20 / +20 / +16 / +27%; 79–93% of cards positive; 30 of the 57 cards with an exchange-priced reward pay in at least half their hours in every league, 39 in four or more; only 2 pay in one league alone (The Fool, Brother's Gift, both only in Allflame) |
+| Evening UTC dearest on days 2–7; the Divine cheapest around noon | 5 of 5 | finding 6 |
+| Mechanics' launch premiums and ease of selling carry over | 3 walk-forward leagues | finding 8 (rank correlation 0.81 / 0.71 / 0.63 by window; Easy to sell 0.89) |
+| An item's own past path, shrunk, beats "no change" on days 0–13 | 5 of 5 held out | finding 9 |
+| The Launch picks pay at harsh prices | 5 of 5 | finding 4 (day-1 picks ×1.2 to ×3.5 in Divines) |
+
+**Doesn't repeat:**
+- **Group levels in Chaos.** They follow the Divine (finding 3): in Allflame every group ended above its day-1 Chaos price (in Mirage all but scarabs), in Keepers most ended below. "Consumables deflate in Chaos" holds in three of five.
+- **The day a group or an item turns.** In Chaos, a group's median curve peaks anywhere from day 1 to day 13.75 depending on the league (Allflame: every group peaked on days 12–13.5, as the Divine kept climbing). Per item, the peak day against the previous league's: rank correlation 0.70 / 0.55 / 0.31 / 0.37, within 2 days only 62 / 49 / 38 / 40% of the time, and weakening. Only the Divine-terms "early peak" above is a timing rule.
+- **The size of the moves.** Walk-forward in Chaos, Allflame's items rose more than the earlier leagues said across the board (bottom fifth predicted ×0.27, came in at ×0.59; top fifth ×4.7 against ×5.6): a level shift from the Divine. In Divines the levels were closer (×0.14 against ×0.21; ×2.6 against ×2.3).
+- **The loops' timing within the fortnight.** The share of paying hours (items at 1c or more) fades from days 0–2 to days 7–14 in Keepers (22% → 10%) but grows in Allflame (19% → 25%); no shape repeats.
+- **Which cards pay best.** Nearly every card pays in most hours (the median card in 81–93% of hours), but the order changes: walk-forward rank correlation of the cards' paying share 0.81 / 0.40 / 0.66, and a top-10 card is barely more likely to pay than any other.
+- **Settlers** is the odd league out in most rows that hold in four of five: the exchange's first league, with fewer items trading (47 cards with a day-1 baseline against 147–196 later).
+
+**What it means for the site:**
+- **Launch picks:** the basis holds. Items' launch moves repeat walk-forward (0.68–0.80), and in Divines both the direction and the size carry over better than in Chaos, so ranking in Divines from the newest leagues, recency-weighted, is right. Expect the multiples to shift with the next league's Divine; the list pays as a basket (finding 4), not item by item.
+- **Market recap:** the loops that pay are mostly the same few dozen items every league, and a past-league record predicts the next league well (70–95% of the top 20 kept paying). A small precomputed "paid in every past league" mark on a loop would be a cheap, honest hint (a table of ~35 item ids from past leagues); not built, for the user to decide. Card sets trading below their reward is structural, not a moment to catch: only limit orders capture it (finding 4), so the recap keeps showing cards as orders to place.
+- **Price check:** in Divines, most items peak on days 1–4 in every league, which is why finding 9's verdict is mostly "Sell" early. The Divine's own climb (5 of 5) is the one call that needs no item history: Chaos held through the fortnight lost 25–68% against Divines.
+- **For the next league (~2026-11-13):** convert spare Chaos to Divines on day 0–1; sell drops for Divines on days 1–4, essences and scarabs first; the Chaos → item → Divines premium is widest on days 0–2. If the league changes the exchange or a mechanic, expect the level to move (Settlers, finding 8's Necropolis and Tattoos) while the ranking mostly holds.
+
+**Caveats.** Five leagues, and only three for the walk-forward checks. Today's core pool and followed cards are applied to every league, so items that left the game are missing and survivors are slightly favoured. The 24-hour day-1 baseline needs 6 traded hours, which drops the thinnest items, especially in Settlers. Loops and card margins are hourly summaries, not an order book (finding 2's caveats), and the paying-share thresholds (25% of hours, half the hours) were picked here, not tuned out of sample.
+
 ## Still to do
 
-Run the tools across all four exchange-era leagues and write up the patterns that repeat.
+- **Check in-game whether GGG's hourly lowest and highest ratios are executed trades** (findings 2, 4, 5). It's the one question hourly data can't answer, and it decides whether the loops' limit orders, the card limit orders and the volatile flips are real.
+- **Rerun finding 10 on the next league once its fortnight completes (~2026-11-27).** The sixth league is the first real out-of-sample check of these patterns; the Launch picks and Price check's paths gain it as one more league (rebuild and reseed).
+- **Divination card expected value** for random rewards (not unique ones: uniques are out of scope).
+- **Patch notes (phase 3)** to explain the level shifts that past prices can't (finding 3's group levels, finding 8's Necropolis and Tattoos).
+- **A `days` limit on `cross_market.summarize` and `divination.turn_in_summary`** (and so `turn_ins_across_leagues`): they read every loaded hour, so for Allflame they mix its latest 14 days into launch comparisons. Finding 10 filtered in its own queries.
