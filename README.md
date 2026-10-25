@@ -96,6 +96,7 @@ RePoE, loot filter ──────┘                  │
 | [docs/supabase.md](docs/supabase.md) | The off-site backup on Supabase: what a sync does and costs, restoring, setting it up |
 | [docs/findings.md](docs/findings.md) | Phase-2 findings from past launches |
 | [docs/farming.md](docs/farming.md) | The Farming page: its plan, response contract and status |
+| [docs/price-check.md](docs/price-check.md) | The Price check page (replacing Farming): its plan, response contract and status |
 | [docs/decisions.md](docs/decisions.md) | Decision log by topic, dated |
 | [docs/roadmap.md](docs/roadmap.md) | The prediction design (patch notes, models, backtest), planned modules, add-ons, risks |
 | [CLAUDE.md](CLAUDE.md) | Commands, architecture and coding rules for working on the code |
