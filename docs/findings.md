@@ -303,6 +303,62 @@ Amihud and Chaos traded per item say nearly the same (rank correlation −0.95);
 - **For workstream E**: the reduced history needs `item_days`' columns (`analysis/mechanics.ITEM_DAY_SCHEMA`), not only the price and Chaos traded: the Divine price (index and outlook), hours traded and each day's traded hours (Easy to sell), and the median hourly move (Amihud). Days 0–13, every basket item including legacy outputs that traded: about 690 items and 9,100 rows a league (45k for the five).
 - **Dropped by the user (2026-10-24)**: Harbinger (no longer in the game; Fracturing Orbs are core drops nobody can target-farm), Breach (its currency comes from glands not listed on trade, with highly variable rewards) and Sanctum (mostly raw currency). They were also the three mechanics with fewer than 3 current outputs. Of the rest, Abyss has a usual path in one league only, and Necropolis and Tattoos change too much between leagues for their usual to mean much.
 
+## 9. Sell now or hold: past leagues' paths beat "no change" in the launch fortnight, mostly as "sell"; after day 14 nothing does
+
+*`analysis/price_outlook.py` (`python -m exiledbroker.analysis.price_outlook <copy of the database>`, under a minute). Settlers, Mercenaries, Keepers, Mirage and Allflame, days 0–13 hourly (`cross_market_hour`), plus Allflame's days 76–90; the poe.ninja dumps for later days and for five pre-Settlers leagues (Sanctum → Necropolis). The current core pool's exchange items (886; 720–870 traded a league). Judged in Divines (the user's decision), Chaos as context. Built 2026-10-25. Workstream A of [price-check.md](price-check.md).*
+
+**The backtest set.** Every 6 hours, for every item with a price: the *price now* (median of its traded hours over the last 6, at least 2, in Divines at each hour's Divine rate) and what a server knows then (its last 24 h / 3 d move, its market's thickness and its typical hourly swing). The outcome is the log change from **selling now** (the median over the next 6 hours) to **holding** (the same 6 hours 24 or 72 hours later). 191k item-decisions on days 0–13, 31k on Allflame's later days. Thick means traded in 80% of the last 72 hours and a median hour of at least 300c (finding 6's liquid): 5–20% of a league's decisions on days 0–2, 37–61% on days 2–7, 54–71% on days 7–14.
+
+*Why the outcome starts after the decision:* measured from the price now, momentum looked like a forecast (thin markets on days 7–14 and Allflame's later days, skill +0.06, verdicts paying in 5 of 5 leagues), but that was the bounce of finding 7: a price now that rests on one lucky trade comes back. Measured from the next hours' fills, which a seller can actually get, it's gone (skill 0.00).
+
+**Models**, each league predicted from the other four (leave-one-league-out), and the training rows' own paths built without their league either, so the fitted weights see what a new league sees: no change; the market's drift (every item's median change at this point of past leagues, per half-day of the league); the item's group's; **the item's own path** (median over past leagues of each league's median change from this half-day, needing 2 leagues); momentum; path + momentum; and the **shrunk path** (weight × the item's path, the weight fitted per phase and thickness). Skill is 1 − mean |error| ÷ no change's (above 0 beats it); in brackets, in how many of the 5 held-out leagues it did.
+
+| Phase | Market | 24 h: drift | group | item | momentum | **shrunk** | 3 d: item | **shrunk** |
+|---|---|---|---|---|---|---|---|---|
+| Days 0–2 | thin | 0.03 (4) | 0.07 (4) | 0.17 (5) | 0.01 (5) | **0.18 (5)** | 0.28 (5) | **0.26 (5)** |
+| Days 0–2 | thick | 0.13 (5) | 0.14 (5) | 0.38 (5) | 0.06 (5) | **0.38 (5)** | 0.55 (5) | **0.54 (5)** |
+| Days 2–7 | thin | 0.00 (3) | 0.00 (2) | −0.08 (0) | 0.00 (3) | **0.01 (5)** | −0.02 (1) | **0.04 (5)** |
+| Days 2–7 | thick | 0.02 (4) | 0.02 (5) | 0.02 (4) | 0.03 (4) | **0.07 (5)** | 0.14 (5) | **0.16 (5)** |
+| Days 7–14 | thin | 0.00 (3) | 0.00 (3) | −0.11 (0) | 0.00 (3) | 0.00 (1) | −0.09 (0) | 0.00 (5) |
+| Days 7–14 | thick | 0.01 (4) | 0.00 (2) | −0.07 (0) | 0.00 (1) | **0.01 (5)** | −0.01 (3) | **0.04 (5)** |
+| Later (Allflame, hourly) | both | — | — | — | 0.00 (1) | — | — | — |
+| Later (dumps, 4 leagues) | both | −0.02 | −0.04 | −0.17…−0.23 (0) | −0.01 (0) | 0.00 (0–1) | −0.14…−0.20 (0) | 0.00 (0–2) |
+
+- **The item's own path is the signal; shrunk, it beats no change in every phase of the launch fortnight**, in all 5 held-out leagues. The raw path overpromises after day 2 (worse than no change); the fitted weight scales it down: about 0.7–0.96 on days 0–2, 0.2–0.7 on days 2–7, 0.01–0.44 on days 7–14 (thin markets lowest). Path + momentum ties with it (momentum adds 0.00–0.01), so the shipped model is the **shrunk path** alone.
+- **It's an item's own path, not its group's or the market's.** Category paths add little over the drift, and an item with under 2 past leagues falling back to its group's path has no skill (−0.03 to 0.00), so it gets no verdict.
+- **Days 0–2 are mostly "sell": the Divine climbs** (Mirage: 18c at launch, 145c on day 3), so nearly everything falls in Divines. The drift alone captures part of it (0.03–0.18); the item's path two to three times more.
+- **After day 14 nothing beats no change.** Allflame's later hours (one league, no past league to take a path from) give momentum nothing. The dumps' later days (Settlers → Mirage to day 122–318; for Mirage, currency only after day 62) give every model skill ≤ 0 at 1 and 3 days. A later-league "Hold" or "Sell" would be a guess.
+
+**The verdict.** "Sell" when the typical change (weight × path) is at or below −τ, "Hold" at or above +τ, else "No clear signal". τ is chosen per phase, thickness, horizon and direction: the smallest of 5%, 8%, 10%, 15% at which that call hit at least 60% of the time pooled and 55% in every held-out league (`choose`; `SHIP` in the module). Holds pass the bar less often than sells.
+
+| Phase | Market | 24 h: sell (hit, worst league, share of decisions) | 24 h: hold | 3 d: sell | 3 d: hold |
+|---|---|---|---|---|---|
+| Days 0–2 | thin | ≤ −5%: 75%, 65%, 57% | ≥ +5%: 69%, 57%, 26% | ≤ −5%: 77%, 70%, 64% | ≥ +5%: 72%, 63%, 28% |
+| Days 0–2 | thick | ≤ −5%: 89%, 84%, 70% | none (worst league 47%) | ≤ −5%: 93%, 88%, 74% | none |
+| Days 2–7 | thin | ≤ −8%: 61%, 56%, 4% | none | ≤ −5%: 67%, 63%, 40% | ≥ +8%: 63%, 55%, 15% |
+| Days 2–7 | thick | ≤ −5%: 74%, 69%, 30% | ≥ +5%: 62%, 58%, 12% | ≤ −5%: 76%, 71%, 52% | ≥ +5%: 63%, 59%, 21% |
+| Days 7–14 | thin | none | none | none | none |
+| Days 7–14 | thick | ≤ −5%: 64%, 57%, 2% | none | ≤ −10%: 70%, 56%, 8% | ≥ +5%: 67%, 58%, 20% |
+| Later | both | none | none | none | none |
+
+The median move that followed a call: days 0–2 sells −24% (thin) / −31% (thick) over 24 h, holds +23%; days 2–7 thick sells −12%, holds +5%; days 7–14 thick 3-day holds +13%, sells −16%. The 3-day verdict needs a path 3 days and 6 hours ahead within the fortnight, so it stops at about day 11, and the 24-hour one at about day 13.
+
+**The band** is the typical change plus the 10th and 90th percentile of the training leagues' residuals for the phase and thickness: it claims 80% and holds 79–81% of held-out outcomes pooled, but 68–95% in single leagues. It is wide, as the hourly data is: over 24 hours a median of −26% … +25% for thick items on days 2–7 (−21% … +25% on days 7–14) and −40% … +63% for thin ones (−46% … +84% on days 7–14); over 3 days −38% … +40% thick and −51% … +90% thin on days 2–7. Scaling it by the item's own hourly swing covers the same and is no narrower, so it's per phase and thickness.
+
+**Chaos would say something else often, the opposite rarely.** The same model fitted in Chaos makes different calls on 39% (24 h) / 32% (3 d) of the decisions either makes on days 0–2, 47% / 43% on days 2–7 and 76% / 32% on days 7–14, nearly always one calling and the other not. They're opposite on 9–13% on days 0–2 (Chaos "hold" while the Divine climbs) and ≤ 3% after. Chaos verdicts judged in Divines hit less often (24 h, at ±5%: days 0–2 thick 78% against 84%, days 2–7 thick 69% against 70%).
+
+**The dumps' coverage of exchange items** is wide but rounded: 94–98% of the core pool's exchange items appear in a league's dumps (94–98% of the Chaos traded), but non-currency dumps carry whole Chaos (an essence at 1c reads 1.0), so only 53–58% of items ever price at 10c or more, where rounding is under 10% (56–72% of the Chaos traded). Mirage's non-currency dumps stop at day 62. They're fit only for the later days, where nothing works anyway.
+
+**Pre-Settlers leagues don't help.** Adding five (Sanctum → Necropolis) to the dumps' paths doesn't rescue the later days (skill still ≤ 0) and, on days 2–7, raises the thin markets' skill (0.05 → 0.08 at 24 h) while the band's coverage falls to 66–72%: pre-exchange daily prices were calmer, so their residuals understate today's swings. The hourly days 0–13 of the five exchange leagues are better data for the launch fortnight than any daily dump.
+
+**Caveats.** The model and thresholds were chosen on the same five held-out leagues, so expect a little less on the sixth. Decisions every 6 hours overlap (a 3-day window holds 12 of them), so the per-league counts are the robust part, not the pooled rates. Payoffs are log changes in Divines before any trading friction. A league that changes an item's mechanic (finding 8's Necropolis, Tattoos) breaks its path; the weight and the band absorb that on average, not per item.
+
+**Decided (for Price check; the contract in [price-check.md](price-check.md) holds with the fields below):**
+- **Ship the verdict on days 0–13 only, from the shrunk item path, in Divines.** "No clear signal" in thin markets after day 7, everywhere after day 13 (after day 11 for 3 days), and for items with under 2 past leagues; `basis` is always `"item"` (no group fallback). `typical` = weight × path, `low` / `high` = typical + the band's quantiles (log changes; the page shows them as percentages), `leagues` = the path's leagues.
+- **The live inputs come from the hosted `cross_market_hour`** (launch fortnight + latest 14 days): the price now (last 6 hours' median of Chaos price ÷ the hour's Divine rate, at least 2 traded hours), thickness (the last 72 hours' share of hours traded ≥ 0.8 and median Chaos traded an hour ≥ 300), and the league's hour for the half-day bin and the phase. No momentum.
+- **What B stores: one small table, built locally from the exchange leagues' days 0–13 and seeded.** Per item and half-day bin of the league (`bin` = hour since launch // 12): the 24-hour path (bins 0–25) and the 3-day path (bins 0–21), each with its leagues count, only where at least 2 leagues have it: **35.3k item-bin-horizon rows for 827 items (19.4k rows with the two horizons as columns)**, item ids 28 bytes on average, so about 2–3 MB on Postgres with its primary key (item_id, bin), a one-off upload to the backup and nothing after (it changes only when a league finishes). Plus 12 constants (weight, band low and high per phase × thickness × horizon) and the thresholds, which can live in code (`price_outlook.build` returns both; `SHIP`). It grows by nothing per hour; when a league finishes, its fortnight is one more league in the medians (rebuild and reseed, like the Launch history).
+- **Not stored:** past leagues' later days (nothing to predict with), the dumps, pre-Settlers leagues, momentum and group paths.
+
 ## Still to do
 
 Run the tools across all four exchange-era leagues and write up the patterns that repeat.

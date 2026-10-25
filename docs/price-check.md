@@ -6,6 +6,8 @@ This plan comes from an interview with the user on 2026-10-25. It replaces the F
 
 A, D and E started 2026-10-25. A's research goes first: it decides whether there is a verdict at all (see "The bar").
 
+- [x] **A. Prediction research** (2026-10-25): done, [finding 9](findings.md#9-sell-now-or-hold-past-leagues-paths-beat-no-change-in-the-launch-fortnight-mostly-as-sell-after-day-14-nothing-does). The verdict beats "no change" on days 0–13 (the item's own past-league path, shrunk per phase and thickness), in all five held-out leagues; mostly "Sell", and none in thin markets after day 7 or anywhere after day 13. B's table: per item and half-day bin, the 24 h and 3 d paths (~19k rows, ~2–3 MB), plus 12 constants. Waiting for the user to read it before B and C go on.
+
 ## What we're building, and why
 
 The Farming page's mechanic ranking didn't land (the user: "I don't think the current features are any good"). The stack seller did. A player holding a stack of something wants three answers in one place:
@@ -54,7 +56,7 @@ E Farming removal (after D has moved the stack seller) ────────�
 
 A, D and E's audit start now. B waits for A's verdict on what history the model needs. C waits for A and B. E removes code only after D has moved the stack seller; until then it audits and prepares. Rules for every agent are [farming.md's](farming.md#rules-for-every-agent), restating [CLAUDE.md](../CLAUDE.md): no requests to GGG, no Supabase, own worktree (`git worktree add ../eb-pc-<letter> -b pc-<letter>`), research on a copy of the database, SQL in `services/` runs on Postgres, the page reads only precomputed views.
 
-### A. Prediction research (first; decides the verdict)
+### A. Prediction research (first; decides the verdict) — done 2026-10-25, finding 9
 - **Owns:** `src/exiledbroker/analysis/price_outlook.py`, `tests/test_price_outlook.py`, finding 9 in `docs/findings.md`.
 - **Do:**
   - Build the backtest set: for each past league, item and hour (days 0–13, hourly) or day (later, daily from the dumps), the forward change in Chaos and in Divines over 24 h and 3 days.
