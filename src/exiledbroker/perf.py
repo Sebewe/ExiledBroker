@@ -26,6 +26,9 @@ ENDPOINTS = {
     "market recap": "/api/missed/{league}",
     "launch picks": "/api/launch/picks",
     "backtest": "/api/backtest",
+    "price check": "/api/price-check/{league}",
+    # The list's first mover (else its first item): what a visitor most likely opens.
+    "price check item": "/api/price-check/{league}/{item}",
 }
 TABLES = ["price_observation", "cross_market_hour", "exchange_hour_loaded", "item"]
 # Reads that grew more than this since the previous report are flagged.
@@ -48,6 +51,16 @@ def _summary(meter: db.Meter, wall_ms: float, response_bytes: int) -> dict:
     }
 
 
+def _first_item(client, league: str) -> str | None:
+    """The Price check list's first mover, else its first item (None without a list)."""
+    r = client.get(f"/api/price-check/{league}")
+    if r.status_code != 200:
+        return None
+    doc = r.json()
+    ids = doc.get("movers") or [x["item_id"] for x in doc.get("items", [])]
+    return ids[0] if ids else None
+
+
 def measure_pages() -> dict[str, dict]:
     """A cold call (empty cache) of each endpoint the site's pages use."""
     from fastapi.testclient import TestClient
@@ -59,12 +72,17 @@ def measure_pages() -> dict[str, dict]:
     deps.reset()
     leagues = client.get("/api/status").json().get("leagues", [])
     league = leagues[0]["name"] if leagues else "none"
+    item = _first_item(client, league)
     out = {}
     for name, path in ENDPOINTS.items():
+        if "{item}" in path and item is None:
+            continue  # no league traded yet, or no Price check list
         deps.reset()
         started = time.perf_counter()
         with db.metered() as meter:
-            r = client.get(path.format(league=league), headers={"Accept-Encoding": "identity"})
+            r = client.get(
+                path.format(league=league, item=item), headers={"Accept-Encoding": "identity"}
+            )
         out[name] = _summary(meter, (time.perf_counter() - started) * 1000, len(r.content))
         if r.status_code != 200:
             out[name]["error"] = [f"{r.status_code}: {r.text[:200]}"]

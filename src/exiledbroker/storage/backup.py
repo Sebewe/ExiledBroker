@@ -244,13 +244,19 @@ def _stamps(con) -> dict:
     out = {"launch tables": (tuple(picks), tuple(sorted(history)))}
     for table in REPORTS:
         out[table] = tuple(db.rows(con, f"SELECT count(*), max(built_at) FROM {table}")[0])
-    # Price check's paths change when a league is captured (locally, or by the pipeline
-    # once the live league's fortnight is over) and its constants when they're refitted.
+    out["price paths"] = _price_stamp(con)
+    return out
+
+
+def _price_stamp(con) -> tuple:
+    """Price check's paths change when a league is captured (locally, or by the pipeline
+    once the live league's fortnight is over) and its constants when they're refitted.
+    68 bytes read from the backup for five leagues, every pass
+    (tests/test_backup.py budgets it under 150)."""
     captured = db.rows(con, "SELECT league, count(*) FROM price_path_league GROUP BY league")
     paths = db.scalar(con, "SELECT count(*) FROM price_path")
     fitted = db.rows(con, "SELECT count(*), max(built_at) FROM price_path_constant")[0]
-    out["price paths"] = (tuple(sorted(captured)), paths, tuple(fitted))
-    return out
+    return (tuple(sorted(captured)), paths, tuple(fitted))
 
 
 def _replace(src, dst, table: str) -> None:

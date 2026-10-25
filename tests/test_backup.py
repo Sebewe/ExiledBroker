@@ -361,3 +361,23 @@ def test_price_check_paths_are_backed_up_once_a_league(local, dbs, monkeypatch):
     assert backup.back_up(hosted(s, dbs)).tables == ["price paths"]
     assert_same(dbs["eb_site"], dbs["eb_backup"])
     assert not backup.back_up(hosted(s, dbs)).changed
+
+
+def test_price_check_stamp_reads_under_150_bytes_for_five_leagues(dbs, monkeypatch):
+    """What a pass reads back from the backup to know whether Price check's paths are
+    current (`backup._price_stamp`, every pass): the captured leagues with their row
+    counts, the paths' row count and the constants' count and build time. Five leagues
+    is the real size (Settlers to Allflame); the paths themselves are never read back."""
+    leagues = ["Settlers", "Mercenaries", "Keepers", "Mirage", "Allflame"]
+    with psycopg.connect(dbs["eb_backup"], autocommit=True) as con:
+        db.init_schema(con)
+        _price_paths(con, datetime(2026, 10, 25, 9), leagues)
+        db.execute(  # a real league has hundreds of rows: they stay on the backup
+            con,
+            "INSERT INTO price_path_league SELECT 'Allflame', now(), 'currency:' || g, '[0]', "
+            "'[0]' FROM generate_series(1, 500) g",
+        )
+        reads = BackupReads(monkeypatch)
+        stamp = backup._price_stamp(con)
+    assert len(stamp[0]) == 5 and stamp[1] == 1
+    assert 0 < reads.bytes < 150, reads.bytes
