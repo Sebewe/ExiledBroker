@@ -17,7 +17,7 @@ A Path of Exile market tool for league starts. It turns historical and live exch
 | 4 | Baseline + backtest: first honest accuracy numbers | 🟨 The site's tools backtested at fair and harsh prices: Launch picks pay, hourly tools at best break even ([finding 4](docs/findings.md#4-backtest-the-launch-picks-pay-the-hourly-tools-at-best-break-even), the Backtest page) |
 | 5 | Signals: "farm X", "buy Y on day 2, sell day 6" | 🟨 The Farming page's mechanic ranking is retired (2026-10-25); the Price check page replaces it: one item's price in Chaos and Divines, a sell-or-hold verdict if one beats "no change", the stack seller and the best hour to sell ([findings 6–8](docs/findings.md), [price-check.md](docs/price-check.md)). Built end to end (data, API, page, seed, backup, the pipeline adds each finished league's paths); the 375 px check is left |
 | 6 | Live mode: hourly ingest of the running league, live arbitrage view, later drift alerts | 🟨 Live feed and Market recap page built; alerts not started (the poe.ninja poller is dropped with uniques, 2026-10-25) |
-| 7 | Hosted site: React on the JSON API, all on Railway (web, Postgres, hourly pipeline), with an off-site backup on Supabase | 🟨 Built and simulated locally with Railway's billing ($2.7–3.7 a month of usage at 10–100 daily visitors, ~$4.9 estimated at 1000, inside the $5 Hobby fee); the backup is seeded; not deployed |
+| 7 | Hosted site: React on the JSON API, all on Railway (web, Postgres, hourly pipeline), with an off-site backup on Supabase | 🟨 Built and simulated locally with Railway's billing ($2.7–3.7 a month of usage at 10–100 daily visitors, ~$4.9 estimated at 1000, inside the $5 Hobby fee); the backup is seeded; the Cloudflare fallback Worker (`deploy/cloudflare/`) and the pipeline's failure alert (`EB_HEALTHCHECK_URL`) are built; not deployed |
 
 Legend: ⬜ not started · 🟨 in progress · ✅ done. Phases 1–2 alone are useful: knowing which categories reliably spike in the first week is already an edge.
 
@@ -25,11 +25,11 @@ Legend: ⬜ not started · 🟨 in progress · ✅ done. Phases 1–2 alone are 
 
 The next league launches in about a month. Before then:
 
-- **Go live on Railway**: the checklist is [go-live.md](docs/go-live.md) (Postgres-only server, catch-up test, usage limits with a fallback page, rehearsed league switch).
+- **Go live on Railway** (waiting on Railway reopening signups): the checklist is [go-live.md](docs/go-live.md). The code side is done (Postgres-only server, rehearsed league switch, fallback Worker, failure alert); what's left is account setup: the Railway project, the healthchecks.io check, an uptime monitor, Cloudflare in front, then the seed and catch-up test.
 - **Register the new league** once its name and date are announced (`eb exchange sync -l "<Name>" --start <date>`), so the site shows "waiting for the first trades" from launch.
 
 After that:
-- **Phase 2:** run the analysis tools across all four exchange-era leagues and write up what repeats.
+- **Phase 2 again on the next league** once its fortnight is complete (~2026-11-27): the first out-of-sample check of [finding 10](docs/findings.md).
 - **Divination card expected value** for random rewards (not unique rewards: uniques are out of scope).
 - **Site split** into live trading and historical sections (being designed).
 
