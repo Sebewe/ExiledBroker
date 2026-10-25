@@ -18,7 +18,10 @@ with Postgres attached (`db.site_writer`). Each pass:
 4. once the live league has data, drops any other league's rows (a league switch;
    what was built from them, the Launch history, stays);
 5. with EB_BACKUP_URL set, syncs the site's database to the off-site backup
-   (`storage/backup.py`: uploads the changes, reads back tens of kB).
+   (`storage/backup.py`: uploads the changes, reads back tens of kB);
+6. with EB_HEALTHCHECK_URL set, pings the dead-man's switch (`ingest/healthcheck.py`):
+   `/start` first, then success, or `/fail` when the pass raised, the backup failed or
+   the feed looks stopped (`stale_feed`).
 
 The database must be seeded first (`eb site seed --hosted`, from the local copy), so
 the server never fetches from GGG what we already have: a pass then fetches only the
@@ -32,14 +35,21 @@ from datetime import UTC, datetime, timedelta
 from exiledbroker.config import Settings
 from exiledbroker.ingest import core_pool, reference
 from exiledbroker.ingest import currency_exchange as cx
+from exiledbroker.ingest.healthcheck import Healthcheck
 from exiledbroker.ingest.http import PoliteClient
 from exiledbroker.ingest.live import LiveStatus, sync_live
 from exiledbroker.services import launch_picks, price_paths
-from exiledbroker.services.live import live_leagues
+from exiledbroker.services.live import live_leagues, upcoming_league
 from exiledbroker.storage import backup as backup_mod
 from exiledbroker.storage import db, site
 
 LEAGUES_MAX_AGE = timedelta(hours=1)  # a new league must be picked up within the hour
+# The alert fires when the followed league's latest hour ended this long ago. The site's
+# banner warns at 75 minutes (web/src/lib/freshness.ts) because a visitor wants to know at
+# once; an alert should mean a real outage. A pass runs at :06 and sees the hour that ended
+# at :00 unless GGG is late, so 3 hours is two or more passes in a row that loaded nothing,
+# while a single late hour or a single failed pass (that one pings /fail itself) stays quiet.
+STALE_ALERT_AFTER = timedelta(hours=3)
 
 
 class NotSeeded(RuntimeError):
@@ -56,6 +66,8 @@ class PipelineResult:
     dropped: list[str] = field(default_factory=list)
     backup: backup_mod.SyncResult | None = None  # with EB_BACKUP_URL
     backup_error: str | None = None  # the backup failed; the pass didn't
+    stale: str | None = None  # the feed looks stopped (`stale_feed`)
+    ping_errors: list[str] = field(default_factory=list)  # pings that didn't get through
 
     def __str__(self) -> str:
         parts = [str(self.live)]
@@ -69,6 +81,8 @@ class PipelineResult:
             parts.append(str(self.backup))
         if self.backup_error:
             parts.append(f"Backup failed ({self.backup_error}); the next pass catches up.")
+        if self.ping_errors:
+            parts.append(f"Healthcheck not reached ({'; '.join(self.ping_errors)}).")
         return " ".join(parts)
 
 
@@ -136,25 +150,79 @@ def _seeded(settings: Settings) -> bool:
         return bool(db.rows(db.pushdown(con), f"SELECT 1 FROM {launch_picks.HISTORY} LIMIT 1"))
 
 
+def stale_feed(settings: Settings, league: str, now: datetime) -> str | None:
+    """Why the followed league's feed looks stopped, else None. The site's definition
+    (web/src/lib/freshness.ts, Freshness.tsx): the latest loaded hour ended too long ago,
+    unless a next league is announced and has no trades yet, when the old league has
+    simply ended (`upcoming_league`). A league with no trades yet is waiting, not stale."""
+    with db.site_writer(settings) as con:
+        leagues = live_leagues(db.pushdown(con))
+    row = next((r for r in leagues.iter_rows(named=True) if r["name"] == league), None)
+    if row is None or row["latest_hour"] is None:
+        return None
+    if upcoming_league(settings, set(leagues.filter(leagues["latest_hour"].is_not_null())["name"])):
+        return None
+    latest = row["latest_hour"]
+    latest = latest if latest.tzinfo else latest.replace(tzinfo=UTC)
+    age = now - (latest + timedelta(hours=1))  # the hour's trades ended here
+    if age <= STALE_ALERT_AFTER:
+        return None
+    hours = age.total_seconds() / 3600
+    return f"{league}: the feed looks stopped, the latest loaded hour ended {hours:.1f} h ago."
+
+
 def run(
     client: PoliteClient,
     settings: Settings,
     league: str | None = None,
     now: datetime | None = None,
     lookback_hours: int = 14 * 24,
+    healthcheck: Healthcheck | None = None,
 ) -> PipelineResult:
     """One hourly pass. `now` replays a moment (tests, the Railway simulation). Then,
     with EB_BACKUP_URL set, the site's database is synced to the off-site backup: a
     failed backup is reported, never raised (the site is fine; the next pass catches
-    the backup up)."""
+    the backup up).
+
+    With EB_HEALTHCHECK_URL (or a `healthcheck`) the pass pings a dead-man's switch:
+    /start, then success, or /fail with the reason when the pass raised (and it still
+    raises), the backup failed, or the feed looks stopped. A ping that doesn't get
+    through is noted on the result and never fails or slows the pass."""
     settings = hosted(settings)
-    result = _pass(client, settings, league, now, lookback_hours)
-    if settings.backup_url:
+    own = healthcheck is None
+    check = Healthcheck.from_settings(settings) if healthcheck is None else healthcheck
+    try:
+        check.start()
         try:
-            result.backup = backup_mod.back_up(settings)
-        except Exception as e:  # noqa: BLE001 (any failure: network, the backup's database)
-            result.backup_error = f"{type(e).__name__}: {e}"
-    return result
+            result = _pass(client, settings, league, now, lookback_hours)
+        except Exception as e:
+            check.fail(f"The pass raised {type(e).__name__}: {e}")
+            raise
+        if settings.backup_url:
+            try:
+                result.backup = backup_mod.back_up(settings)
+            except Exception as e:  # noqa: BLE001 (any failure: network, the backup's database)
+                result.backup_error = f"{type(e).__name__}: {e}"
+        if check:
+            problems = []
+            if result.backup_error:
+                problems.append(f"Backup failed: {result.backup_error}")
+            try:
+                result.stale = stale_feed(settings, result.league, now or datetime.now(UTC))
+            except Exception as e:  # noqa: BLE001 (a broken check is itself worth hearing)
+                result.stale = f"The stale-feed check failed: {type(e).__name__}: {e}"
+            if result.stale:
+                problems.append(result.stale)
+            summary = str(result)
+            if problems:
+                check.fail("\n".join(problems) + "\n\n" + summary)
+            else:
+                check.success(summary)
+            result.ping_errors = list(check.errors)
+        return result
+    finally:
+        if own:
+            check.close()
 
 
 def _pass(

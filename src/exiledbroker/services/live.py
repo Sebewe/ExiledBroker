@@ -8,11 +8,12 @@ and the share of paying hours over the lookback says whether it's a pattern or a
 SQL here must stay Postgres-compatible: the hosted site's Postgres serves the same queries.
 """
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import duckdb
 import polars as pl
 
+from exiledbroker.config import Settings
 from exiledbroker.normalize.exchange_loader import SOURCE as HOURLY
 from exiledbroker.services import cross_market, divination
 from exiledbroker.services.scoring import rank_score
@@ -63,6 +64,24 @@ def live_leagues(con: duckdb.DuckDBPyConnection) -> pl.DataFrame:
         """,
         [HOURLY, DIVINE_ID, HOURLY],
     )
+
+
+# GGG publishes an hour a few minutes after it ends; the worker loads it ~6 minutes past.
+FIRST_DATA_DELAY = timedelta(minutes=10)
+
+
+def upcoming_league(settings: Settings, with_trades: set[str]) -> dict | None:
+    """The announced next league (settings), until it has trades loaded (its name is in
+    `with_trades`): when it starts and roughly when its first hour shows up here (the end
+    of its first clock hour, plus the publishing delay). While it's set, a league that
+    stopped trading has ended rather than stalled: the site says so (Freshness.tsx) and
+    the pipeline's alert stays quiet (ingest/pipeline.py)."""
+    name, start = settings.next_league, settings.next_league_start
+    if not name or not start or name in with_trades:
+        return None
+    start = start.astimezone(UTC) if start.tzinfo else start.replace(tzinfo=UTC)
+    first_hour_end = start.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+    return {"name": name, "start_at": start, "first_data_at": first_hour_end + FIRST_DATA_DELAY}
 
 
 def latest_hour(con: duckdb.DuckDBPyConnection, league: str) -> datetime | None:

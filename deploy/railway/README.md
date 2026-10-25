@@ -6,7 +6,7 @@ service points its **config file path** (Settings → Config-as-code) at its fil
 | Service | Config | What it runs | Volume | Variables |
 |---|---|---|---|---|
 | web | `deploy/railway/web.json` | uvicorn: the API and the built site (always on) | none | `EB_DATABASE_URL` = Postgres's private URL; `EB_NEXT_LEAGUE` / `EB_NEXT_LEAGUE_START` before a launch (the countdown) |
-| pipeline | `deploy/railway/pipeline.json` | `eb pipeline run`, cron `6 * * * *` (runs, then syncs the backup, then exits) | none | `EB_DATABASE_URL` = Postgres's private URL; `EB_BACKUP_URL` = the Supabase backup's session-pooler URL, sealed ([docs/supabase.md](../../docs/supabase.md)); `EB_NEXT_LEAGUE` / `EB_NEXT_LEAGUE_START` before a launch |
+| pipeline | `deploy/railway/pipeline.json` | `eb pipeline run`, cron `6 * * * *` (runs, then syncs the backup, then exits) | none | `EB_DATABASE_URL` = Postgres's private URL; `EB_BACKUP_URL` = the Supabase backup's session-pooler URL, sealed ([docs/supabase.md](../../docs/supabase.md)); `EB_HEALTHCHECK_URL` = the healthchecks.io ping URL, sealed ([go-live.md](../../docs/go-live.md), item 5); `EB_NEXT_LEAGUE` / `EB_NEXT_LEAGUE_START` before a launch |
 | Postgres | Railway's Postgres template | what the site reads (the live league) | the template's | |
 
 Before the first cron run, seed Postgres from the local copy, so the server never
