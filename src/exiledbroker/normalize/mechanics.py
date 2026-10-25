@@ -1,4 +1,6 @@
-"""Mechanic baskets for the Farming page: what each league mechanic drops.
+"""Mechanic baskets: what each league mechanic drops. They feed the core pool's own
+lists, item labels and the hour-of-day profiles (`analysis/hours`); the Farming page's
+mechanic ranking that they were made for is retired (docs/price-check.md).
 
 The baskets are curated by hand in config/mechanics.toml (docs/farming.md, workstream A),
 by exact item name as stored (`item.canonical_name`), so they work for every source.
@@ -152,13 +154,13 @@ def _suggestions(con, name: str) -> list[str]:
     return sorted({r[0] for r in rows})
 
 
-POOL_KEY = "mechanics"  # core_pool.SOURCES: the lists only the Farming page reads
+POOL_KEY = "mechanics"  # core_pool.SOURCES: the mechanic baskets' own lists
 SUFFIX = re.compile(r" \([A-Za-z0-9]+\)$")  # "Name (MetadataName)" for an ambiguous name
 
 
 def in_pool(pool: CorePool, name: str) -> bool | None:
     """Whether the core pool lists the item in any of its lists (price-mapping groups or
-    the Farming page's own); None without any snapshot. poe.ninja lists an item by its
+    the baskets' own); None without any snapshot. poe.ninja lists an item by its
     in-game name, so a stored "Name (MetadataName)" is looked up as "Name"."""
     keys = [g.id for g in GROUPS] + [POOL_KEY]
     names = {name, SUFFIX.sub("", name)}

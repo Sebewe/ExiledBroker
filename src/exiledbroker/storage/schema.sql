@@ -289,27 +289,17 @@ CREATE TABLE IF NOT EXISTS backtest_report (
     body      VARCHAR NOT NULL
 );
 
--- The Farming page's reduced history (services/item_history.py): each finished league's
--- launch fortnight as one row per basket item and day, so the server ranks mechanics
--- against past leagues without keeping their hours. From cross_market_hour (Chaos leg).
-CREATE TABLE IF NOT EXISTS item_day_history (
-    league        VARCHAR NOT NULL,
-    league_start  TIMESTAMP NOT NULL,
-    item_id       VARCHAR NOT NULL,
-    day           INTEGER NOT NULL,   -- 0 = the league's first 24 hours
-    chaos         DOUBLE PRECISION,   -- median hourly Chaos price
-    divine        DOUBLE PRECISION,   -- median hourly Divine price, at the same hour's rate
-    chaos_volume  DOUBLE PRECISION,   -- Chaos traded
-    hours         INTEGER NOT NULL,   -- hours it traded
-    absret        DOUBLE PRECISION,   -- median |log change| between consecutive traded hours
-    day_hours     INTEGER NOT NULL,   -- hours of that day with any trade at all
-    PRIMARY KEY (league, item_id, day)
-);
+-- Retired 2026-10-25 with the Farming page's mechanic ranking (docs/price-check.md, E):
+-- its reduced history (~10 MB hosted). Dropped wherever the schema runs (the site's
+-- Postgres on the pipeline's next pass, the backup on its next sync, the local copy),
+-- a no-op once it's gone; delete this line once every database has run it.
+DROP TABLE IF EXISTS item_day_history;
 
--- The Farming page's constants (services/farming.py, `eb farming build`): finding 6's
+-- The sell helper's constants (services/sell_helper.py, `eb farming build`): finding 6's
 -- hour-of-day profiles per phase and finding 7's impact bands, as one JSON document built
 -- locally from past leagues (analysis/hours.py needs numpy, which the site doesn't have)
--- and copied to the site whole, like backtest_report.
+-- and copied to the site whole, like backtest_report. Kept from the Farming page for
+-- Price check.
 CREATE TABLE IF NOT EXISTS farming_report (
     id        VARCHAR PRIMARY KEY,
     built_at  TIMESTAMP NOT NULL,

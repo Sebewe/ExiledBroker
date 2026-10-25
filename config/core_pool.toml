@@ -6,7 +6,7 @@
 #     from league mechanics that didn't go core, or removed from the game, drop out.
 #     Currency is poe.ninja's Currency (Catalysts included), Fragment and Oil lists.
 #   divination: the cards NeverSink's loot filter (FilterBlade) shows.
-#   mechanics: the Farming page's baskets (config/mechanics.toml), from poe.ninja's
+#   mechanics: the mechanic baskets (config/mechanics.toml), from poe.ninja's
 #     Delirium Orb, Fossil, Resonator, Omen, Tattoo, Runegraft, Allflame Ember,
 #     Enshrouding Crystal, Artifact and Astrolabe lists.
 #

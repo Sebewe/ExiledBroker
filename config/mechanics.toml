@@ -1,4 +1,5 @@
-# Mechanic baskets for the Farming page (docs/farming.md, workstream A).
+# Mechanic baskets (docs/farming.md, workstream A): the core pool's farming lists, item
+# labels in Price check's search and the hour-of-day profiles (docs/price-check.md).
 #
 # Each mechanic lists what farming it drops, by exact item name as ExiledBroker
 # stores it (the in-game name; a name RePoE gives to several items carries its

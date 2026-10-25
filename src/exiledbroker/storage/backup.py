@@ -19,8 +19,7 @@ transaction on `dst` (always Postgres):
   differs;
 - the tables built from past leagues (`site.REPLACED_TABLES`), each group replaced when
   its stamp (a few counts and build times, `_stamps`) differs: the Launch tables, the
-  backtest report, the farming report, and the Farming page's `item_day_history`
-  league by league (a league's capture uploads that league, ~2 MB);
+  backtest report and the farming report (the hour-of-day and stack constants);
 - the raw pages of the window (from `src`'s `exchange_page`, or from disk for the
   local copy), and none outside it;
 - leagues `dst` has and `src` doesn't: dropped (a league switch).
@@ -228,52 +227,34 @@ def _sync_reference(src, dst) -> bool:
 
 
 # The tables built from past leagues (site.REPLACED_TABLES), in the groups that are
-# rebuilt together, each replaced whole when its stamp differs. item_day_history is
-# synced league by league instead.
+# rebuilt together, each replaced whole when its stamp differs.
 LAUNCH_TABLES = ["launch_history", "launch_window", "launch_pick", "launch_pick_league"]
 REPORTS = ["backtest_report", "farming_report"]
-ITEM_HISTORY = "item_day_history"
-assert {*LAUNCH_TABLES, *REPORTS, ITEM_HISTORY} == set(site.REPLACED_TABLES)
+assert {*LAUNCH_TABLES, *REPORTS} == set(site.REPLACED_TABLES)
 
 
 def _stamps(con) -> dict:
     """What changes when a table built from past leagues is rebuilt, read from both
     sides every pass: a few counts and build times (a few hundred bytes from the
-    backup), never rows. item_day_history's is per league: its rows, hours and a
-    checksum of every value column in whole numbers (exact on both engines; Divine
-    prices and moves are small, so to the millionth), so a league recaptured with
-    other baskets or a fixed reduction is sent again."""
+    backup), never rows."""
     picks = db.rows(con, "SELECT max(built_at), count(*) FROM launch_window")[0]
     history = db.rows(con, "SELECT league, count(*) FROM launch_history GROUP BY league")
     out = {"launch tables": (tuple(picks), tuple(sorted(history)))}
     for table in REPORTS:
         out[table] = tuple(db.rows(con, f"SELECT count(*), max(built_at) FROM {table}")[0])
-    days = db.rows(
-        con,
-        f"""
-        SELECT league, count(*), sum(hours + day_hours),
-               sum(CAST(floor(coalesce(chaos, 0) * 1000) AS BIGINT)),
-               sum(CAST(floor(coalesce(chaos_volume, 0)) AS BIGINT)),
-               count(divine), sum(CAST(floor(coalesce(divine, 0) * 1000000) AS BIGINT)),
-               count(absret), sum(CAST(floor(coalesce(absret, 0) * 1000000) AS BIGINT))
-        FROM {ITEM_HISTORY} GROUP BY league
-        """,
-    )
-    out[ITEM_HISTORY] = {league: tuple(int(v or 0) for v in rest) for league, *rest in days}
     return out
 
 
-def _replace(src, dst, table: str, where: str = "", params=()) -> None:
-    """Replace `dst`'s rows of `table` (those `where` selects) with `src`'s."""
-    db.execute(dst, f"DELETE FROM {table} {where}", list(params))
+def _replace(src, dst, table: str) -> None:
+    """Replace `dst`'s rows of `table` with `src`'s."""
+    db.execute(dst, f"DELETE FROM {table}")
     cols = _columns(src, table)
-    rows = db.rows(src, f"SELECT {', '.join(cols)} FROM {table} {where}", list(params))
+    rows = db.rows(src, f"SELECT {', '.join(cols)} FROM {table}")
     site._copy(dst, table, cols, rows)
 
 
 def _sync_built(src, dst) -> list[str]:
-    """The tables built from past leagues: each group whose stamp differs is replaced,
-    item_day_history league by league (a new league's capture sends only that league).
+    """The tables built from past leagues: each group whose stamp differs is replaced.
     Returns what was updated, for the log line."""
     ours, theirs = _stamps(src), _stamps(dst)
     updated = []
@@ -285,12 +266,6 @@ def _sync_built(src, dst) -> list[str]:
         if ours[table] != theirs[table]:
             _replace(src, dst, table)
             updated.append(table.replace("_", " "))
-    here, there = ours[ITEM_HISTORY], theirs[ITEM_HISTORY]
-    leagues = sorted(lg for lg in here.keys() | there.keys() if here.get(lg) != there.get(lg))
-    for league in leagues:  # new or changed: replaced; gone from `src`: deleted
-        _replace(src, dst, ITEM_HISTORY, "WHERE league = ?", [league])
-    if leagues:
-        updated.append(f"farming history ({', '.join(leagues)})")
     return updated
 
 

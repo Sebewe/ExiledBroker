@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     data_dir: Path = Field(default_factory=_default_data_dir)
     # Manual include/exclude lists for the core drop pool (committed, edit by hand).
     core_pool_file: Path = Field(default_factory=_default_core_pool)
-    # What each league mechanic drops, for the Farming page (committed, edit by hand).
+    # What each league mechanic drops: core-pool lists, labels (committed, edit by hand).
     mechanics_file: Path = Field(default_factory=_default_mechanics)
     db_filename: str = "exiledbroker.duckdb"
     # The site's database (Railway's Postgres when hosted, the compose `db` service

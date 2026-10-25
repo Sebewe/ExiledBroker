@@ -100,7 +100,6 @@ def test_visitors_ask_only_for_what_the_api_serves():
         "leagues": [{"name": "Next", "latest_hour": None}, {"name": "Allflame", "latest_hour": "x"}]
     }
     asks = {page: site.endpoint(page, b) for page in ["missed", *loadgen.OTHER_PAGES]}
-    assert asks["farming"] == ("farming", "/api/farming/Next")  # the newest listed league
     assert asks["loops"] == asks["cards"] == asks["missed"] == ("missed", "/api/missed/Allflame")
     assert asks["conversions"] is None and asks["about"] is None  # static pages
     assert all(served(url) for kind, url in filter(None, asks.values())), asks

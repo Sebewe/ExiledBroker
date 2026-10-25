@@ -511,7 +511,9 @@ def launch_picks_build() -> None:
 
 
 mechanics_app = typer.Typer(
-    help="Mechanic baskets for the Farming page (config/mechanics.toml).", no_args_is_help=True
+    help="Mechanic baskets (config/mechanics.toml): the core pool's farming lists, item labels "
+    "and the hour-of-day profiles.",
+    no_args_is_help=True,
 )
 app.add_typer(mechanics_app, name="mechanics")
 
@@ -562,35 +564,16 @@ def mechanics_check() -> None:
     typer.echo(f"\nAll {sum(len(r.mechanic.names()) for r in results)} names resolve.")
 
 
-farming_app = typer.Typer(help="The Farming page's data.", no_args_is_help=True)
+farming_app = typer.Typer(
+    help="The sell helper's constants (farming_report; the Farming page is retired).",
+    no_args_is_help=True,
+)
 app.add_typer(farming_app, name="farming")
-
-
-@farming_app.command("history")
-def farming_history() -> None:
-    """Reduce every league with a complete launch fortnight to one row per basket item
-    and day (item_day_history), in the local database; re-run after editing
-    config/mechanics.toml, then copy it to the site with `eb site seed`. Reads only
-    what's loaded; makes no requests."""
-    from exiledbroker.services import item_history, launch_picks
-
-    settings = get_settings()
-    with db.session(settings.db_path) as con:
-        db.init_schema(con)
-        items = item_history.basket_items(con, settings)
-        leagues = launch_picks.complete_leagues(con)
-        counts = {lg: item_history.capture(con, lg, items) for lg in leagues}
-    if not leagues:
-        typer.echo("No league with a complete launch fortnight loaded yet.")
-        raise typer.Exit(1)
-    typer.echo(f"{len(items)} basket items:")
-    for league, n in counts.items():
-        typer.echo(f"  {league}: {n:,} rows")
 
 
 @farming_app.command("build")
 def farming_build() -> None:
-    """Build the Farming page's constants from past leagues' hours: the hour-of-day
+    """Build the sell helper's constants from past leagues' hours: the hour-of-day
     profiles per phase of the league (finding 6) and the stack-impact bands (finding 7),
     kept as one report in the local database (copy it to the site with `eb site seed`).
     Reads only what's loaded; makes no requests."""
@@ -600,7 +583,7 @@ def farming_build() -> None:
 
     from exiledbroker.analysis import backtest as bt
     from exiledbroker.analysis import hours
-    from exiledbroker.services import farming
+    from exiledbroker.services import sell_helper
 
     settings = get_settings()
     started = time.perf_counter()
@@ -619,9 +602,9 @@ def farming_build() -> None:
             "leagues": leagues,
             "phases": [[n, lo, None if math.isinf(hi) else hi] for n, lo, hi in hours.PHASES],
             "hours": rep,
-            "impact": farming.IMPACT,
+            "impact": sell_helper.IMPACT,
         }
-        farming.store_report(con, doc)
+        sell_helper.store_report(con, doc)
     typer.echo(f"Built from {', '.join(leagues)} in {time.perf_counter() - started:.0f} s.")
     for name, r in rep.items():
         e = r["effect"]
@@ -701,8 +684,8 @@ def site_seed(
         ),
     ] = False,
 ) -> None:
-    """Copy leagues' site rows, the Launch history and picks, the Farming history and
-    the backtest and farming reports from the local DuckDB into Postgres. Replaces
+    """Copy leagues' site rows, the Launch history and picks, and the backtest and
+    farming reports from the local DuckDB into Postgres. Replaces
     those leagues' rows there; other leagues are left alone. Sends nothing to GGG."""
     import psycopg
 

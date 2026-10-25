@@ -42,7 +42,6 @@ HOUR_WEIGHTS = [2, 1, 1, 1, 1, 1, 2, 3, 3, 3, 3, 3, 4, 4, 4, 5, 6, 7, 8, 8, 8, 7
 OTHER_PAGES = {
     "loops": 0.2,
     "cards": 0.15,
-    "farming": 0.25,
     "launch": 0.2,
     "backtest": 0.05,
     "conversions": 0.1,
@@ -224,15 +223,11 @@ class Site:
         """The request a page makes with its default controls (src/api/queries.ts)."""
         if not b.status:
             return None
-        listed = [lg["name"] for lg in b.status["leagues"]]  # newest first
         live = [lg["name"] for lg in b.status["leagues"] if lg.get("latest_hour")]
         if page == "launch":
             return "launch", "/api/launch/picks"
         if page == "backtest":
             return "backtest", "/api/backtest"
-        if page == "farming":
-            # Any listed league: before its first trades it shows the launch outlook.
-            return ("farming", f"/api/farming/{listed[0]}") if listed else None
         if page in ("missed", "loops", "cards") and live:
             return "missed", f"/api/missed/{live[0]}"
         return None  # a static page, or no league yet
@@ -343,7 +338,7 @@ async def run(
                 u,
                 clock.sim_start + rng.random() * spike_minutes * MIN,
                 VISIT_MINUTES * MIN,
-                ["missed", "farming"],
+                ["missed"],
             )
             for u in range(users)
         ]

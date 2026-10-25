@@ -1,6 +1,6 @@
 """Stack impact and market depth: how much does dumping Q units move the price?
 (finding 7 in docs/findings.md). Research only, on pages already on disk; feeds the
-Farming page's `impact` and the sell helper's `sigma_h` (docs/farming.md).
+sell helper's `impact` and `sigma_h` (services/sell_helper.py, docs/price-check.md).
 
 The page estimates impact ≈ y · sigma_h · sqrt(Q / volume_h) (the square-root law). Here:
 - `sigma_h`, an item's hourly volatility in one market, two ways: Parkinson from each

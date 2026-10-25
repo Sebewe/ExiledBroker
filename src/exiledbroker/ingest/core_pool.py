@@ -24,7 +24,7 @@ SOURCES = {
     "currency": ("Currency", "Fragment", "Oil"),
     "essence": ("Essence",),
     "scarab": ("Scarab",),
-    # The Farming page's mechanic outputs (config/mechanics.toml); no price-mapping
+    # The mechanic baskets' outputs (config/mechanics.toml); no price-mapping
     # group reads these, so they don't change what the other pages show.
     "mechanics": (
         "AllflameEmber",

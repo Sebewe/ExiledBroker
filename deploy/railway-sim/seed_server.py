@@ -5,9 +5,8 @@ For the replay, the live league (Allflame) is cut back to `--start` in a scratch
 of the research database: its later rows are deleted, so the seeded server has only
 the hours before it and the pipeline then fetches the rest from the upstream
 stand-in, one hour at a time. Each complete league is reduced to its Launch history
-(as `eb launch picks` does) and the picks are ranked from it, and to its Farming
-history (as `eb farming history` does), so neither holds a league cut back or dropped
-from the copy. Stored reference
+(as `eb launch picks` does) and the picks are ranked from it, so it holds no league
+cut back or dropped from the copy. Stored reference
 sources are pointed at the stand-in, so their checks are conditional requests
 answered 304 instead of fresh downloads (a changed URL counts as a new source).
 
@@ -31,7 +30,7 @@ import psycopg
 from exiledbroker.config import Settings
 from exiledbroker.ingest import core_pool
 from exiledbroker.normalize import mechanics
-from exiledbroker.services import item_history, launch_picks
+from exiledbroker.services import launch_picks
 from exiledbroker.storage import db, site
 
 SRC, WORK, CACHE = Path("/src"), Path("/tmp/seed"), Path("/sim-cache")
@@ -55,10 +54,10 @@ def sim_url(key: str, league: str) -> str | None:
 
 def stand_in_lists(reference: dict, settings: Settings) -> list[str]:
     """poe.ninja lists the pool checks (core_pool.SOURCES) that the copy never stored,
-    such as the Farming page's lists in a copy whose pool predates them. The real
+    such as the mechanic baskets' lists in a copy whose pool predates them. The real
     poe.ninja would answer them, so the stand-in does too: every basket output
     (config/mechanics.toml) under the first missing list, the others empty. The pool
-    reads their union, so the Farming page shows its baskets as it would hosted.
+    reads their union, so the site sees the baskets' items as it would hosted.
     Returns the lists made up."""
     missing = [
         t
@@ -105,14 +104,7 @@ def main() -> None:
         launch_picks.capture(con, league)
     refs = launch_picks.captured_leagues(con)[: launch_picks.REFERENCE_LEAGUES]
     launch_picks.build(con, refs)
-    # `eb farming history`: the copy's item_day_history may hold the cut-back or dropped
-    # leagues (their future days); recapture the same leagues as the Launch history.
     local = Settings(data_dir=SRC)
-    con.execute(f"DELETE FROM {item_history.HISTORY}")
-    items = item_history.basket_items(con, local)
-    farmed = launch_picks.captured_leagues(con)
-    for league in farmed:
-        item_history.capture(con, league, items)
     reference = {}
     for key, content in db.rows(con, "SELECT key, content FROM reference_data"):
         reference[key] = json.loads(content)
@@ -129,8 +121,8 @@ def main() -> None:
     shutil.rmtree(WORK)
     print(
         f"seeded: {args.league} {hours} hours before {start:%Y-%m-%d %H:%M}, "
-        f"{result.rows.get('exchange_page', 0)} pages, picks from {', '.join(refs)}, "
-        f"Farming history of {', '.join(farmed) or 'no league'}; poe.ninja lists made up "
+        f"{result.rows.get('exchange_page', 0)} pages, picks from {', '.join(refs)}; "
+        f"poe.ninja lists made up "
         f"for the stand-in: {', '.join(made_up) or 'none'}"
     )
 
