@@ -42,20 +42,22 @@ Not deployed yet.
 
 ## The Railway bill
 
-Simulated with `deploy/railway-sim/` (Railway's per-minute rates, read 2026-10-23: memory $10/GB-month, CPU $20/vCPU-month, volumes $0.15/GB-month, egress $0.05/GB; Hobby is $5 a month including $5 of usage). Visitors follow the real browser model (`web/src/lib/schedule.ts`, the 6 h saved cache, assets cached for a year after the first visit); a day is compressed to an hour of real time, with a pipeline pass each simulated hour against the GGG stand-in. Projected to a month, current layout (web + Railway's Postgres + the pipeline cron, no volume), measured 2026-10-23, before the Farming page. **To rerun:** the page added a fifth precomputed response (206 kB, warmed for every listed league) and the web service now holds ~190–220 MB with the cache fix, against the 0.16–0.17 GB below, so memory, the biggest cost, should be up about $0.4 a month (~40 MB more at $10/GB-month), still well inside the $5:
+Simulated with `deploy/railway-sim/` (Railway's per-minute rates, read 2026-10-23: memory $10/GB-month, CPU $20/vCPU-month, volumes $0.15/GB-month, egress $0.05/GB; Hobby is $5 a month including $5 of usage). Visitors follow the real browser model (`web/src/lib/schedule.ts`, the 6 h saved cache, assets cached for a year after the first visit); a day is compressed to an hour of real time, with a pipeline pass each simulated hour against the GGG stand-in. Projected to a month, current layout (web + Railway's Postgres + the pipeline cron, no volume), with the Farming page in the visitors' browsing, measured 2026-10-25:
 
 | Daily visitors | Memory | CPU | Volume | Egress | **Usage** | Bill | Requests / visitor / day |
 |---|---|---|---|---|---|---|---|
-| 10 | $2.31 | $0.31 | $0.02 | $0.00 | **$2.64** | $5 | 18 |
-| 100 | $2.46 | $0.32 | $0.02 | $0.04 | **$2.83** | $5 | 21 |
-| 1000 | ~$2.5 | ~$0.3 | $0.02 | ~$0.4 | **~$3.2** (estimate) | $5 | — |
+| 10 | $2.44 | $0.26 | $0.02 | $0.01 | **$2.72** | $5 | 28 |
+| 100 | $3.34 | $0.25 | $0.02 | $0.12 | **$3.73** | $5 | 35 |
+| 1000 | ~$3.4 | ~$0.3 | $0.02 | ~$1.2 | **~$4.9** (estimate) | $5 | — |
 
-- **Memory is most of it:** the web service ~0.16–0.17 GB and Postgres ~0.07 GB, always on. Visitors barely move it: every response is cached and precomputed each hour.
-- **The pipeline costs almost nothing:** ~2.5 s and ~0.2 GB a pass, billed only while it runs: about $0.03 a month, nearly all CPU. Its backup sync adds ~0.3 s a pass.
-- **CPU is reported at Railway's rates for the measured use;** Apple Silicon is faster than Railway's vCPUs, so the "slow CPU" band doubles it: still $2.96 / $3.14 at 10 / 100 visitors.
-- **1000 visitors** wasn't rerun on this layout (the run was interrupted). The estimate scales the 100-visitor egress tenfold (assets are cached after a first visit) on the same always-on memory; the earlier layout measured $4.12 at 1000, almost all the difference being asset egress before assets were cached.
+Before the Farming page (2026-10-23) it was $2.64 and $2.83 at 10 and 100 visitors, and ~$3.2 estimated at 1000.
+
+- **Memory is most of it**, and the Farming page added to it. The web service averaged 0.14 GB at 10 visitors and 0.21 GB at 100 (peak 0.34 GB), against ~0.16–0.17 GB before; Postgres 0.11–0.12 GB. The cache fix keeps it from growing without end (old data versions are dropped), but each Farming response is large (206 kB, ~21 kB gzipped), and more visitors warm more of them.
+- **The pipeline costs almost nothing:** ~2.4 s and ~0.12–0.16 GB a pass, billed only while it runs: about $0.03 a month, nearly all CPU. Its backup sync adds ~0.3 s a pass.
+- **CPU is reported at Railway's rates for the measured use;** Apple Silicon is faster than Railway's vCPUs, so the "slow CPU" band doubles it: still $2.98 / $3.98 at 10 / 100 visitors.
+- **1000 visitors** wasn't run (it would take hours). The estimate scales the 100-visitor egress tenfold on the same always-on memory, which puts it close to the $5 included in Hobby. Worth measuring before a launch week, and the Farming response is the first thing to shrink if it's over.
 - **What would push it over $5:** much more always-on memory (a second web replica, a larger cache), a Railway volume holding history again, or an endpoint that recomputes per visitor (the API serves only the five precomputed responses, `docs/decisions.md`). The Supabase backup isn't on this bill.
-- **p95 latency** 33–75 ms at 10 and 100 visitors, no errors.
+- **p95 latency** 20–34 ms at 10 and 100 visitors, no errors. The league-switch replay (`run.py switch`) passed with the Farming view warmed.
 
 ## Supabase: tried as the database, now the off-site backup
 

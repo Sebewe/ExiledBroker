@@ -20,7 +20,6 @@ Deadline: the next league launches in about a month, in parallel with [go-live](
 
 **Left to do:**
 - ~~Build the report on the real database~~ (done 2026-10-25): the local copy fetched poe.ninja's ten Farming lists, which it had never stored (17 requests, 50 kB), so Delve and Expedition were missing and the other baskets were thinned; then `eb farming history` (723 items, 45,480 rows), `eb farming build` and `eb site seed`. Served from the compose Postgres, `/api/farming/Allflame` lists all 20 mechanics (21 kB gzipped, 0.36 s cold).
-- **Rerun the simulation's bill** (`deploy/railway-sim/run.py`) with the Farming page in the visitors and the cache fix (`farm-i2`): the web service was measured at ~190–220 MB with the fix, against 0.16–0.17 GB in [hosting.md](hosting.md#the-railway-bill)'s table. It runs for hours, so it's for the user to start.
 - **The page's place in the planned live/historical split** is still undecided.
 
 ## What we're building, and why
@@ -381,5 +380,5 @@ Give each agent this prompt, with its letter:
 - [x] G: `/api/farming/{league}` cached and warmed (2026-10-24: a one-document `View`, warmed for every listed league, a new one before its first trades included)
 - [x] H: Farming page, all states, 375 px (2026-10-24, on `main`; checked on a mock of the contract; best hours follow B's `hours`, the outlook D's `premium`)
 - [x] H: follow-ups: sell helper as hours of trading (C's `impact`), best hours as a sentence (B), generated types and a check against `eb serve` once G lands (2026-10-24, `farm-h3`: checked on a copy of the research database, see H's "Checked on real data")
-- [x] I: pipeline capture, seed, backup, league-switch replay (2026-10-24: one transaction per captured league; the backup syncs `item_day_history` league by league, ~215 B more read a pass; the simulation includes the page, `farm-i2`). The simulation's bill is still to rerun (Status above)
+- [x] I: pipeline capture, seed, backup, league-switch replay (2026-10-24: one transaction per captured league; the backup syncs `item_day_history` league by league, ~215 B more read a pass; the simulation includes the page, `farm-i2`). The simulation's bill was rerun 2026-10-25: $2.72 / $3.73 of usage a month at 10 / 100 visitors, the switch passed
 - [x] J: docs (2026-10-25)

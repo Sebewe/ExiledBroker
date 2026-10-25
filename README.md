@@ -17,7 +17,7 @@ A Path of Exile market tool for league starts. It turns historical and live exch
 | 4 | Baseline + backtest: first honest accuracy numbers | 🟨 The site's tools backtested at fair and harsh prices: Launch picks pay, hourly tools at best break even ([finding 4](docs/findings.md#4-backtest-the-launch-picks-pay-the-hourly-tools-at-best-break-even), the Backtest page) |
 | 5 | Signals: "farm X", "buy Y on day 2, sell day 6" | 🟨 The Farming page: mechanics ranked by trend, launch outlook and how easy their drops sell, when to sell and a stack as hours of trading ([findings 6–8](docs/findings.md), [farming.md](docs/farming.md)) |
 | 6 | Live mode: hourly ingest of the running league, live arbitrage view, later drift alerts | 🟨 Live feed and Market recap page built; poe.ninja poller and alerts not started |
-| 7 | Hosted site: React on the JSON API, all on Railway (web, Postgres, hourly pipeline), with an off-site backup on Supabase | 🟨 Built and simulated locally with Railway's billing ($2.6–2.8 a month of usage at 10–100 daily visitors, ~$3.2 estimated at 1000, inside the $5 Hobby fee); the backup is seeded; not deployed |
+| 7 | Hosted site: React on the JSON API, all on Railway (web, Postgres, hourly pipeline), with an off-site backup on Supabase | 🟨 Built and simulated locally with Railway's billing ($2.7–3.7 a month of usage at 10–100 daily visitors, ~$4.9 estimated at 1000, inside the $5 Hobby fee); the backup is seeded; not deployed |
 
 Legend: ⬜ not started · 🟨 in progress · ✅ done. Phases 1–2 alone are useful: knowing which categories reliably spike in the first week is already an edge.
 
@@ -27,7 +27,6 @@ The next league launches in about a month. Before then:
 
 - **Go live on Railway**: the checklist is [go-live.md](docs/go-live.md) (Postgres-only server, catch-up test, usage limits with a fallback page, rehearsed league switch).
 - **poe.ninja live poller** (phase 6). Uniques have no public sub-daily history, so it must be running at launch ([data.md](docs/data.md#sources)).
-- **Rerun the simulated Railway bill** with the Farming page in it ([hosting.md](docs/hosting.md#the-railway-bill)).
 - **Register the new league** once its name and date are announced (`eb exchange sync -l "<Name>" --start <date>`), so the site shows "waiting for the first trades" from launch.
 
 After that:
