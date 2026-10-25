@@ -4,7 +4,7 @@ This plan comes from an interview with the user on 2026-10-25. It replaces the F
 
 ## Status (2026-10-25)
 
-A, D and E started 2026-10-25. A's research goes first: it decides whether there is a verdict at all (see "The bar").
+A, D and E started 2026-10-25. A's research goes first: it decides whether there is a verdict at all (see "The bar"). D's scaffold is built on the draft contract and waits on C's endpoints.
 
 - [x] **A. Prediction research** (2026-10-25): done, [finding 9](findings.md#9-sell-now-or-hold-past-leagues-paths-beat-no-change-in-the-launch-fortnight-mostly-as-sell-after-day-14-nothing-does). The verdict beats "no change" on days 0–13 (the item's own past-league path, shrunk per phase and thickness), in all five held-out leagues; mostly "Sell", and none in thin markets after day 7 or anywhere after day 13. B's table: per item and half-day bin, the 24 h and 3 d paths (~19k rows, ~2–3 MB), plus 12 constants. Waiting for the user to read it before B and C go on.
 
@@ -88,6 +88,13 @@ A, D and E's audit start now. B waits for A's verdict on what history the model 
     - Then the stack seller (moved from `Farming.tsx` with `lib/impact`), the best-hour sentence and the item's launch premium.
   - **States:** no data (503), waiting for first trades, a stale feed, an item with no Divine leg, an item with no history (no verdict), one hour of data. Check at phone width (375 px).
 - Scaffold on the contract below with a stubbed `fetch` now; wire to C's real types after `npm run gen:api`.
+- **Progress (2026-10-25, scaffold done):**
+  - [x] Tab: "Price check" first in the nav, `featured`; `/farming` redirects to `/price-check` (Farming.tsx stays until E).
+  - [x] Search (`ItemSearch size="lg"`, every item in the response, most traded first) and the movers list (price, 24 h move, item, verdict), each row a link setting `?item=`.
+  - [x] Item view: verdict card (24 h and 3 days, one-line reason, judged in Divines), the chart (`components/LazyChart` + `lib/chartOptions`, ECharts back as a dependency; Chaos left, Divines right, 3 d / 14 d / launch fortnight in `?range=`, the outlook band past the latest hour), the stack seller and best-hour sentence (moved to `components/StackSeller`, `lib/impact` widened to any item with Chaos and Divine markets), the launch premium.
+  - [x] States, tested in `PriceCheck.test.tsx` against a stubbed `fetch`: 503, no league, waiting for first trades, stale feed, no Divine leg, no history (no verdict), one hour, nothing in range, an unknown item (404), no clear calls. Phone width checked by layout (single-column cards, truncated names, wrapping controls), not yet in device emulation.
+  - [ ] Waiting on C: the draft types live in `web/src/api/priceCheckDraft.ts` (fetchers use `fetch` directly). After C, run `npm run gen:api`, export the generated types from `client.ts` under the same names, switch the fetchers to `api.GET`, delete the draft file. The movers list reads a `change_24h` per item (in Divines) that the contract lacks: C to add it, or D drops the column. `hours` is typed as the Farming page's `FarmingHours` until C renames it.
+  - [ ] Check at 375 px in device emulation against C's real responses.
 
 ### E. Remove the Farming page
 - **Owns:** `web/src/pages/Farming.tsx` and its test, `services/farming.py`, `api/routes/farming.py`, `analysis/mechanics.py`, `services/item_history.py`, and their tests and docs.

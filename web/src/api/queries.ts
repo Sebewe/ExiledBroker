@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { JITTER, nextCheckIn } from '../lib/schedule'
 import { api, unwrap } from './client'
+import { fetchPriceCheck, fetchPriceCheckItem } from './priceCheckDraft'
 
 /** Checked only when a new hour is due (lib/schedule): its `data_version` changes when a
  *  new hour is loaded, and every data query below is keyed on it. Between checks,
@@ -56,6 +57,18 @@ export function useFarming(league: string | undefined) {
     () => unwrap(api.GET('/api/farming/{league}', { params: { path: { league: league! } } })),
     !!league,
   )
+}
+
+/** The Price check page's search list and movers, per loaded hour (a draft endpoint until
+ *  workstream C builds it: see priceCheckDraft.ts). */
+export function usePriceCheck(league: string | undefined) {
+  return useVersioned(['price-check', league], () => fetchPriceCheck(league!), !!league)
+}
+
+/** One item on the Price check page, per loaded hour. While another item loads, the
+ *  previous one's data is kept as a placeholder: check `item_id` before showing it. */
+export function usePriceCheckItem(league: string | undefined, itemId: string | undefined) {
+  return useVersioned(['price-check-item', league, itemId], () => fetchPriceCheckItem(league!, itemId!), !!league && !!itemId)
 }
 
 /** The server's clock, from ours: the status is fetched about once an hour now, so its
