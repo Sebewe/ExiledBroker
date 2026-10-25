@@ -50,12 +50,12 @@ describe('remembered settings', () => {
 })
 
 describe('menu', () => {
-  it('puts Price check first, lit up, and has no Farming tab', () => {
+  it('puts Market recap first, then Price check, both lit up, and has no Farming tab', () => {
     renderAt('/')
     const links = screen.getAllByRole('link').filter((a) => a.closest('nav'))
-    expect(links[0]).toHaveTextContent('Price check')
-    expect(links[0]!.getAttribute('href')).toBe('/price-check')
-    expect(links[0]!.className).toMatch(/border-accent/)
+    expect(links.slice(0, 2).map((a) => a.textContent)).toEqual(['Market recap', 'Price check'])
+    expect(links[1]!.getAttribute('href')).toBe('/price-check')
+    expect(links[1]!.className).toMatch(/border-accent/)
     expect(screen.queryByRole('link', { name: /Farming/ })).not.toBeInTheDocument()
   })
 

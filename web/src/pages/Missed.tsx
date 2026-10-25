@@ -1,4 +1,4 @@
-import { Activity, AlertTriangle, ArrowDown, ArrowDownRight, ArrowRight, ArrowUpRight, CandlestickChart, Clock, FlaskConical, Layers, Repeat, Tag, Timer, Waves, X } from 'lucide-react'
+import { Activity, AlertTriangle, ArrowDown, ArrowDownRight, ArrowRight, ArrowUpRight, CandlestickChart, FlaskConical, Layers, Repeat, Tag, Timer, Waves, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import type { LiveLeague, MissedCard, MissedFlip, MissedLoop, MissedWindow, Mover, Upcoming } from '../api/client'
@@ -13,15 +13,12 @@ import { makeMoney, type Money } from '../lib/money'
 import { eachText, lotText, whole, type Currency } from '../lib/lots'
 import { queryFallback } from '../lib/queryFallback'
 import { useLeague } from '../lib/useLeague'
-import { useNumberParam } from '../lib/useParam'
 
 // The landing page, Market recap: what traded in the latest published hours and what a
 // player could look into next. Worded as options to check, not promises: the backtest
 // (analysis/backtest.py, the Backtest page) found the hourly signals at best break even.
-// The server sends all three look-backs at once (a few KB, cached per loaded hour), so
-// the slider switches between them here without another request.
+// The page shows the last hour (the look-back slider was dropped, the user 2026-10-25).
 
-const LOOKBACKS = [1, 2, 3]
 // Loops and cards shown before "Show all" (the server sends every one that paid).
 const TOP = 3
 // An edge this big is usually one trade at an odd ratio, not a price anyone can repeat.
@@ -100,9 +97,7 @@ export default function Missed() {
   const [league, setLeague] = useLeague(names)
   const info = status.data?.leagues.find((l) => l.name === league)
   const summary = useMissed(info?.latest_hour ? league : undefined)
-  const [hoursParam, setHours] = useNumberParam('hours', 1)
-  const hours = LOOKBACKS.includes(hoursParam) ? hoursParam : 1
-  const w = summary.data?.find((x) => x.hours === hours)
+  const w = summary.data?.find((x) => x.hours === 1)
   const money = makeMoney(info?.divine_chaos)
 
   const header = (
@@ -142,7 +137,7 @@ export default function Missed() {
     )
   }
   const early = hoursIn(info) < EARLY_HOURS
-  const lastHour = summary.data?.find((x) => x.hours === 1)
+  const lastHour = w
 
   return (
     <>
@@ -169,7 +164,6 @@ export default function Missed() {
               <Loops w={w} money={money} rate={info.divine_chaos} />
               <Cards w={w} money={money} />
               <MarketMovers w={w} money={money} />
-              <LookBack hours={w.hours} onHours={setHours} />
             </>
           ) : (
             <Notice kind="info">Nothing to recap yet.</Notice>
@@ -179,31 +173,6 @@ export default function Missed() {
 }
 
 const lastHours = (n: number) => (n === 1 ? 'the last hour' : `the last ${n} hours`)
-
-/** The look-back, pinned to the bottom of the screen so it stays at hand while scrolling.
- *  A small pill, centred, so it never covers much of the page. */
-function LookBack({ hours, onHours }: { hours: number; onHours: (h: number) => void }) {
-  return (
-    // data-look-back: the page leaves room below its footer for it (index.css).
-    <div data-look-back className="pointer-events-none fixed inset-x-0 bottom-4 z-30 flex justify-center px-4">
-      <label className="pointer-events-auto flex items-center gap-3 rounded-full border border-accent/40 bg-surface-2/95 px-4 py-2 text-xs font-medium text-muted shadow-xl shadow-shadow/40 backdrop-blur">
-        <Clock aria-hidden className="size-3.5 text-accent" />
-        Look back
-        <input
-          type="range"
-          min={1}
-          max={3}
-          step={1}
-          value={hours}
-          onChange={(e) => onHours(Number(e.target.value))}
-          className="w-24 cursor-pointer accent-[var(--color-accent)] sm:w-32"
-          aria-valuetext={`${hours} hours`}
-        />
-        <span className="num w-5 text-sm font-semibold text-text">{hours}h</span>
-      </label>
-    </div>
-  )
-}
 
 /** The likeliest share of the items' orders that went through recently (null: too few tries). */
 const bestChance = (xs: { chance?: number | null }[]) => xs.reduce<number | null>((best, x) => (x.chance != null && x.chance > (best ?? -1) ? x.chance : best), null)

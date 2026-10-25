@@ -10,8 +10,8 @@ import { SocialLinks } from './Social'
 // in blue as the proof of concept (how the tools did on past leagues), not a tool to use.
 type Nav = { to: string; label: string; icon: typeof Book; end?: boolean; featured?: boolean; proof?: boolean; hint?: string }
 const NAV: Nav[] = [
-  { to: '/price-check', label: 'Price check', icon: Scale, featured: true },
   { to: '/', label: 'Market recap', icon: Hourglass, end: true, featured: true },
+  { to: '/price-check', label: 'Price check', icon: Scale, featured: true },
   { to: '/backtest', label: 'Backtest', icon: Book, proof: true, hint: 'Proof of concept: how the tools did on past leagues' },
   { to: '/launch', label: 'Launch market', icon: CandlestickChart },
   { to: '/conversions', label: 'Multi-layered conversions', icon: Network },

@@ -268,19 +268,14 @@ describe('Market recap', () => {
     expect(within(movers).queryByText('Riser 0')).not.toBeInTheDocument() // the top 3 risers first
     fireEvent.click(within(movers).getByRole('button', { name: 'Show more' }))
     expect(within(movers).getByText('Riser 0')).toBeInTheDocument()
-    // The look-back stays pinned to the screen, a slider in a small bar.
-    expect(screen.getByRole('slider').closest('.fixed')).not.toBeNull()
   })
 
-  it('switches look-back without asking the server again', async () => {
+  it('shows the last hour, with no look-back slider', async () => {
     serve({ '/api/status': status('2026-10-22T08:00:00Z'), '/api/missed/Allflame': { body: RECAP } })
     renderPage()
     await screen.findByRole('region', { name: 'Investment options' })
-    const calls = vi.mocked(fetch).mock.calls.length
-    fireEvent.change(screen.getByRole('slider'), { target: { value: '3' } })
-    expect(await screen.findByText('paid every hour')).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Orb of Conflict' })).toBeInTheDocument() // the flips, sent once
-    expect(vi.mocked(fetch).mock.calls.length).toBe(calls)
+    expect(screen.queryByRole('slider')).not.toBeInTheDocument()
+    expect(screen.queryByText('paid every hour')).not.toBeInTheDocument() // the 3-hour window's
   })
 
   it('counts down to the first published hour once the new league has started', async () => {
