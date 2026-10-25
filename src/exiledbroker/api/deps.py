@@ -99,7 +99,13 @@ def data_version(force: bool = False) -> str | None:
         at = db.scalar(con, "SELECT max(loaded_at) FROM ingest_load")
     value = at.isoformat() if at else None
     with _version_lock:
+        changed = _version["where"] == where and _version["value"] != value
         _version.update(where=where, at=time.monotonic(), value=value)
+    if changed:
+        # Results are keyed on the version, so the old one's are never asked for again.
+        # Left to the LRU they'd be kept ~40 hours (256 entries, ~6 views an hour):
+        # 140 MB more memory on the web service with the Farming page (hosting.md).
+        results.keep_only(lambda key: key[-1] == value)
     return value
 
 

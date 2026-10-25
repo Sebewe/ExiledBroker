@@ -36,7 +36,18 @@ CACHE_HOURS = 6.0
 HEADER_BYTES = 400  # response headers + TLS framing, per response
 # Hour-of-day weights (UTC): quiet nights, busy European and American evenings.
 HOUR_WEIGHTS = [2, 1, 1, 1, 1, 1, 2, 3, 3, 3, 3, 3, 4, 4, 4, 5, 6, 7, 8, 8, 8, 7, 5, 3]
-OTHER_PAGES = {"arbitrage": 0.35, "cards": 0.3, "launch": 0.25, "conversions": 0.1}
+# The site's pages after the landing page (web/src/App.tsx). Loops and cards are
+# sections of the landing page now (/arbitrage and /cards redirect there), so they read
+# its one cached recap; Conversions and About are static.
+OTHER_PAGES = {
+    "loops": 0.2,
+    "cards": 0.15,
+    "farming": 0.25,
+    "launch": 0.2,
+    "backtest": 0.05,
+    "conversions": 0.1,
+    "about": 0.05,
+}
 
 # --- lib/schedule.ts, in seconds ----------------------------------------------------
 PUBLISH_DELAY = 8 * MIN
@@ -210,22 +221,21 @@ class Site:
             b.status, b.status_at = status, now
 
     def endpoint(self, page: str, b: Browser) -> tuple[str, str] | None:
+        """The request a page makes with its default controls (src/api/queries.ts)."""
         if not b.status:
             return None
+        listed = [lg["name"] for lg in b.status["leagues"]]  # newest first
         live = [lg["name"] for lg in b.status["leagues"] if lg.get("latest_hour")]
-        league = live[0] if live else None
         if page == "launch":
             return "launch", "/api/launch/picks"
-        if not league:
-            return None
-        return {
-            "missed": ("missed", f"/api/missed/{league}"),
-            "arbitrage": (
-                "arbitrage",
-                f"/api/arbitrage?league={league}&direction=chaos_first&buffer=0.02&min_hours=24&min_price=1",
-            ),
-            "cards": ("cards", f"/api/cards/{league}?unit=chaos&prefer_cheaper_sets=true"),
-        }.get(page)
+        if page == "backtest":
+            return "backtest", "/api/backtest"
+        if page == "farming":
+            # Any listed league: before its first trades it shows the launch outlook.
+            return ("farming", f"/api/farming/{listed[0]}") if listed else None
+        if page in ("missed", "loops", "cards") and live:
+            return "missed", f"/api/missed/{live[0]}"
+        return None  # a static page, or no league yet
 
     async def view(self, page: str, b: Browser) -> None:
         ep = self.endpoint(page, b)
@@ -333,7 +343,7 @@ async def run(
                 u,
                 clock.sim_start + rng.random() * spike_minutes * MIN,
                 VISIT_MINUTES * MIN,
-                ["missed", "arbitrage"],
+                ["missed", "farming"],
             )
             for u in range(users)
         ]

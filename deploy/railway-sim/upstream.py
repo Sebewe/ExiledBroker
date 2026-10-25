@@ -101,8 +101,12 @@ def overview(request: Request, league: str, type: str) -> Response:
     if _conditional(request):
         _count("ninja_304", path=f"overview {type}")
         return Response(status_code=304)
+    stored = _reference().get(f"core_pool/type/{type}")
+    if stored is None:  # seed_server makes up the lists the copy lacks: shouldn't happen
+        _count("ninja_missing", path=f"overview {type}")
+        raise HTTPException(404, f"no stored {type} list")
     _count("ninja_200", path=f"overview {type}")
-    names = _reference()[f"core_pool/type/{type}"]["names"]
+    names = stored["names"]
     return Response(
         json.dumps({"items": [{"name": n} for n in names]}), media_type="application/json"
     )

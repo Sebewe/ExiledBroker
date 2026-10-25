@@ -171,32 +171,37 @@ BACKUP_CHECK = """SELECT json_build_object(
     'loops', (SELECT count(*) FROM cross_market_hour),
     'pages', (SELECT count(*) FROM exchange_page),
     'items', (SELECT count(*) FROM item),
-    'history', (SELECT count(*) FROM launch_history))"""
+    'history', (SELECT count(*) FROM launch_history),
+    'farming_history', (SELECT string_agg(league || ':' || n, ',' ORDER BY league)
+                        FROM (SELECT league, count(*) AS n FROM item_day_history
+                              GROUP BY league) h),
+    'farming_report', (SELECT max(built_at)::text FROM farming_report))"""
+
+
+def summary(service: str = "postgres", database: str = "railway") -> dict:
+    """BACKUP_CHECK on one of the simulation's databases."""
+    out = sh(
+        [
+            *COMPOSE,
+            "exec",
+            "-T",
+            service,
+            "psql",
+            "-U",
+            "eb",
+            "-d",
+            database,
+            "-At",
+            "-c",
+            BACKUP_CHECK,
+        ],
+        capture_output=True,
+    )
+    return json.loads(out.stdout)
 
 
 def backup_check() -> dict:
     """The site's database against its backup, after the pipeline's last sync."""
-
-    def summary(service: str, database: str) -> dict:
-        out = sh(
-            [
-                *COMPOSE,
-                "exec",
-                "-T",
-                service,
-                "psql",
-                "-U",
-                "eb",
-                "-d",
-                database,
-                "-At",
-                "-c",
-                BACKUP_CHECK,
-            ],
-            capture_output=True,
-        )
-        return json.loads(out.stdout)
-
     site, copy = summary("postgres", "railway"), summary("backup", "backup")
     return {"same": site == copy, "site": site, "backup": copy}
 
@@ -410,34 +415,94 @@ def switch(args) -> dict:
     announced = f"EB_NEXT_LEAGUE={LEAGUE}\nEB_NEXT_LEAGUE_START={iso(launch)}\n"
     first = launch - 2 * 3600 + CRON_MINUTE * 60
     reset_and_seed(["--league", "Mirage", "--drop", LEAGUE], first, announced)
+    seeded = summary()
+    farmed = {k: seeded[k] for k in ("farming_history", "farming_report")}
+    print(f"seeded Farming tables: {json.dumps(farmed)}")
     steps = []
     for h in range(-1, 5):
         at = launch + h * 3600 + CRON_MINUTE * 60
+        warmed_before = warm_lines()
         p = pipeline_pass(at, missing_empty=True)
-        time.sleep(16)  # the web trusts its data version for 15 s
+        warmed = wait_warmed(warmed_before) if p["ok"] else None
         status = httpx.get(f"{WEB}/api/status", timeout=10).json()
         names = [lg["name"] for lg in status["leagues"]]
         missed = httpx.get(f"{WEB}/api/missed/{names[0]}", timeout=30) if names else None
+        farming = {name: farming_check(name) for name in names}
+        now = summary()
         steps.append(
             {
                 "at": iso(at),
                 "ok": p["ok"],
                 "seconds": p["seconds"],
-                "pipeline": p["result"],
+                "pipeline": p["result"] if p["ok"] else p["out"],
                 "site_leagues": names,
                 "latest_hour": status["leagues"][0]["latest_hour"] if names else None,
                 "upcoming": (status.get("upcoming") or {}).get("name"),
                 "missed_status": missed.status_code if missed else None,
+                "warmed": warmed,
+                "farming": farming,
+                "farming_tables_kept": all(now[k] == farmed[k] for k in farmed),
             }
         )
         print(json.dumps(steps[-1]))
     upstream = httpx.get(f"{UPSTREAM}/_sim/stats", timeout=10).json()["counts"]
     backed_up = backup_check()
     print(f"backup matches the site: {backed_up['same']}")
-    out = {"label": "switch", "steps": steps, "upstream": upstream, "backup": backed_up}
+    passed = (
+        backed_up["same"]
+        and all(s["ok"] and s["farming_tables_kept"] for s in steps)
+        and all(f["status"] == 200 for s in steps for f in s["farming"].values())
+        and steps[-1]["site_leagues"] == [LEAGUE]
+    )
+    out = {
+        "label": "switch",
+        "passed": passed,
+        "seeded_farming": farmed,
+        "steps": steps,
+        "upstream": upstream,
+        "backup": backed_up,
+    }
+    (DATA / "perf").mkdir(parents=True, exist_ok=True)
     (DATA / "perf" / "railway-switch.json").write_text(json.dumps(out, indent=2))
     print(f"upstream requests: {upstream}")
+    print(f"switch passed: {passed}")
     NEXT_ENV.write_text("")
+    return out
+
+
+def warm_lines() -> int:
+    """How many times the web service's warmer has run (its log lines)."""
+    out = sh([*COMPOSE, "logs", "--no-color", "web"], capture_output=True)
+    return out.stdout.count("warmed ")
+
+
+def wait_warmed(before: int, seconds: int = 75) -> str | None:
+    """Wait for the warmer to pick up a pass's new data version (it checks every 30 s);
+    its log line, or None if it didn't warm (no new version: nothing loaded)."""
+    for _ in range(seconds):
+        out = sh([*COMPOSE, "logs", "--no-color", "web"], capture_output=True).stdout
+        if out.count("warmed ") > before:
+            line = [ln for ln in out.splitlines() if "warmed " in ln][-1]
+            return line[line.index("warmed ") :]
+        time.sleep(1)
+    return None
+
+
+def farming_check(league: str) -> dict:
+    """/api/farming/<league> as a visitor gets it, and how long it took (a warmed view
+    is served from the cache in milliseconds)."""
+    started = time.perf_counter()
+    r = httpx.get(f"{WEB}/api/farming/{league}", timeout=30)
+    out = {"status": r.status_code, "ms": round((time.perf_counter() - started) * 1000, 1)}
+    if r.status_code == 200:
+        body = r.json()
+        out |= {
+            "phase": body.get("phase"),
+            "mechanics": len(body.get("mechanics") or []),
+            "outlook": len(body.get("outlook") or []),
+            "items": len(body.get("items") or []),
+            "report": body.get("hours") is not None and body.get("impact") is not None,
+        }
     return out
 
 
