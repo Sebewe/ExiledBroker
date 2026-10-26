@@ -1,40 +1,6 @@
 {
   "components": {
     "schemas": {
-      "AdminOverview": {
-        "properties": {
-          "data_version": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Data Version"
-          },
-          "now": {
-            "format": "date-time",
-            "title": "Now",
-            "type": "string"
-          },
-          "pipeline": {
-            "items": {
-              "$ref": "#/components/schemas/PipelineLeague"
-            },
-            "title": "Pipeline",
-            "type": "array"
-          }
-        },
-        "required": [
-          "now",
-          "data_version",
-          "pipeline"
-        ],
-        "title": "AdminOverview",
-        "type": "object"
-      },
       "BacktestAssumptions": {
         "properties": {
           "bank_divines": {
@@ -1870,119 +1836,6 @@
         "title": "Mover",
         "type": "object"
       },
-      "PipelineLeague": {
-        "description": "One league's live updates (ingest_run). \"Day\" is the 24 hours before `now`.",
-        "properties": {
-          "bytes_day": {
-            "title": "Bytes Day",
-            "type": "integer"
-          },
-          "failures_day": {
-            "title": "Failures Day",
-            "type": "integer"
-          },
-          "hours_added_day": {
-            "title": "Hours Added Day",
-            "type": "integer"
-          },
-          "last_error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Error"
-          },
-          "last_failure": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Failure"
-          },
-          "last_run": {
-            "format": "date-time",
-            "title": "Last Run",
-            "type": "string"
-          },
-          "last_state": {
-            "title": "Last State",
-            "type": "string"
-          },
-          "last_success": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Success"
-          },
-          "latest_hour": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Latest Hour"
-          },
-          "league": {
-            "title": "League",
-            "type": "string"
-          },
-          "median_seconds_day": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Median Seconds Day"
-          },
-          "requests_day": {
-            "title": "Requests Day",
-            "type": "integer"
-          },
-          "runs_day": {
-            "title": "Runs Day",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "league",
-          "last_run",
-          "last_success",
-          "last_failure",
-          "last_state",
-          "last_error",
-          "latest_hour",
-          "runs_day",
-          "failures_day",
-          "median_seconds_day",
-          "requests_day",
-          "bytes_day",
-          "hours_added_day"
-        ],
-        "title": "PipelineLeague",
-        "type": "object"
-      },
       "PriceCheckIndex": {
         "description": "The search list and the movers, one per data version.",
         "properties": {
@@ -2786,56 +2639,6 @@
   },
   "openapi": "3.1.0",
   "paths": {
-    "/api/admin/overview": {
-      "get": {
-        "description": "The pipeline's health per league. Read from the database on every request: only\nthe admin calls it, and it's a few small aggregates.",
-        "operationId": "overview_api_admin_overview_get",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AdminOverview"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Overview",
-        "tags": [
-          "admin"
-        ]
-      }
-    },
     "/api/backtest": {
       "get": {
         "description": "Would following the site's tools have paid? The backtest's report (one item; empty\nuntil `eb backtest run` has been run on the research database and seeded).",
@@ -2915,6 +2718,45 @@
         "summary": "Health",
         "tags": [
           "meta"
+        ]
+      }
+    },
+    "/api/hit": {
+      "post": {
+        "description": "Count a page view or a feature's use. No cookies, nothing stored in the browser;\nDo-Not-Track and Global Privacy Control are honoured. Always 204.",
+        "operationId": "hit_api_hit_post",
+        "parameters": [
+          {
+            "description": "A page (`page:/launch`) or feature.",
+            "in": "query",
+            "name": "e",
+            "required": true,
+            "schema": {
+              "description": "A page (`page:/launch`) or feature.",
+              "maxLength": 40,
+              "title": "E",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Hit",
+        "tags": [
+          "usage"
         ]
       }
     },
@@ -3171,6 +3013,58 @@
         "summary": "Price Check Item",
         "tags": [
           "price check"
+        ]
+      }
+    },
+    "/api/stats": {
+      "get": {
+        "description": "Visitors, returning visitors and each page's and feature's use, for the site's\nowner (`Authorization: Bearer <EB_ADMIN_TOKEN>`; without the setting, 404).",
+        "operationId": "stats_api_stats_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Stats Api Stats Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stats",
+        "tags": [
+          "usage"
         ]
       }
     },

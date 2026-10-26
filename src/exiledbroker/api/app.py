@@ -17,8 +17,11 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse
 
 from exiledbroker import __version__
+from exiledbroker.api import usage
 from exiledbroker.api.routes import admin, live, market, price_check
+from exiledbroker.api.routes import usage as usage_routes
 from exiledbroker.config import get_settings
+from exiledbroker.storage import db
 
 ORIGIN_HEADER = b"x-eb-origin"
 
@@ -139,10 +142,23 @@ def create_app(web_dist: Path | None = None) -> FastAPI:
             from exiledbroker.api import warm
 
             threading.Thread(target=warm.run_forever, args=(stop,), daemon=True).start()
+        flusher = None
+        if counter is not None and counter.connect is not None:
+            flusher = threading.Thread(target=counter.run_forever, args=(stop,), daemon=True)
+            flusher.start()
         yield
         stop.set()
+        if flusher is not None:
+            flusher.join(timeout=10)  # the last counts are written on the way out
 
     app = FastAPI(title="ExiledBroker", version=__version__, lifespan=lifespan)
+    # Usage counts (api/usage.py): written to the site's Postgres; with the local DuckDB
+    # (opened read-only) they're kept in memory.
+    counter = None
+    if settings.usage:
+        connect = (lambda: db.site_session(settings)) if settings.database_url else None
+        counter = usage.Usage(connect, settings.usage_period)
+    app.state.usage = counter
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
@@ -160,7 +176,7 @@ def create_app(web_dist: Path | None = None) -> FastAPI:
     def health() -> dict[str, str]:
         return {"status": "ok", "version": __version__, "game": settings.default_game}
 
-    for routes in (live, market, price_check, admin):
+    for routes in (live, market, price_check, usage_routes, admin):
         api.include_router(routes.router)
     app.include_router(api)
 

@@ -1,59 +1,61 @@
-import createClient from "openapi-fetch";
-import type { components, paths } from "./schema";
+import createClient from 'openapi-fetch'
+import type { components, paths } from './schema'
 
 // Types generated from the API (`npm run gen:api`), so a renamed field fails the build.
-export type Schemas = components["schemas"];
-export type Status = Schemas["Status"];
-export type LiveLeague = Schemas["LiveLeague"];
-export type Upcoming = Schemas["Upcoming"];
-export type MissedWindow = Schemas["MissedWindow"];
-export type Mover = Schemas["Mover"];
-export type Volatile = Schemas["Volatile"];
-export type MissedLoop = Schemas["MissedLoop"];
-export type MissedCard = Schemas["MissedCard"];
-export type MissedFlip = Schemas["MissedFlip"];
-export type LaunchWindow = Schemas["LaunchWindow"];
-export type LaunchPick = Schemas["LaunchPick"];
-export type BacktestReport = Schemas["BacktestReport"];
-export type BacktestHourly = Schemas["BacktestHourly"];
-export type BacktestLaunch = Schemas["BacktestLaunch"];
-export type BacktestLimit = Schemas["BacktestLimit"];
-export type BacktestFlip = Schemas["BacktestFlip"];
+export type Schemas = components['schemas']
+export type Status = Schemas['Status']
+export type LiveLeague = Schemas['LiveLeague']
+export type Upcoming = Schemas['Upcoming']
+export type MissedWindow = Schemas['MissedWindow']
+export type Mover = Schemas['Mover']
+export type Volatile = Schemas['Volatile']
+export type MissedLoop = Schemas['MissedLoop']
+export type MissedCard = Schemas['MissedCard']
+export type MissedFlip = Schemas['MissedFlip']
+export type LaunchWindow = Schemas['LaunchWindow']
+export type LaunchPick = Schemas['LaunchPick']
+export type BacktestReport = Schemas['BacktestReport']
+export type BacktestHourly = Schemas['BacktestHourly']
+export type BacktestLaunch = Schemas['BacktestLaunch']
+export type BacktestLimit = Schemas['BacktestLimit']
+export type BacktestFlip = Schemas['BacktestFlip']
 // Price check (docs/price-check.md)
-export type PriceCheckIndex = Schemas["PriceCheckIndex"];
-export type PriceCheckListItem = Schemas["PriceCheckListItem"];
-export type PriceCheckItem = Schemas["PriceCheckItem"];
-export type Outlook = Schemas["PriceOutlook"];
-export type Horizon = Schemas["PriceHorizon"];
+export type PriceCheckIndex = Schemas['PriceCheckIndex']
+export type PriceCheckListItem = Schemas['PriceCheckListItem']
+export type PriceCheckItem = Schemas['PriceCheckItem']
+export type Outlook = Schemas['PriceOutlook']
+export type Horizon = Schemas['PriceHorizon']
 /** "sell": past leagues say it falls from here; "hold": it rises; "none": no clear signal. */
-export type Verdict = Horizon["verdict"];
+export type Verdict = Horizon['verdict']
 /** [hour (ISO, UTC), price in Chaos, price in Divines at that hour's rate]. */
-export type SeriesPoint = PriceCheckItem["series"][number];
-export type StackMarket = Schemas["StackMarket"];
-export type LaunchPrices = Schemas["LaunchPrices"];
+export type SeriesPoint = PriceCheckItem['series'][number]
+export type StackMarket = Schemas['StackMarket']
+export type LaunchPrices = Schemas['LaunchPrices']
 // The best-hour and stack inputs (`farming_report`, read through services/sell_helper.py).
-export type SellHours = Schemas["SellHours"];
-export type DayHour = Schemas["DayHour"];
-export type StackImpact = Schemas["StackImpact"];
-export type HourEffect = Schemas["HourEffect"];
-export type MechanicHours = Schemas["MechanicHours"];
+export type SellHours = Schemas['SellHours']
+export type DayHour = Schemas['DayHour']
+export type StackImpact = Schemas['StackImpact']
+export type HourEffect = Schemas['HourEffect']
+export type MechanicHours = Schemas['MechanicHours']
 // The admin page (docs/admin.md)
-export type AdminOverview = Schemas["AdminOverview"];
-export type PipelineLeague = Schemas["PipelineLeague"];
+export type AdminOverview = Schemas['AdminOverview']
+export type PipelineLeague = Schemas['PipelineLeague']
+export type UsageStats = Schemas['UsageStats']
+export type UsageEvent = Schemas['UsageEvent']
 /** 24 values by UTC hour; null for an hour with no data. */
-export type HourProfile = SellHours["price"];
+export type HourProfile = SellHours['price']
 
 // Same origin: the API serves this app in production, and Vite proxies /api in development.
 export const api = createClient<paths>({
-  baseUrl: globalThis.location?.origin ?? "",
+  baseUrl: globalThis.location?.origin ?? '',
   fetch: (request) => globalThis.fetch(request), // looked up per call (tests replace it)
-});
+})
 
 export class ApiError extends Error {
-  status: number;
+  status: number
   constructor(status: number, detail: string) {
-    super(detail);
-    this.status = status;
+    super(detail)
+    this.status = status
   }
 }
 
@@ -61,17 +63,14 @@ export class ApiError extends Error {
 export async function unwrap<T>(
   call: Promise<{ data?: T; error?: unknown; response: Response }>,
 ): Promise<T> {
-  const { data, error, response } = await call;
+  const { data, error, response } = await call
   if (error !== undefined || data === undefined) {
     const detail =
-      typeof error === "object" && error && "detail" in error
-        ? String(error.detail)
-        : response.statusText;
-    throw new ApiError(response.status, detail);
+      typeof error === 'object' && error && 'detail' in error ? String(error.detail) : response.statusText
+    throw new ApiError(response.status, detail)
   }
-  return data;
+  return data
 }
 
 /** 503: the site's database has no data loaded yet. */
-export const isNoData = (e: unknown) =>
-  e instanceof ApiError && e.status === 503;
+export const isNoData = (e: unknown) => e instanceof ApiError && e.status === 503

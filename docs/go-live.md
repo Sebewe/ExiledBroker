@@ -83,6 +83,7 @@ What tens of thousands of visitors at once would do, and the fixes: [hosting.md]
 - [ ] **The route fails open** (Workers Routes, the route's request limit failure mode), so a spent quota sends visitors to Railway instead of an error.
 - [ ] **Check the cache works:** `curl -sI "https://exiledbroker.trade/api/missed/<league>?v=<data_version>"` twice: the second shows `cf-cache-status: HIT`; an asset shows `HIT` too; `/api/health` shows `no-store` and is never a hit.
 - [ ] **Turn on Cloudflare Web Analytics** for the domain (Analytics & Logs, Web Analytics, automatic setup: free and cookie-free, so no consent banner). The page's Content-Security-Policy already allows its beacon (`static.cloudflareinsights.com`, `cloudflareinsights.com`). It's how we'll see a spike in visitors, not only in requests.
+- [ ] **Our own usage counts** ([usage.md](usage.md)): set `EB_ADMIN_TOKEN` (a long random string, `openssl rand -hex 32`) on the web service, make sure the deployed Worker passes `x-eb-client-ip` (the API hardening's), then check `curl -s -H "Authorization: Bearer $EB_ADMIN_TOKEN" https://exiledbroker.trade/api/stats` shows `"stored": true` and counts a page you just opened (after the 5-minute flush; the stats call flushes too).
 - [ ] If a spike is coming or happening (Workers analytics nearing 100k a day): Workers Paid, $5 a month for 10 million requests.
 
 ### 6. Before flipping DNS

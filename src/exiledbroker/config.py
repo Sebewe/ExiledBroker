@@ -69,6 +69,11 @@ class Settings(BaseSettings):
     # page's countdown to its first published hour. Unset: no countdown.
     next_league: str | None = None
     next_league_start: datetime | None = None
+    # Cookie-free usage counts (api/usage.py, docs/usage.md): on, and how long a visitor's
+    # salt lives (the window "returning visitors" are counted in). The stats endpoint
+    # (/api/stats) answers only with `admin_token`; unset, it doesn't exist.
+    usage: bool = True
+    usage_period: Literal["day", "week", "month"] = "month"
     # Origins allowed to call the API from a browser (the future public frontend).
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:5173"]
     # The admin page's token (/admin, /api/admin/*; docs/admin.md): a long random string,
