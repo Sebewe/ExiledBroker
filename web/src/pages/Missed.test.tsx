@@ -358,9 +358,10 @@ describe('Market recap', () => {
     // Not priced there: plain text, not a link to a dead end.
     expect(screen.getByText('Essence of Horror')).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Essence of Horror' })).not.toBeInTheDocument()
-    // Each section says what it is in one line; how it's picked is folded away.
+    // Each section says what it is in one line; how it's picked is a link into Research.
     expect(screen.getByText('A full set of these cards cost less than what it turns into.')).toBeInTheDocument()
-    expect(screen.getAllByText('How these are picked')[0]!.closest('details')).not.toHaveAttribute('open')
+    const how = screen.getAllByRole('link', { name: 'How these are picked →' }).map((a) => a.getAttribute('href'))
+    expect(how).toContain('/research/method#cards')
   })
 
   it("plays down a profit whose orders never went through", async () => {

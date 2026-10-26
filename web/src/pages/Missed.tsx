@@ -313,14 +313,14 @@ function Ticker({ items, money, href }: { items: Mover[]; money: Money; href: It
   )
 }
 
-/** A section: its title, one plain line on what it is (`lead`), the results, and how
- *  they're picked (`note`) folded away under them for whoever wants the method. */
+/** A section: its title, one plain line on what it is (`lead`), the results, and a link to
+ *  how they're picked (`method`: its anchor on Research's How the tools work). */
 function Block({
   id,
   title,
   icon: Icon,
   lead,
-  note,
+  method,
   children,
   more,
 }: {
@@ -328,7 +328,7 @@ function Block({
   title: string
   icon: typeof Waves
   lead?: string
-  note?: string
+  method?: string
   children: ReactNode
   more?: ReactNode
 }) {
@@ -343,11 +343,10 @@ function Block({
       </div>
       {lead && <p className="-mt-1 max-w-3xl text-sm text-muted">{lead}</p>}
       {children}
-      {note && (
-        <details className="max-w-3xl text-xs text-muted">
-          <summary className="w-fit cursor-pointer text-faint hover:text-accent">How these are picked</summary>
-          <p className="mt-1.5 leading-relaxed">{note}</p>
-        </details>
+      {method && (
+        <Link to={`/research/method#${method}`} className="w-fit text-xs text-faint hover:text-info">
+          How these are picked →
+        </Link>
       )}
     </section>
   )
@@ -683,7 +682,7 @@ function Loops({ w, money, rate, href }: { w: MissedWindow; money: Money; rate: 
       title="Loops that paid"
       icon={Repeat}
       lead="Buy an item with one currency and sell it for the other: these round trips ended with more Chaos than they started with."
-      note="Chaos → item → Divine → Chaos (or the other way round), priced at the hour's worst prices, in markets where enough traded to act on. Likeliest to go through first. The orders that did best in the backtest (a bid halfway up the latest hour's range, an ask three quarters up the other currency's) are behind Show rates."
+      method="loops"
       more={<ShowAll all={all} total={w.loops.length} onToggle={() => setAll(!all)} />}
     >
       {w.loops.length === 0 ? (
@@ -748,7 +747,7 @@ function Cards({ w, money, href }: { w: MissedWindow; money: Money; href: ItemHr
       title="Card turn-ins that paid"
       icon={Layers}
       lead="A full set of these cards cost less than what it turns into."
-      note="A full set cost less than its reward at the hour's average prices, with at least a full set traded. Likeliest to go through first. The orders that did best in the backtest (a bid at the card's lowest price from the latest hour, an ask at the reward's average) are behind Show rates."
+      method="cards"
       more={<ShowAll all={all} total={w.cards.length} onToggle={() => setAll(!all)} />}
     >
       {w.cards.length === 0 ? (
@@ -902,7 +901,7 @@ function Flips({ flips, money, href }: { flips: MissedFlip[]; money: Money; href
       title="Volatile flips"
       icon={Activity}
       lead="Items whose price swung widely in the last hour: bid low, list high, and wait."
-      note="Liquid items whose latest hour traded across a wide range in the Chaos market (at least 10k Chaos traded, a range of 10–50%: wider is usually one odd trade). Likeliest to go through first. The orders, behind Show rates, are the ones the backtest tested, in whole Chaos for whole numbers of items as the exchange takes them: bid low in the hour's range, list high, cut the ask a little each hour until it sells. A bid that doesn't fill costs nothing: cancel it."
+      method="flips"
       more={<ShowAll all={all} total={flips.length} onToggle={() => setAll(!all)} />}
     >
       {flips.length === 0 ? (
