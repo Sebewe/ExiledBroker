@@ -119,3 +119,108 @@
   }
 }
 
+
+/* A Research note's body (pages/research/Note.tsx): Markdown rendered at build time from
+   docs/findings.md, styled here since it isn't JSX. Tokens only, so both themes work. */
+.note-prose {
+  color: var(--color-muted);
+  font-size: 0.975rem;
+  line-height: 1.7;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+.note-prose strong {
+  color: var(--color-text);
+  font-weight: 650;
+}
+.note-prose ul,
+.note-prose ol {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding-left: 1.25rem;
+}
+.note-prose ul {
+  list-style: disc;
+}
+.note-prose ol {
+  list-style: decimal;
+}
+.note-prose li::marker {
+  color: var(--color-info);
+}
+.note-prose h3,
+.note-prose h4 {
+  color: var(--color-text);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.1rem;
+  margin-top: 0.5rem;
+}
+.note-prose a,
+.note-inline a {
+  color: var(--color-info);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--color-info) 40%, transparent);
+  text-underline-offset: 2px;
+}
+.note-prose a:hover,
+.note-inline a:hover {
+  text-decoration-color: var(--color-info);
+}
+.note-prose code,
+.note-inline code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: var(--color-surface-2);
+  border-radius: 0.3rem;
+  padding: 0.05rem 0.3rem;
+  overflow-wrap: anywhere;
+}
+.note-prose blockquote {
+  border-left: 2px solid var(--color-border);
+  padding-left: 0.9rem;
+}
+/* Wide tables scroll in their own box, never the page. */
+.note-table {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+.note-table table {
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+.note-table th,
+.note-table td {
+  padding: 0.45rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--color-border);
+}
+.note-table th {
+  color: var(--color-faint);
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--color-surface-2);
+}
+.note-table td {
+  color: var(--color-text);
+}
+.note-table td:first-child {
+  color: var(--color-muted);
+}
+.note-table tr:last-child td {
+  border-bottom: 0;
+}
+.note-table [data-align='right'] {
+  text-align: right;
+}
+.note-table [data-align='center'] {
+  text-align: center;
+}

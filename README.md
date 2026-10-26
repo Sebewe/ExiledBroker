@@ -31,7 +31,7 @@ The next league launches in about a month. Before then:
 After that:
 - **Phase 2 again on the next league** once its fortnight is complete (~2026-11-27): the first out-of-sample check of [finding 10](docs/findings.md).
 - **Cards with random rewards on the Market recap?** Researched ([finding 12](docs/findings.md#12-cards-with-random-rewards-two-delirium-orb-cards-beat-their-floor-at-typical-prices-nothing-survives-harsh-prices-in-the-launch-fortnight)): two cards beat their worst roll at typical prices; the user decides whether to show them.
-- **Site split** into Trade and Research sections: the Backtest has moved to Research (`/research/backtest`); the rest is planned.
+- **Site split** into Trade and Research sections: Research is built (journal, How the tools work, Backtest, Multi-layered conversions, About); next are the Trade pages' simplification and the History graphs (plan in `docs/roadmap.md`).
 
 ## The site
 
@@ -39,9 +39,10 @@ After that:
 |---|---|---|
 | **Market recap** (landing) | What traded in the last 1–3 published hours: the latest hour's volatile flips, then every loop and card turn-in that paid (liquid markets only), likeliest to go through first with how often its orders went through in the last 3 days, and behind Show rates the orders the backtest's best option would place this hour and its 24-hour price range, what moved, and options to look into | `/api/status`, `/api/missed/{league}` |
 | **Price check** (replaces Farming; `/farming` redirects to it) | One item at a time: its price this league in Chaos and Divines, sell now / hold / no clear signal for 24 hours and 3 days in the launch fortnight (from past leagues' paths, `eb price-check build`), the biggest moves after it, the stack seller (a stack as hours of the market's trading) and the best hour to sell ([price-check.md](docs/price-check.md)) | `/api/price-check/{league}`, `/api/price-check/{league}/{item_id}` |
+| **Research** (`/research`) | The journal: [findings](docs/findings.md) rendered as notes, newest first (`npm run gen:notes` after editing them; no server cost), and How the tools work, the method the trading pages link to | |
 | **Backtest** (Research) | Would following the site have paid? The site's tools replayed an hour late at fair and harsh prices (`eb backtest run`) | `/api/backtest` |
 | **Launch market** | What to buy on day 1, days 2–4 and days 5–10 with a couple of Divines, ranked from the last five leagues | `/api/launch/picks` |
-| **About** | Sources and credits | |
+| **Multi-layered conversions**, **About** (Research) | Side markets measured; sources, credits and privacy | |
 | **Admin** (`/admin`, not linked; the owner's) | The site's usage counts and the pipeline's health per league ([admin.md](docs/admin.md)) | `/api/stats`, `/api/admin/overview`, behind `EB_ADMIN_TOKEN` |
 
 "Now" is the latest published exchange hour, about an hour behind real time. Every page handles a league with no data yet, the first hours, and a stopped feed. Interactive API docs are at `/docs` when the API is running.
