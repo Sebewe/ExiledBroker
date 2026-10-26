@@ -1,7 +1,7 @@
-import sample from '../../../tests/fixtures/preview_sample.json'
+import sample from './preview_sample.json'
 import type { PreviewManifest, Status } from '../api/client'
 
-// The sample pre-launch preview snapshot (tests/fixtures/preview_sample.json, made by
+// The sample pre-launch preview snapshot (preview_sample.json here, made by tests/fixtures/
 // make_preview_sample.py from the Mirage replay): every key kind, days 1–3 (default 2),
 // a few Price check items. For the preview's page tests: serve `previewRoutes()` with the
 // stubbed fetch, and `previewStatus()` as /api/status.

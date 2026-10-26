@@ -1,7 +1,7 @@
 """The pre-launch preview's contracts (docs/preview.md): the snapshot table and its keys,
 the one bounded route that serves it, /api/status's `preview`, and the announced next
 league with only a date (and no name) known. The documents come from the sample
-snapshot (tests/fixtures/preview_sample.json, made by make_preview_sample.py), which
+snapshot (web/src/test/preview_sample.json, made by make_preview_sample.py), which
 the frontend's tests read too."""
 
 import gzip
@@ -23,7 +23,7 @@ from test_api import update
 from test_currency_exchange import FakeExchange
 from test_live_pipeline import LAUNCH, PAGES, settings  # noqa: F401
 
-SAMPLE = Path(__file__).parent / "fixtures" / "preview_sample.json"
+SAMPLE = Path(__file__).parents[1] / "web" / "src" / "test" / "preview_sample.json"
 DOCS = json.loads(SAMPLE.read_text())
 
 

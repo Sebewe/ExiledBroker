@@ -1,4 +1,4 @@
-"""Write tests/fixtures/preview_sample.json: a small pre-launch preview snapshot (every
+"""Write web/src/test/preview_sample.json: a small pre-launch preview snapshot (every
 key kind of preview/snapshot.py) for the API's and the frontend's tests, and for the
 preview's streams to build against before the real snapshot exists.
 
@@ -44,7 +44,7 @@ LEAGUE = "Mirage"
 DAYS = {1: 24, 2: 28, 3: 30}
 DEFAULT_DAY = 2
 NEXT_HOURS = 24
-OUT = HERE / "preview_sample.json"
+OUT = HERE.parents[1] / "web" / "src" / "test" / "preview_sample.json"  # the frontend reads it too
 
 
 def load(s: Settings, server: FakeExchange, hours_in: int) -> None:

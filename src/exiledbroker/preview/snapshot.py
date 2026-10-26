@@ -135,7 +135,7 @@ def read(con, key: str) -> Any:
 
 def load_file(con, path: Path) -> int:
     """Write a snapshot saved as one JSON object of documents by key (the sample in
-    tests/fixtures/preview_sample.json), replacing the table's contents."""
+    web/src/test/preview_sample.json), replacing the table's contents."""
     docs = json.loads(Path(path).read_text())
     clear(con)
     return put(con, docs)

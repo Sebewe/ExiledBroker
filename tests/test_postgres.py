@@ -44,7 +44,7 @@ from test_currency_exchange import FakeExchange, client_for
 from test_live_pipeline import LAUNCH, PAGES, store_reference_data
 
 PG_URL = os.environ.get("EB_TEST_POSTGRES_URL")
-PREVIEW_SAMPLE = Path(__file__).parent / "fixtures" / "preview_sample.json"
+PREVIEW_SAMPLE = Path(__file__).parents[1] / "web" / "src" / "test" / "preview_sample.json"
 pytestmark = pytest.mark.skipif(not PG_URL, reason="EB_TEST_POSTGRES_URL is not set")
 LEAGUE = "Mirage"
 ITEM = "currency:orb-of-alchemy"

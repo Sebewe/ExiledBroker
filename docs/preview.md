@@ -28,9 +28,9 @@ checked against its model when written (`snapshot.put`), so the route never has 
 (`launch + day × 24 h`). The Backtest page stays live. `version` must change with
 every build: browsers and Cloudflare cache documents under it.
 
-A sample snapshot, `tests/fixtures/preview_sample.json` (days 1–3 of the Mirage
-replay, a few items), is what the tests use, backend and frontend
-(`web/src/test/preview.ts`). Regenerate it with
+A sample snapshot, `web/src/test/preview_sample.json` (days 1–3 of the Mirage replay, a
+few items; in web/ because the image's frontend build sees only web/), is what the
+tests use, backend and frontend (`web/src/test/preview.ts`). Regenerate it with
 `.venv/bin/python tests/fixtures/make_preview_sample.py` (no network).
 
 ## Serving
