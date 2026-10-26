@@ -8,11 +8,11 @@
 // that fails or takes longer than `timeoutMs`. Everything else passes through as is.
 //
 // GET and HEAD requests go through Cloudflare's cache (`cacheEverything`), which keeps
-// what the origin's Cache-Control allows: the tables for 30 s and the status for 60 s
-// (each table's URL carries the data version, `?v=`, so an hour never gets an older
-// copy), hashed assets for a year, index.html and every error never (the app says
-// `no-cache` / `no-store`). In a traffic spike each Cloudflare location then asks
-// Railway for a URL at most about twice a minute, however many visitors it serves.
+// what the origin's Cache-Control allows: a table asked for with the current data
+// version (`?v=`, which names the hour and the deploy) for 6 hours, any other table for
+// 30 s, the status for 60 s, hashed assets for a year, index.html and every error never
+// (the app says `no-cache` / `no-store`). In a traffic spike each Cloudflare location
+// then asks Railway for a table about once an hour, however many visitors it serves.
 
 //
 // Before any of that, it turns away what the site never asks for, without a request to
