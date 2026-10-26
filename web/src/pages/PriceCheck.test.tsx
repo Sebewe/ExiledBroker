@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SellHours } from '../api/client'
 import type { Horizon, PriceCheckIndex, PriceCheckItem, SeriesPoint } from '../api/client'
 import type { ChartTokens } from '../lib/chartOptions'
+import { PREVIEW_DOCS, previewRoutes, previewStatus } from '../test/preview'
 import PriceCheck from './PriceCheck'
 
 // ECharts needs a canvas, which jsdom hasn't got: stand in for the chart, building its
@@ -382,5 +383,61 @@ describe('Price check', () => {
     renderPage()
     expect(await screen.findByText(/No item has a clear call right now/)).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: 'Find an item' })).toBeInTheDocument()
+  })
+
+  it('shows no reveal outside the preview', async () => {
+    serve(live())
+    renderPage(`/price-check?item=${SPLINTER}`)
+    expect(await screen.findByRole('region', { name: 'Verdict' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Show what happened next' })).toBeNull()
+  })
+})
+
+describe('Price check in the preview', () => {
+  const EXALT = 'currency:exalted-orb'
+  const day2 = PREVIEW_DOCS[`d2/price-check/${EXALT}`] as PriceCheckItem
+  const cutoff = Date.parse(day2.latest_hour!)
+  // Its next days, made up: 0.005 Divines up to the cutoff, 0.004 after (a 20% fall).
+  const next = {
+    item_id: EXALT,
+    name: 'Exalted Orb',
+    unit: 'divine',
+    series: Array.from({ length: 24 * 5 }, (_, i) => {
+      const at = cutoff - 24 * HOUR + i * HOUR
+      const d = at <= cutoff ? 0.005 : 0.004
+      return [iso(at), d * 100, d]
+    }),
+  }
+  const routes = (over: Record<string, { body: unknown }> = {}) => ({ ...previewRoutes(), '/api/status': { body: previewStatus() }, ...over })
+
+  it('hides what happened next until asked, then fetches it', async () => {
+    const fetch = serve(routes())
+    renderPage(`/price-check?item=${EXALT}`)
+    const button = await screen.findByRole('button', { name: 'Show what happened next' })
+    expect(screen.getByText(/as it stood at the end of day 2/)).toBeInTheDocument()
+    const paths = () => fetch.mock.calls.map(([input]) => new URL(typeof input === 'string' ? input : input.url, 'http://test').pathname)
+    expect(paths()).not.toContain(`/api/preview/next/price-check/${EXALT}`)
+    fireEvent.click(button)
+    // The sample ends 2 hours after day 2: neither horizon is known yet.
+    const panel = within(screen.getByRole('region', { name: 'What happened next' }))
+    expect(await panel.findAllByText("The preview's data ends before then.")).toHaveLength(2)
+    expect(paths()).toContain(`/api/preview/next/price-check/${EXALT}`)
+    expect(panel.getByRole('img')).toHaveAttribute('data-series', 'Day 2:27,What came next:3')
+    fireEvent.click(panel.getByRole('button', { name: 'Hide what happened' }))
+    expect(screen.queryByRole('group', { name: '1 day later' })).toBeNull()
+  })
+
+  it("judges the day's calls against what the price did", async () => {
+    const sell = { verdict: 'sell', typical: -0.05, low: -0.1, high: 0.01, leagues: 3, basis: 'item', state: 'judged' } as Horizon
+    const called = { ...day2, outlook: { h24: sell, d3: { ...sell, verdict: 'hold' }, unit: 'divine' } }
+    serve(routes({ [`/api/preview/d2/price-check/${EXALT}`]: { body: called }, [`/api/preview/next/price-check/${EXALT}`]: { body: next } }))
+    renderPage(`/price-check?item=${EXALT}`)
+    fireEvent.click(await screen.findByRole('button', { name: 'Show what happened next' }))
+    const day = within(await screen.findByRole('group', { name: '1 day later' }))
+    expect(day.getByText('−20%')).toBeInTheDocument()
+    expect(day.getByText('Call: Sell')).toBeInTheDocument()
+    expect(day.getByText('It fell: selling then paid. The call held.')).toBeInTheDocument()
+    const days3 = within(screen.getByRole('group', { name: '3 days later' }))
+    expect(days3.getByText('It fell: selling then would have paid. The call missed.')).toBeInTheDocument()
   })
 })

@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { MissedLoop, MissedWindow } from '../api/client'
 import Missed from './Missed'
+import { previewRoutes, previewStatus } from '../test/preview'
 
 // The landing page against a fake API: no data, a league waiting for its first trades,
 // a stale feed, and a normal recap.
@@ -388,5 +389,36 @@ describe('Market recap', () => {
     serve({ '/api/status': status('2026-10-22T08:00:00Z'), '/api/missed/Allflame': { body: [{ ...w, falling: [divine] }] } })
     renderPage()
     expect(await screen.findByText('200.0c → 196.0c')).toBeInTheDocument()
+  })
+
+  it('shows no reveal outside the preview', async () => {
+    serve({ '/api/status': status('2026-10-22T08:00:00Z'), '/api/missed/Allflame': { body: [recap(1, 1)] } })
+    renderPage()
+    expect(await screen.findByText('Loops that paid')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Show what happened next' })).toBeNull()
+  })
+})
+
+describe('Market recap in the preview', () => {
+  const routes = () => ({ ...previewRoutes(), '/api/status': { body: previewStatus() } })
+
+  it("hides whether the day's trades kept paying until asked", async () => {
+    const fetch = vi.fn()
+    serve(routes())
+    fetch.mockImplementation(globalThis.fetch)
+    vi.stubGlobal('fetch', fetch)
+    renderPage()
+    const button = await screen.findByRole('button', { name: 'Show what happened next' })
+    const paths = () => fetch.mock.calls.map(([input]) => new URL(typeof input === 'string' ? input : input.url, 'http://test').pathname)
+    expect(paths()).not.toContain('/api/preview/d2/recap-next')
+    // The preview's strip says when the next league launches, so the page doesn't.
+    expect(screen.queryByText(/The next league launches/)).toBeNull()
+    expect(screen.queryByRole('group', { name: 'What happened next' })).toBeNull()
+    fireEvent.click(button)
+    // The sample's day 2 recap has one card turn-in, which paid both hours known after.
+    const card = within(await screen.findByRole('group', { name: 'What happened next' }))
+    expect(card.getByText(/^Next 2 hours: paid in/)).toHaveTextContent('Next 2 hours: paid in 2 of 2 traded.')
+    expect(card.getByText(/^Next hour:/)).toHaveTextContent('Next hour: paid · A day later: not known')
+    expect(screen.getByText(/^Of the 1 trade in this recap/)).toHaveTextContent('Of the 1 trade in this recap, 1 paid the very next hour. Each card shows its next 2 hours.')
   })
 })

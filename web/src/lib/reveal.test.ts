@@ -1,0 +1,108 @@
+import { describe, expect, it } from 'vitest'
+import type { PreviewItemNext, PreviewTradeNext } from '../api/client'
+import type { ChartTokens } from './chartOptions'
+import { recapTally, tradeKey, tradesByKey } from './reveal'
+import { outcome, revealChartOption, typicalAt } from './revealItem'
+
+const HOUR = 3_600_000
+const START = Date.parse('2026-03-07T00:00:00Z')
+const iso = (ms: number) => new Date(ms).toISOString()
+
+/** Hourly Divines from launch: `at(i)` for hour i, Chaos at 100× that. */
+function item(hours: number, at: (i: number) => number | null, unit: 'divine' | 'chaos' = 'divine'): PreviewItemNext {
+  return {
+    item_id: 'currency:x',
+    name: 'X',
+    unit,
+    series: Array.from({ length: hours }, (_, i) => {
+      const d = at(i)
+      return [iso(START + i * HOUR), d == null ? null : d * 100, d] as [string, number | null, number | null]
+    }),
+  }
+}
+const cutoffAt = (i: number) => iso(START + i * HOUR)
+
+describe('typicalAt', () => {
+  it('is the median of the 6 hours up to the point, skipping hours without a price', () => {
+    const next = item(20, (i) => (i === 9 ? 50 : i === 8 ? null : 1 + i / 100))
+    // Hours 5..10: 1.05, 1.06, 1.07, (none), 50, 1.10 → median of five is 1.07.
+    expect(typicalAt(next, START + 10 * HOUR)).toBeCloseTo(1.07)
+    expect(typicalAt(next, START - HOUR)).toBeNull()
+  })
+
+  it('reads Chaos for an item priced in Chaos', () => {
+    const next = item(10, () => 2, 'chaos')
+    expect(typicalAt(next, START + 9 * HOUR)).toBe(200)
+  })
+})
+
+describe('outcome', () => {
+  // Flat at 1 for the first 3 days, then 0.8.
+  const falls = item(24 * 8, (i) => (i <= 48 ? 1 : 0.8))
+
+  it('judges a Sell call held when the price fell, a Hold call missed', () => {
+    const sell = outcome(falls, cutoffAt(48), 72, 'sell')
+    expect(sell).toMatchObject({ known: true, from: 1, to: 0.8, held: true })
+    expect(sell.change).toBeCloseTo(-0.2)
+    expect(outcome(falls, cutoffAt(48), 72, 'hold').held).toBe(false)
+  })
+
+  it('has no verdict to judge without a call', () => {
+    expect(outcome(falls, cutoffAt(48), 72, 'none')).toMatchObject({ held: null, known: true })
+  })
+
+  it('a Hold that stayed flat held', () => {
+    expect(outcome(falls, cutoffAt(10), 24, 'hold')).toMatchObject({ change: 0, held: true })
+  })
+
+  it('is unknown past the snapshot end', () => {
+    expect(outcome(falls, cutoffAt(24 * 7), 72, 'sell')).toMatchObject({ known: false, to: null, change: null, held: null })
+  })
+
+  it('has no change without a price at the start', () => {
+    const late = item(24 * 5, (i) => (i < 30 ? null : 1))
+    expect(outcome(late, cutoffAt(20), 24, 'sell')).toMatchObject({ known: true, from: null, change: null, held: null })
+  })
+})
+
+describe('revealChartOption', () => {
+  const t: ChartTokens = { text: '', muted: '#aaaaaa', faint: '', border: '', surface: '', surface2: '', accent: '#e3ac72', info: '#93b8f5' }
+  it('splits the line at the cutoff, both halves holding its hour', () => {
+    const next = item(10, () => 1)
+    const option = revealChartOption(t, next, cutoffAt(4), 'Day 1') as { series: { name: string; data: unknown[] }[] }
+    expect(option.series.map((s) => [s.name, s.data.length])).toEqual([
+      ['Day 1', 5],
+      ['What came next', 6],
+    ])
+  })
+})
+
+describe('recap trades', () => {
+  const trade = (x: Partial<PreviewTradeNext>): PreviewTradeNext => ({
+    kind: 'card',
+    item_id: 'currency:a',
+    direction: null,
+    paid: [true],
+    paid_hours: 1,
+    traded_hours: 1,
+    next_hour_paid: true,
+    still_paid: null,
+    ...x,
+  })
+
+  it('keys loops by direction, and others without it', () => {
+    const byKey = tradesByKey({
+      latest_hour: '2026-03-07T23:00:00Z',
+      hours: 24,
+      trades: [trade({ kind: 'loop', direction: 'chaos_first' }), trade({ kind: 'loop', direction: 'divine_first', paid_hours: 0 }), trade({ direction: 'ignored' })],
+    })
+    expect(byKey.get(tradeKey('loop', 'currency:a', 'divine_first'))?.paid_hours).toBe(0)
+    expect(byKey.get(tradeKey('loop', 'currency:a', 'chaos_first'))?.paid_hours).toBe(1)
+    expect(byKey.get(tradeKey('card', 'currency:a'))).toBeDefined()
+  })
+
+  it('tallies over the trades with an answer', () => {
+    const t = recapTally([trade({}), trade({ next_hour_paid: false, still_paid: true }), trade({ next_hour_paid: null, still_paid: false })])
+    expect(t).toEqual({ shown: 3, nextHour: 1, nextKnown: 2, dayLater: 1, dayKnown: 2 })
+  })
+})

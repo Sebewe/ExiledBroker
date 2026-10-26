@@ -82,6 +82,13 @@ disk stops the build (and the last snapshot stands).
   keyed on the snapshot's version; `useLeagues()` returns the snapshot's league on the
   chosen day (the pages use it instead of `status.leagues`). The reveal's data:
   `usePreviewItemNext(itemId)` and `usePreviewRecapNext()`.
+- The reveal ("what happened next", `components/Reveal.tsx`, `RevealItem.tsx`, `lib/reveal.ts`,
+  `lib/revealItem.ts`) sits behind a button and fetches nothing until opened. Price check: the
+  typical price (median of 6 hours, in Divines; Chaos for the Divine Orb) 1 and 3 days after
+  the day's last hour, against that day's calls (Sell held if it fell, Hold if it didn't),
+  and the path to `next_until` greyed past the day. Market recap: a tally of the page's
+  trades, and on each card its next hours (paid / didn't / didn't trade), the next hour and
+  whether it still paid a day later.
 - Usage events for the preview (`api/usage.py` FEATURES, `lib/usage.ts`):
   `trackFeature('preview-day')` when a visitor picks a day, `'preview-reveal'` when they
   open "what happened next", `'preview-cta'` for its call to action, and v2's
