@@ -30,6 +30,8 @@ from typing import Any
 import polars as pl
 from pydantic import TypeAdapter
 
+from exiledbroker.analysis import backtest as bt
+from exiledbroker.analysis import flips
 from exiledbroker.api import models as m
 from exiledbroker.api.deps import records
 from exiledbroker.config import Settings
@@ -37,20 +39,18 @@ from exiledbroker.ingest.http import PoliteClient
 from exiledbroker.ingest.live import sync_live
 from exiledbroker.preview import snapshot
 from exiledbroker.services import (
-    cross_market,
-    divination,
     launch_picks,
     live,
     missed,
     price_check,
     price_paths,
 )
-from exiledbroker.services.missed import BUFFER
 from exiledbroker.storage import db
 
-HOURLY = "ggg-exchange-hourly"
 NEXT_HOURS = 24  # recap-next: the hours after the chosen day that are judged
 STILL_FROM = 18  # still paid: paid in any of hours 19-24 after
+FILL = "touch"  # a fill: some trade went past the order (the recap's chances count so)
+FLIP_HOLD = 24  # hours a flip stays listed before it's dumped (the Backtest's: 72)
 # Copied from the research database into the replay (its own league's rows are loaded).
 REFERENCE = ["reference_data"]
 REWOUND = {  # rows of the replayed league, or a later one, are left out
@@ -219,8 +219,15 @@ def _hour(iso: str) -> datetime:
     return datetime.fromisoformat(iso).replace(tzinfo=None)
 
 
-def _outcome(kind, item_id, paid_by_hour: dict, cutoff: datetime, known: int, direction=None):
-    paid = [paid_by_hour.get(cutoff + timedelta(hours=k)) for k in range(1, known + 1)]
+def _outcome(kind, item_id, direction, orders: dict, hours: list[datetime]) -> dict:
+    """One trade's next hours from its orders (`orders`: pricing hour -> (filled, pnl in
+    Chaos, or None while the sale isn't known)), an hour with no order as None."""
+    filled, pnl, paid = [], [], []
+    for at in hours:
+        f, v = orders.get(at, (None, None))
+        filled.append(f)
+        pnl.append(v if f else None)
+        paid.append(None if f is None or (f and v is None) else bool(f and v > 0))
     return {
         "kind": kind,
         "item_id": item_id,
@@ -229,60 +236,113 @@ def _outcome(kind, item_id, paid_by_hour: dict, cutoff: datetime, known: int, di
         "paid_hours": sum(1 for p in paid if p),
         "traded_hours": sum(1 for p in paid if p is not None),
         "next_hour_paid": paid[0] if paid else None,
-        "still_paid": any(paid[STILL_FROM:]) if known >= NEXT_HOURS else None,
+        "still_paid": any(paid[STILL_FROM:]) if len(hours) >= NEXT_HOURS else None,
+        "filled": filled,
+        "pnl": pnl,
+        "orders": sum(1 for f in filled if f is not None),
+        "fills": sum(1 for f in filled if f),
+        "profit": sum(v for v in pnl if v is not None),
     }
+
+
+def _orders(t: pl.DataFrame, keys: list[str], unknown: pl.Expr) -> dict:
+    """The orders the backtest placed (`t`, one row per order), by (`keys`..., hour):
+    (filled, pnl in Chaos or None where `unknown`)."""
+    t = t.with_columns(chaos=pl.when(unknown).then(None).otherwise(pl.col("pnl") * pl.col("rate")))
+    return {
+        (*(r[k] for k in keys), r["observed_at"]): (bool(r["filled"]), r["chaos"])
+        for r in t.iter_rows(named=True)
+    }
+
+
+def _loop_orders(con, league: str, items: list[str], since, until, last_hour) -> dict:
+    cross = bt._cross_hours(con, league, items, since)
+    hours = cross.filter(pl.col("observed_at") < until).select("observed_at", "item_id")
+    sig = pl.concat([hours.with_columns(direction=pl.lit(d)) for d in missed.DIRECTIONS])
+    t = bt.loop_order_fills(
+        cross, bt._rate(con, league, since), sig, "limit_both", FILL, *missed.LOOP_ORDER, True
+    )
+    sale_open = pl.col("observed_at") + 2 * bt.H + bt.SELL_WITHIN > last_hour
+    unknown = pl.col("filled") & pl.col("sell_at").is_null() & sale_open
+    return _orders(t, ["item_id", "direction"], unknown)
+
+
+def _card_orders(con, league: str, cards: list[str], since, until, last_hour) -> dict:
+    marks = ", ".join("?" for _ in cards)
+    rewards = db.rows(
+        con,
+        f"SELECT DISTINCT reward_item_id FROM divination_card "
+        f"WHERE item_id IN ({marks}) AND reward_item_id IS NOT NULL",
+        cards,
+    )
+    prices = bt._prices(con, league, [*cards, *(r[0] for r in rewards)], since)
+    sig = prices.filter(pl.col("item_id").is_in(cards), pl.col("observed_at") < until)
+    t = bt.card_order_fills(
+        con,
+        prices,
+        bt._rate(con, league, since),
+        sig,
+        "limit_both",
+        FILL,
+        *missed.CARD_ORDER,
+        True,
+    )
+    sale_open = pl.col("observed_at") + 2 * bt.H + bt.SELL_WITHIN > last_hour
+    unknown = pl.col("filled") & pl.col("sell_at").is_null() & sale_open
+    return _orders(t, ["item_id"], unknown)
+
+
+def _flip_orders(con, league: str, items: list[str], since, until, last_hour) -> dict:
+    px = flips.chaos_prices(con, league).filter(
+        pl.col("item_id").is_in(items), pl.col("observed_at") > since
+    )
+    sig = flips.candidates(px).filter(pl.col("observed_at") < until)
+    rate = bt._rate(con, league, since)
+    t = flips.hold(px, rate, sig, FILL, **bt.FLIP, whole_lots=True, max_hold=FLIP_HOLD)
+    sale_open = pl.col("observed_at") + (1 + FLIP_HOLD) * bt.H > last_hour
+    t = t.with_columns(filled=pl.lit(True), pnl="profit")
+    out = _orders(t, ["item_id"], pl.col("dumped") & sale_open)
+    for r in sig.iter_rows(named=True):  # placed, not bought: the next hour didn't reach it
+        out.setdefault((r["item_id"], r["observed_at"]), (False, None))
+    return out
 
 
 def recap_next(con, league: str, windows: list[dict], last_hour: datetime) -> dict | None:
     """Did each of a day's recap trades (`windows`: its d{day}/missed) keep paying,
     hour by hour, over the next NEXT_HOURS (as far as `last_hour`, the replay's last)?
-    Each hour is judged by the recap's own test. None for a recap with no look-backs."""
+    Each hour, the recap's own order for it is priced from the hour before (the first
+    is the very order the recap showed) and filled by the Backtest's rules
+    (analysis/backtest.py: loops and cards as the Market recap orders them, flips listed
+    and cut for FLIP_HOLD hours), counting a fill the optimistic way (FILL). It's placed
+    when the recap would call it ok: a loop or a set that still pays from the bid at
+    that hour's worst prices, an item still liquid and volatile enough to flip; other
+    hours have none. Random-reward cards aren't replayed (the Backtest can't price
+    them), so they're left out. None for a recap with no look-backs."""
     if not windows:
         return None
     cutoff = _hour(windows[0]["latest_hour"])
     known = max(0, min(NEXT_HOURS, int((last_hour - cutoff).total_seconds() // 3600)))
-    trades: dict[tuple, dict] = {}
+    keys: dict[tuple, None] = {}
     for w in windows:
-        for loop in w["loops"]:
-            key = ("loop", loop["item_id"], loop["direction"])
-            if key in trades:
-                continue
-            hours = cross_market.hourly(
-                con, [league], [loop["item_id"]], direction=loop["direction"], since=cutoff
-            )
-            by_hour = {r["observed_at"]: r["edge"] > BUFFER for r in hours.iter_rows(named=True)}
-            trades[key] = _outcome(
-                "loop", loop["item_id"], by_hour, cutoff, known, loop["direction"]
-            )
-        for card in w["cards"]:
-            key = ("card", card["item_id"], None)
-            if key in trades:
-                continue
-            hours = divination.hourly_turn_ins(con, league, [card["item_id"]], since=cutoff)
-            hours = hours.drop_nulls("margin") if hours.height else hours
-            by_hour = {r["observed_at"]: r["margin"] > 0 for r in hours.iter_rows(named=True)}
-            trades[key] = _outcome("card", card["item_id"], by_hour, cutoff, known)
-        for flip in w["flips"]:
-            key = ("flip", flip["item_id"], None)
-            if key in trades:
-                continue
-            hours = db.frame(
-                con,
-                "SELECT observed_at, chaos_low, chaos_high FROM price_observation "
-                "WHERE league_id = (SELECT id FROM league WHERE name = ?) AND source = ? "
-                "AND item_id = ? AND observed_at > ? AND chaos_low IS NOT NULL",
-                [league, HOURLY, flip["item_id"], cutoff],
-            )
-            by_hour = {
-                r["observed_at"]: r["chaos_low"] <= flip["bid"] and r["chaos_high"] >= flip["ask"]
-                for r in hours.iter_rows(named=True)
-            }
-            trades[key] = _outcome("flip", flip["item_id"], by_hour, cutoff, known)
-    return {
-        "latest_hour": windows[0]["latest_hour"],
-        "hours": known,
-        "trades": list(trades.values()),
-    }
+        keys |= {("loop", x["item_id"], x["direction"]): None for x in w["loops"]}
+        keys |= {("card", x["item_id"], None): None for x in w["cards"] if not x["worst_roll"]}
+        keys |= {("flip", x["item_id"], None): None for x in w["flips"]}
+    # Orders are priced from these hours and placed in the hour after each.
+    hours = [cutoff + k * bt.H for k in range(known)]
+    since, until = cutoff - bt.H, cutoff + known * bt.H
+    orders: dict[str, dict] = {"loop": {}, "card": {}, "flip": {}}
+    find = {"loop": _loop_orders, "card": _card_orders, "flip": _flip_orders}
+    for kind in orders:
+        items = sorted({i for k, i, _ in keys if k == kind})
+        if items and known:
+            orders[kind] = find[kind](con, league, items, since, until, last_hour)
+    trades = []
+    for kind, item_id, direction in keys:
+        key = (item_id, direction) if kind == "loop" else (item_id,)
+        mine = {at: orders[kind].get((*key, at)) for at in hours}
+        mine = {at: o for at, o in mine.items() if o is not None}
+        trades.append(_outcome(kind, item_id, direction, mine, hours))
+    return {"latest_hour": windows[0]["latest_hour"], "hours": known, "trades": trades}
 
 
 def build(

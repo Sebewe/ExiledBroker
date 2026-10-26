@@ -128,16 +128,41 @@ def positions(
     lot, the ask's total cut in whole Chaos."""
     at = pl.DataFrame({"observed_at": when}).cast({"observed_at": px.schema["observed_at"]})
     sig = (
-        px.join(at, on="observed_at")
-        .filter(
-            pl.col("cv") >= MIN_VOLUME,
-            pl.col("p") >= MIN_PRICE,
-            pl.col("rng") >= MIN_RANGE,
-            pl.col("rng") <= MAX_RANGE,
-        )
+        candidates(px.join(at, on="observed_at"))
         .sort(["observed_at", "rng"], descending=[False, True])
         .group_by("observed_at", maintain_order=True)
         .head(TOP)
+    )
+    return hold(px, rate, sig, model, bid_at, ask_at, cut, whole_lots)
+
+
+def candidates(px: pl.DataFrame) -> pl.DataFrame:
+    """The item-hours liquid and volatile enough for the Market recap to list a flip."""
+    return px.filter(
+        pl.col("cv") >= MIN_VOLUME,
+        pl.col("p") >= MIN_PRICE,
+        pl.col("rng") >= MIN_RANGE,
+        pl.col("rng") <= MAX_RANGE,
+    )
+
+
+def hold(
+    px: pl.DataFrame,
+    rate: pl.DataFrame,
+    sig: pl.DataFrame,
+    model: str,
+    bid_at: float = 0.1,
+    ask_at: float = 0.75,
+    cut: float = 0.02,
+    whole_lots: bool = False,
+    max_hold: int | None = None,
+) -> pl.DataFrame:
+    """`positions` for the entries `sig` (item-hours of `px`), each kept listed at most
+    `max_hold` hours (MAX_HOLD by default). One row per position bought, keyed by its
+    entry hour."""
+    max_hold = MAX_HOLD if max_hold is None else max_hold
+    sig = (
+        sig.select("observed_at", "item_id", "lo", "hi")
         .with_columns(
             bid=pl.col("lo") + bid_at * (pl.col("hi") - pl.col("lo")),
             ask0=pl.col("lo") + ask_at * (pl.col("hi") - pl.col("lo")),
@@ -195,14 +220,14 @@ def positions(
             sold_at=pl.lit(None, dtype=pl.Int64),
         )
     )
-    for k in range(2, 2 + MAX_HOLD):
+    for k in range(2, 2 + max_hold):
         # The listing's total comes down each hour; with whole lots, in whole Chaos.
         total = pl.col("ask_total") * (1 - cut) ** (k - 2)
         ask = (total.ceil() if whole_lots else total) / pl.col("sell_lot")
         t = t.join(hour(k), on=["observed_at", "item_id"], how="left")
         sold = lots(pl.min_horizontal(pl.col("left"), take(ask, "sell")), "sell_lot")
         t = t.with_columns(got=pl.col("got") + sold * ask, left=pl.col("left") - sold)
-        if k == 1 + MAX_HOLD:  # what's left is dumped at the last hour's low
+        if k == 1 + max_hold:  # what's left is dumped at the last hour's low
             t = t.with_columns(
                 got=pl.col("got") + pl.col("left") * pl.col("lo_").fill_null(0),
                 dumped=pl.col("left") > 0,

@@ -2163,7 +2163,7 @@
         "type": "object"
       },
       "PreviewTradeNext": {
-        "description": "What one of the recap's trades did in the 24 hours after the chosen day's last\nhour. \"Paid\" is the recap's own test, hour by hour: a loop's edge beat the 2% buffer\n(in `direction`), a card turn-in's margin was positive, a flip's hour traded both at\nor below its bid and at or above its ask.",
+        "description": "What one of the recap's trades did in the 24 hours after the chosen day's last\nhour, if a player had followed it: each hour, the recap's own order for it, priced\nfrom the hour before (the first is the very order the recap showed), and filled by\nthe Backtest's rules (analysis/backtest.py, preview/build.recap_next). A fill counts\nwhen some trade that hour went past the order (the optimistic way, as the recap's\nchances count it), at most a tenth of what traded and 10 Divines an order.",
         "properties": {
           "direction": {
             "anyOf": [
@@ -2175,6 +2175,26 @@
               }
             ],
             "title": "Direction"
+          },
+          "filled": {
+            "default": [],
+            "items": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Filled",
+            "type": "array"
+          },
+          "fills": {
+            "default": 0,
+            "title": "Fills",
+            "type": "integer"
           },
           "item_id": {
             "title": "Item Id",
@@ -2200,6 +2220,11 @@
             ],
             "title": "Next Hour Paid"
           },
+          "orders": {
+            "default": 0,
+            "title": "Orders",
+            "type": "integer"
+          },
           "paid": {
             "items": {
               "anyOf": [
@@ -2217,6 +2242,26 @@
           "paid_hours": {
             "title": "Paid Hours",
             "type": "integer"
+          },
+          "pnl": {
+            "default": [],
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Pnl",
+            "type": "array"
+          },
+          "profit": {
+            "default": 0.0,
+            "title": "Profit",
+            "type": "number"
           },
           "still_paid": {
             "anyOf": [

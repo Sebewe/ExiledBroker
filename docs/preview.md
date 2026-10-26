@@ -21,7 +21,7 @@ checked against its model when written (`snapshot.put`), so the route never has 
 | `d{day}/price-check` | `PriceCheckIndex` | Price check's list |
 | `d{day}/price-check/{item_id}` | `PriceCheckItem` | one item, for every listed item |
 | `d{day}/launch-picks` | `list[LaunchWindow]` | the Launch market |
-| `d{day}/recap-next` | `PreviewRecapNext` | each of that day's recap trades (loops, cards, flips): did it pay in each of the next 24 hours |
+| `d{day}/recap-next` | `PreviewRecapNext` | each of that day's recap trades (loops, cards, flips): in each of the next 24 hours, did the recap's order fill and pay ([below](#did-it-pay-the-next-hour)) |
 | `next/price-check/{item_id}` | `PreviewItemNext` | the item's series from launch to day 10, for the reveal |
 
 `day` is the launch day, 1-based: the site as it stood at the end of that day
@@ -87,8 +87,9 @@ disk stops the build (and the last snapshot stands).
   typical price (median of 6 hours, in Divines; Chaos for the Divine Orb) 1 and 3 days after
   the day's last hour, against that day's calls (Sell held if it fell, Hold if it didn't),
   and the path to `next_until` greyed past the day. Market recap: a tally of the page's
-  trades, and on each card its next hours (paid / didn't / didn't trade), the next hour and
-  whether it still paid a day later.
+  trades and what following their orders made, and on each card its next hours (paid / lost /
+  didn't fill / no order), what the recap's own order did the next hour and whether it still
+  paid a day later.
 - The paper portfolio (`/portfolio`, `pages/Portfolio.tsx`, `lib/portfolio.ts`; in the menu
   only while the preview is on): stake Divines (10 each by default, up to 8 items) on items
   as they stood at the end of the chosen day, step the clock forward an hour or a day (or
@@ -106,6 +107,23 @@ disk stops the build (and the last snapshot stands).
   `trackFeature('preview-day')` when a visitor picks a day, `'preview-reveal'` when they
   open "what happened next", `'preview-cta'` for its call to action, and v2's
   `'portfolio-add'` / `'portfolio-step'` ([usage.md](usage.md#the-preview)).
+
+### Did it pay the next hour?
+
+`d{day}/recap-next` replays each recap trade with the Backtest's fill code
+(`analysis/backtest.loop_order_fills` / `card_order_fills`, `analysis/flips.hold`), fed by
+`preview/build.recap_next`. Each of the 24 hours after the day's last hour, the recap's own
+order is priced from the hour before, as the recap prices it (the first is the very order the
+recap showed), and placed when the recap would call it ok: a loop or a card set that still pays
+from the bid at that hour's worst prices, an item still liquid and volatile enough to flip.
+Loops and cards are ordered as the Market recap orders them (whole lots), flips listed and cut
+1% an hour for 24 hours, then dumped at the low (the Backtest holds 72). A fill counts when a
+trade that hour went past the order (`touch`, the recap's chances count the same way), at most
+a tenth of what traded and 10 Divines an order. Per hour: `paid` (filled and made money; false:
+didn't fill or lost; null: no order, or the sale isn't known by `next_until`), `filled`, `pnl`
+(Chaos); per trade the counts and `profit`. Random-reward cards aren't replayed (the Backtest
+can't price their reward), so they have no entry. A snapshot built before 2026-10-27 has only
+`paid` (the recap's own test each hour); the page reads it that way until it's rebuilt.
 
 ## Operations
 

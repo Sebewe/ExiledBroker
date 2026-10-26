@@ -415,10 +415,12 @@ describe('Market recap in the preview', () => {
     expect(screen.queryByText(/The next league launches/)).toBeNull()
     expect(screen.queryByRole('group', { name: 'What happened next' })).toBeNull()
     fireEvent.click(button)
-    // The sample's day 2 recap has one card turn-in, which paid both hours known after.
+    // The sample's day 2 recap has one card turn-in: its order was placed in both hours
+    // known after, and neither filled.
     const card = within(await screen.findByRole('group', { name: 'What happened next' }))
-    expect(card.getByText(/^Next 2 hours: paid in/)).toHaveTextContent('Next 2 hours: paid in 2 of 2 traded.')
-    expect(card.getByText(/^Next hour:/)).toHaveTextContent('Next hour: paid · A day later: not known')
-    expect(screen.getByText(/^Of the 1 trade in this recap/)).toHaveTextContent('Of the 1 trade in this recap, 1 paid the very next hour. Each card shows its next 2 hours.')
+    expect(card.getByText(/^Next 2 hours:/)).toHaveTextContent('Next 2 hours: 0 of 2 orders filled, 0 paid.')
+    expect(card.getByText(/^Next hour:/)).toHaveTextContent("Next hour: the order didn't fill · A day later: not known")
+    expect(screen.getByText(/^Of the 1 trade in this recap/)).toHaveTextContent('Of the 1 trade in this recap, 0 paid the very next hour.')
+    expect(screen.getByText(/^Placing the recap's order/)).toHaveTextContent("Placing the recap's order every hour it listed one: 0 of 2 orders filled over the next 2 hours.")
   })
 })

@@ -15,7 +15,7 @@ import json
 import os
 import sys
 import tempfile
-from datetime import datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -32,8 +32,7 @@ from exiledbroker.config import Settings
 from exiledbroker.ingest import currency_exchange as cx
 from exiledbroker.ingest.live import sync_live
 from exiledbroker.preview import snapshot
-from exiledbroker.services import cross_market, divination
-from exiledbroker.services.missed import BUFFER
+from exiledbroker.preview.build import recap_next  # the snapshot's own, on the replay
 from exiledbroker.storage import db
 from test_currency_exchange import FakeExchange, client_for
 from test_live_pipeline import LAUNCH, PAGES, store_reference_data
@@ -43,7 +42,6 @@ LEAGUE = "Mirage"
 # its recap only finds trades from hour 28, so "days" 2 and 3 are 28 and 30 hours in.
 DAYS = {1: 24, 2: 28, 3: 30}
 DEFAULT_DAY = 2
-NEXT_HOURS = 24
 OUT = HERE.parents[1] / "web" / "src" / "test" / "preview_sample.json"  # the frontend reads it too
 
 
@@ -58,73 +56,6 @@ def get(client: TestClient, path: str):
     r = client.get(path)
     assert r.status_code == 200, (path, r.text)
     return r.json()
-
-
-def _hour(iso: str) -> datetime:
-    return datetime.fromisoformat(iso).replace(tzinfo=None)
-
-
-def _outcome(kind, item_id, paid_by_hour: dict, cutoff: datetime, known: int, direction=None):
-    paid = [paid_by_hour.get(cutoff + timedelta(hours=k)) for k in range(1, known + 1)]
-    return {
-        "kind": kind,
-        "item_id": item_id,
-        "direction": direction,
-        "paid": paid,
-        "paid_hours": sum(1 for p in paid if p),
-        "traded_hours": sum(1 for p in paid if p is not None),
-        "next_hour_paid": paid[0] if paid else None,
-        "still_paid": any(paid[18:]) if known >= NEXT_HOURS else None,
-    }
-
-
-def recap_next(con, windows: list[dict], last_hour: datetime) -> dict:
-    """Did each of the recap's trades keep paying over the next 24 hours (as far as the
-    replay goes: its last loaded hour is `last_hour`)?"""
-    cutoff = _hour(windows[0]["latest_hour"])
-    known = max(0, min(NEXT_HOURS, int((last_hour - cutoff).total_seconds() // 3600)))
-    trades: dict[tuple, dict] = {}
-    for w in windows:
-        for loop in w["loops"]:
-            key = ("loop", loop["item_id"], loop["direction"])
-            if key in trades:
-                continue
-            hours = cross_market.hourly(
-                con, [LEAGUE], [loop["item_id"]], direction=loop["direction"], since=cutoff
-            )
-            by_hour = {r["observed_at"]: r["edge"] > BUFFER for r in hours.iter_rows(named=True)}
-            trades[key] = _outcome(
-                "loop", loop["item_id"], by_hour, cutoff, known, loop["direction"]
-            )
-        for card in w["cards"]:
-            key = ("card", card["item_id"], None)
-            if key in trades:
-                continue
-            hours = divination.hourly_turn_ins(con, LEAGUE, [card["item_id"]], since=cutoff)
-            hours = hours.drop_nulls("margin") if hours.height else hours
-            by_hour = {r["observed_at"]: r["margin"] > 0 for r in hours.iter_rows(named=True)}
-            trades[key] = _outcome("card", card["item_id"], by_hour, cutoff, known)
-        for flip in w["flips"]:
-            key = ("flip", flip["item_id"], None)
-            if key in trades:
-                continue
-            hours = db.frame(
-                con,
-                "SELECT observed_at, chaos_low, chaos_high FROM price_observation "
-                "WHERE item_id = ? AND source = 'ggg-exchange-hourly' AND observed_at > ? "
-                "AND chaos_low IS NOT NULL",
-                [flip["item_id"], cutoff],
-            )
-            by_hour = {
-                r["observed_at"]: r["chaos_low"] <= flip["bid"] and r["chaos_high"] >= flip["ask"]
-                for r in hours.iter_rows(named=True)
-            }
-            trades[key] = _outcome("flip", flip["item_id"], by_hour, cutoff, known)
-    return {
-        "latest_hour": windows[0]["latest_hour"],
-        "hours": known,
-        "trades": list(trades.values()),
-    }
 
 
 def main() -> None:
@@ -166,7 +97,8 @@ def main() -> None:
     end = cx.from_ts(LAUNCH + (max(DAYS.values()) - 1) * 3600).replace(tzinfo=None)
     with db.session(s.db_path, read_only=True) as con:
         for day in DAYS:
-            docs[snapshot.day_key(day, "recap-next")] = recap_next(con, missed[day], end)
+            if (doc := recap_next(con, LEAGUE, missed[day], end)) is not None:
+                docs[snapshot.day_key(day, "recap-next")] = doc
 
     launched = days[0]["league"]["launched_at"]
     docs[snapshot.MANIFEST] = {

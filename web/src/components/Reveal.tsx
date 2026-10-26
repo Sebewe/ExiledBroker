@@ -2,7 +2,8 @@ import { Eye, EyeOff, History } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { PreviewTradeNext } from '../api/client'
 import { usePreview } from '../lib/preview'
-import { recapTally } from '../lib/reveal'
+import type { Money } from '../lib/money'
+import { type HourFill, hourFills, recapTally } from '../lib/reveal'
 import { trackFeature } from '../lib/usage'
 import { Skeleton } from './QueryState'
 
@@ -40,6 +41,9 @@ export function RevealPanel({ open, onToggle, prompt, children }: { open: boolea
 
 // --- Market recap ---------------------------------------------------------------------
 
+/** A signed amount: "+12c", "−1.5 div". */
+const signed = (money: Money, chaos: number) => `${chaos < 0 ? '−' : '+'}${money(Math.abs(chaos))}`
+
 /** The recap's reveal bar: the prompt, and once open, how the page's trades did. */
 export function RecapReveal({
   open,
@@ -47,12 +51,14 @@ export function RecapReveal({
   trades,
   hours,
   loading,
+  money,
 }: {
   open: boolean
   onToggle: () => void
   trades: PreviewTradeNext[]
   hours: number | undefined
   loading: boolean
+  money: Money
 }) {
   const preview = usePreview()
   const t = recapTally(trades)
@@ -60,7 +66,7 @@ export function RecapReveal({
     <RevealPanel
       open={open}
       onToggle={onToggle}
-      prompt={`These trades paid up to the end of day ${preview.day}. Pick the ones you'd take, then see whether they kept paying.`}
+      prompt={`These trades paid up to the end of day ${preview.day}. Pick the ones you'd take, then see whether their orders filled and paid.`}
     >
       {loading ? (
         <Skeleton rows={1} />
@@ -69,42 +75,97 @@ export function RecapReveal({
       ) : !t.shown ? (
         <p className="text-sm text-muted">There's no data for the hours after these trades.</p>
       ) : (
-        <p className="text-sm">
-          Of the {t.shown} {t.shown === 1 ? 'trade' : 'trades'} in this recap, <span className="num font-semibold">{t.nextHour}</span> paid the very next hour
-          {t.nextKnown < t.shown ? ` (${t.nextKnown} traded then)` : ''}
-          {t.dayKnown ? (
-            <>
-              {' '}
-              and <span className="num font-semibold">{t.dayLater}</span> {t.dayLater === 1 ? 'was' : 'were'} still paying a day later
-            </>
-          ) : (
-            ''
+        <div className="flex flex-col gap-1.5 text-sm">
+          <p>
+            Of the {t.shown} {t.shown === 1 ? 'trade' : 'trades'} in this recap, <span className="num font-semibold">{t.nextHour}</span> paid the very next hour
+            {t.nextKnown < t.shown ? ` (${t.nextKnown} had an order placed then)` : ''}
+            {t.dayKnown ? (
+              <>
+                {' '}
+                and <span className="num font-semibold">{t.dayLater}</span> {t.dayLater === 1 ? 'was' : 'were'} still paying a day later
+              </>
+            ) : (
+              ''
+            )}
+            .
+          </p>
+          {t.orders > 0 && (
+            <p className="text-muted">
+              Placing the recap's order every hour it listed one: <span className="num text-text">{t.fills}</span> of <span className="num text-text">{t.orders}</span>{' '}
+              {t.orders === 1 ? 'order' : 'orders'} filled
+              {t.fills > 0 ? (
+                <>
+                  , making{' '}
+                  <span className={`num font-semibold ${t.profit < 0 ? 'text-negative' : t.profit > 0 ? 'text-positive' : 'text-text'}`}>{signed(money, t.profit)}</span>
+                </>
+              ) : (
+                ''
+              )}{' '}
+              over the next {hours} {hours === 1 ? 'hour' : 'hours'}. A fill counts when a trade went past the order (the optimistic way, as in the Backtest), so real fills are likely fewer.
+            </p>
           )}
-          . Each card shows its next {hours} {hours === 1 ? 'hour' : 'hours'}.
-        </p>
+        </div>
       )}
     </RevealPanel>
   )
 }
 
-/** One recap card's next hours: a strip of paid / didn't pay / didn't trade, and its counts. */
-export function TradeNext({ t, hours }: { t: PreviewTradeNext | undefined; hours: number }) {
-  if (!t) return <p className="rounded-md border border-dashed border-border px-2 py-1.5 text-xs text-faint">No data for the hours after.</p>
-  const word = (v: boolean | null, yes: string, no: string, none: string) => (v == null ? none : v ? yes : no)
+const FILL_STYLE: Record<HourFill, string> = {
+  none: 'bg-surface-2',
+  unfilled: 'border border-faint/60 bg-transparent',
+  open: 'bg-faint/50',
+  paid: 'bg-positive/80',
+  lost: 'bg-negative/60',
+}
+
+/** The very next hour, in words: what the recap's own order did. */
+function nextHour(fill: HourFill | undefined, pnl: number | null | undefined, money: Money): string {
+  switch (fill) {
+    case 'paid':
+    case 'lost':
+      return pnl == null ? (fill === 'paid' ? 'paid' : "didn't pay") : `filled, ${signed(money, pnl)}`
+    case 'unfilled':
+      return "the order didn't fill"
+    case 'open':
+      return 'filled, not sold yet'
+    default:
+      return 'no order placed'
+  }
+}
+
+/** One recap card's next hours: a strip of each hour's order (paid / lost / didn't fill /
+ *  none placed), and its counts. */
+export function TradeNext({ t, hours, money }: { t: PreviewTradeNext | undefined; hours: number; money: Money }) {
+  if (!t) return <p className="rounded-md border border-dashed border-border px-2 py-1.5 text-xs text-faint">No orders to replay for the hours after.</p>
+  const fills = hourFills(t)
+  const withFills = (t.filled as unknown[] | undefined)?.length === t.paid.length && t.paid.length > 0
   return (
     <div aria-label="What happened next" role="group" className="flex flex-col gap-1.5 rounded-md border border-dashed border-accent/40 bg-bg/40 px-2.5 py-2 text-xs text-muted">
       <div className="flex gap-0.5" aria-hidden>
-        {t.paid.map((p, i) => (
-          <span key={i} className={`h-2 flex-1 rounded-sm ${p == null ? 'bg-surface-2' : p ? 'bg-positive/80' : 'bg-negative/60'}`} />
+        {fills.map((f, i) => (
+          <span key={i} className={`h-2 flex-1 rounded-sm ${FILL_STYLE[f]}`} />
         ))}
       </div>
+      {withFills ? (
+        <p>
+          Next {hours} {hours === 1 ? 'hour' : 'hours'}: <span className="num text-text">{t.fills}</span> of <span className="num text-text">{t.orders}</span>{' '}
+          {t.orders === 1 ? 'order' : 'orders'} filled, <span className="num text-text">{t.paid_hours}</span> paid
+          {t.fills > 0 && (
+            <>
+              {' '}
+              (<span className={`num ${t.profit < 0 ? 'text-negative' : t.profit > 0 ? 'text-positive' : 'text-text'}`}>{signed(money, t.profit)}</span>)
+            </>
+          )}
+          .
+        </p>
+      ) : (
+        <p>
+          Next {hours} {hours === 1 ? 'hour' : 'hours'}: paid in <span className="num text-text">{t.paid_hours}</span> of <span className="num text-text">{t.traded_hours}</span> traded.
+        </p>
+      )}
       <p>
-        Next {hours} {hours === 1 ? 'hour' : 'hours'}: paid in <span className="num text-text">{t.paid_hours}</span> of{' '}
-        <span className="num text-text">{t.traded_hours}</span> traded.
-      </p>
-      <p>
-        Next hour: <span className="text-text">{word(t.next_hour_paid, 'paid', "didn't pay", "didn't trade")}</span>
-        {' · '}A day later: <span className="text-text">{word(t.still_paid, 'still paying', 'stopped', 'not known')}</span>
+        Next hour: <span className="text-text">{nextHour(fills.at(0), (t.pnl as (number | null)[] | undefined)?.at(0), money)}</span>
+        {' · '}A day later: <span className="text-text">{t.still_paid == null ? 'not known' : t.still_paid ? 'still paying' : 'stopped'}</span>
       </p>
     </div>
   )
