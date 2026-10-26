@@ -23,7 +23,9 @@ dependencies = [
 
 [project.optional-dependencies]
 # numpy: the research modules (analysis/hours.py, analysis/impact.py); the site never imports them.
-dev = ["pytest>=8", "ruff>=0.5", "numpy>=2.0"]
+# httpx2: what Starlette's TestClient uses from Starlette 1.9 (with plain httpx it warns that
+# support is going away); the app's own requests stay on httpx (ingest/http.py).
+dev = ["pytest>=8", "ruff>=0.5", "numpy>=2.0", "httpx2>=2.16"]
 pg = ["psycopg[binary]>=3.2", "psycopg-pool>=3.2"]  # Postgres (the hosted database)
 
 [project.scripts]
