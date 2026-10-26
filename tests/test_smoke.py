@@ -11,9 +11,12 @@ from exiledbroker import smoke
 from exiledbroker.api import app as app_module
 from exiledbroker.api import deps
 from exiledbroker.ingest import currency_exchange as cx
+from exiledbroker.preview import snapshot
+from exiledbroker.storage import db
 from test_api import LEAGUE, update
 from test_currency_exchange import FakeExchange
 from test_live_pipeline import LAUNCH, PAGES, settings  # noqa: F401
+from test_preview import SAMPLE
 
 INDEX = (
     '<!doctype html><script type="module" src="/assets/index-abc.js"></script>'
@@ -80,3 +83,30 @@ def test_the_origin_check(settings, dist, monkeypatch):  # noqa: F811
     # An origin without the key set lets anyone in: that fails.
     results = smoke.run(open_site.get, origin_check=open_site.get)
     assert failures(results) == ["FAIL  origin refuses requests without the key: 200"]
+
+
+def test_the_preview(settings, dist, monkeypatch):  # noqa: F811
+    update(settings, FakeExchange(PAGES, now=LAUNCH), 3)
+    latest = cx.from_ts(LAUNCH) + timedelta(hours=3)
+    # A league announced by its date alone, and no snapshot seeded: a warning.
+    monkeypatch.setenv("EB_NEXT_LEAGUE_START", "2026-11-13")
+    deps.reset()
+    c = TestClient(app_module.create_app(web_dist=dist))
+    results = smoke.run(c.get, now=latest)
+    assert failures(results) == []
+    assert [r.name for r in results if r.ok is None] == ["preview"]
+    # Seeded: every document the pages read for the default day, under its version.
+    with db.session(settings.db_path) as con:
+        snapshot.load_file(con, SAMPLE)
+    deps.reset()
+    c = TestClient(app_module.create_app(web_dist=dist))
+    results = smoke.run(c.get, now=latest)
+    assert failures(results) == []
+    assert all(r.ok is not None for r in results)
+    paths = {r.name.split("?")[0] for r in results if r.name.startswith("/api/preview/")}
+    day = c.get("/api/status").json()["preview"]["default_day"]
+    for what in ("manifest", f"d{day}/missed", f"d{day}/price-check", f"d{day}/launch-picks"):
+        assert f"/api/preview/{what}" in paths
+    assert any(p.startswith(f"/api/preview/d{day}/price-check/") for p in paths)
+    assert any(p.startswith("/api/preview/next/price-check/") for p in paths)
+    assert "an unknown preview key is 404" in {r.name for r in results}

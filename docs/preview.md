@@ -58,5 +58,17 @@ tests use, backend and frontend (`web/src/test/preview.ts`). Regenerate it with
   keyed on the snapshot's version; `useLeagues()` returns the snapshot's league on the
   chosen day (the pages use it instead of `status.leagues`). The reveal's data:
   `usePreviewItemNext(itemId)` and `usePreviewRecapNext()`.
-- Usage events reserved for the preview: `feature:preview-day`, `feature:preview-reveal`,
-  `feature:preview-cta`, `feature:portfolio-add`, `feature:portfolio-step`.
+- Usage events for the preview (`api/usage.py` FEATURES, `lib/usage.ts`):
+  `trackFeature('preview-day')` when a visitor picks a day, `'preview-reveal'` when they
+  open "what happened next", `'preview-cta'` for its call to action, and v2's
+  `'portfolio-add'` / `'portfolio-step'` ([usage.md](usage.md#the-preview)).
+
+## Operations
+
+- Switching it on, the environment (`EB_NEXT_LEAGUE_START=2026-11-13` alone on both
+  services), what ends it and the spike readiness for the announcement:
+  [go-live.md](go-live.md#11-the-preview-and-the-reddit-announcement).
+- `eb site smoke` checks the preview while `/api/status` has it: the manifest (the
+  same version as status's, cached a day), the default day's documents and one item's,
+  and that a missing key is 404. A league announced without a preview is a warning.
+- The Reddit posts and the link preview's text: [announcement.md](announcement.md).

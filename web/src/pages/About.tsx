@@ -1,14 +1,26 @@
 import { PageHeader, Section } from '../components/Section'
+import { usePreview } from '../lib/preview'
 
 const LINK = 'text-accent underline-offset-2 hover:underline'
 
 export default function About() {
+  const preview = usePreview()
   return (
     <>
       <PageHeader title="About ExiledBroker">
         A Path of Exile market tool: which currency-exchange trades pay right now, and how prices move after a league
         launches.
       </PageHeader>
+      {preview.on && (
+        <Section title="The preview">
+          <p className="max-w-3xl text-sm leading-relaxed text-muted">
+            Until the next league launches, the site is a preview: {preview.manifest?.league} rewound to its first week,
+            with the real prices and trades of that league as they stood at the end of the day you pick. Make your call,
+            then reveal what happened next. When the next league's first trades load, the site switches to it by itself,
+            hour by hour from launch.
+          </p>
+        </Section>
+      )}
       <Section title="Where the data comes from">
         <ul className="flex max-w-3xl list-disc flex-col gap-2 pl-5 text-sm leading-relaxed text-muted">
           <li>
