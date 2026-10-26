@@ -2548,6 +2548,162 @@
         "title": "Upcoming",
         "type": "object"
       },
+      "UsageDay": {
+        "properties": {
+          "day": {
+            "format": "date",
+            "title": "Day",
+            "type": "string"
+          },
+          "views": {
+            "title": "Views",
+            "type": "integer"
+          },
+          "visitors": {
+            "title": "Visitors",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "day",
+          "views",
+          "visitors"
+        ],
+        "title": "UsageDay",
+        "type": "object"
+      },
+      "UsageEvent": {
+        "properties": {
+          "event": {
+            "title": "Event",
+            "type": "string"
+          },
+          "views": {
+            "title": "Views",
+            "type": "integer"
+          },
+          "views_recent": {
+            "default": 0,
+            "title": "Views Recent",
+            "type": "integer"
+          },
+          "visitors": {
+            "title": "Visitors",
+            "type": "integer"
+          },
+          "visitors_recent": {
+            "default": 0,
+            "title": "Visitors Recent",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "event",
+          "views",
+          "visitors"
+        ],
+        "title": "UsageEvent",
+        "type": "object"
+      },
+      "UsagePeriod": {
+        "properties": {
+          "finished": {
+            "title": "Finished",
+            "type": "boolean"
+          },
+          "period": {
+            "title": "Period",
+            "type": "string"
+          },
+          "returning": {
+            "title": "Returning",
+            "type": "integer"
+          },
+          "visitors": {
+            "title": "Visitors",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "period",
+          "visitors",
+          "returning",
+          "finished"
+        ],
+        "title": "UsagePeriod",
+        "type": "object"
+      },
+      "UsageStats": {
+        "properties": {
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/UsageDay"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/UsageEvent"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "periods": {
+            "items": {
+              "$ref": "#/components/schemas/UsagePeriod"
+            },
+            "title": "Periods",
+            "type": "array"
+          },
+          "stored": {
+            "title": "Stored",
+            "type": "boolean"
+          },
+          "total": {
+            "$ref": "#/components/schemas/UsageTotal"
+          }
+        },
+        "required": [
+          "stored",
+          "total",
+          "periods",
+          "days",
+          "events"
+        ],
+        "title": "UsageStats",
+        "type": "object"
+      },
+      "UsageTotal": {
+        "properties": {
+          "since": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since"
+          },
+          "views": {
+            "title": "Views",
+            "type": "integer"
+          },
+          "visitor_days": {
+            "title": "Visitor Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "views",
+          "visitor_days"
+        ],
+        "title": "UsageTotal",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -2718,6 +2874,45 @@
         "summary": "Health",
         "tags": [
           "meta"
+        ]
+      }
+    },
+    "/api/hit": {
+      "post": {
+        "description": "Count a page view or a feature's use. No cookies, nothing stored in the browser;\nDo-Not-Track and Global Privacy Control are honoured. Always 204.",
+        "operationId": "hit_api_hit_post",
+        "parameters": [
+          {
+            "description": "A page (`page:/launch`) or feature.",
+            "in": "query",
+            "name": "e",
+            "required": true,
+            "schema": {
+              "description": "A page (`page:/launch`) or feature.",
+              "maxLength": 40,
+              "title": "E",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Hit",
+        "tags": [
+          "usage"
         ]
       }
     },
@@ -2974,6 +3169,56 @@
         "summary": "Price Check Item",
         "tags": [
           "price check"
+        ]
+      }
+    },
+    "/api/stats": {
+      "get": {
+        "description": "Visitors, returning visitors and each page's and feature's use, for the site's\nowner (`Authorization: Bearer <EB_ADMIN_TOKEN>`; without the setting, 404).",
+        "operationId": "stats_api_stats_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsageStats"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stats",
+        "tags": [
+          "usage"
         ]
       }
     },

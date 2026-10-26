@@ -34,6 +34,15 @@ export default function About() {
           <li>All times are UTC.</li>
         </ul>
       </Section>
+      <Section title="Privacy">
+        <p className="max-w-3xl text-sm leading-relaxed text-muted">
+          No cookies and nothing stored about you. To count visitors and see which pages and tools get used, the server
+          turns your IP address and browser name into a scrambled code that changes every month and can't be turned back;
+          the address itself is never saved, and at the end of each month the codes are deleted and only the totals are
+          kept. With Do Not Track or Global Privacy Control on, nothing is counted. Cloudflare, which serves the site,
+          also counts visits without cookies.
+        </p>
+      </Section>
       <p className="text-sm text-muted">
         Open source on{' '}
         <a className={LINK} href="https://github.com/Sebewe/ExiledBroker" rel="noreferrer">GitHub</a>. Not affiliated with or endorsed by Grinding Gear

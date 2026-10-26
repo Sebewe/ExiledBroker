@@ -350,3 +350,47 @@ CREATE TABLE IF NOT EXISTS price_path_constant (
     built_at  TIMESTAMP NOT NULL,
     PRIMARY KEY (phase, thick, horizon)
 );
+
+-- Usage counts (api/usage.py): cookie-free, nothing stored in the browser. A visitor is
+-- a keyed hash of their IP and User-Agent under a random salt that lives for one period
+-- (a calendar month by default); the IP itself is never stored. When a period ends its
+-- totals are kept in `usage_period` and its salt and visitor rows are deleted, so what
+-- remains can't be linked to anyone, not even by us.
+CREATE TABLE IF NOT EXISTS usage_daily (
+    day      DATE NOT NULL,
+    event    VARCHAR NOT NULL,  -- 'site', 'page:<path>' or 'feature:<name>' (usage.EVENTS)
+    views    BIGINT NOT NULL,   -- page views, or times the feature was used
+    visitors BIGINT NOT NULL,   -- distinct visitors that day
+    PRIMARY KEY (day, event)
+);
+
+-- The current period's salt (one row; replaced, never kept, when the period ends).
+CREATE TABLE IF NOT EXISTS usage_salt (
+    period VARCHAR PRIMARY KEY,  -- '2026-10' (month), '2026-W43' (week) or '2026-10-26'
+    salt   VARCHAR NOT NULL
+);
+
+-- The current period's visitors: on how many days each was seen (returning: 2 or more).
+CREATE TABLE IF NOT EXISTS usage_visitor (
+    period   VARCHAR NOT NULL,
+    visitor  VARCHAR NOT NULL,  -- truncated HMAC-SHA256(salt, IP + User-Agent)
+    last_day DATE NOT NULL,
+    days     INTEGER NOT NULL,
+    PRIMARY KEY (period, visitor)
+);
+
+-- Today's (visitor, event) pairs, so a restart doesn't count a visitor twice in a day.
+-- Emptied each day.
+CREATE TABLE IF NOT EXISTS usage_seen (
+    day     DATE NOT NULL,
+    event   VARCHAR NOT NULL,
+    visitor VARCHAR NOT NULL,
+    PRIMARY KEY (day, event, visitor)
+);
+
+-- Each finished period's totals: distinct visitors and how many came back on another day.
+CREATE TABLE IF NOT EXISTS usage_period (
+    period    VARCHAR PRIMARY KEY,
+    visitors  BIGINT NOT NULL,
+    returned  BIGINT NOT NULL  -- seen on 2 or more days of the period
+);

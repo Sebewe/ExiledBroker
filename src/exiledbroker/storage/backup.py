@@ -35,12 +35,13 @@ from `dst` in a transaction of its own, and its space returned (VACUUM FULL) bef
 it's copied again, so a rebuild doesn't grow the backup on a 500 MB plan."""
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from exiledbroker.config import Settings
 from exiledbroker.ingest import currency_exchange as cx
 from exiledbroker.storage import db, site
 
+USAGE_DAYS = 2  # days of usage counts re-sent before the copy's latest (still growing)
 CHUNK_HOURS = 48  # hours of rows per copy: bounds memory on a rebuild or a restore
 CHUNK_PAGES = 24  # raw pages per copy (up to ~1.5 MB each in a launch's first hours)
 # The hourly tables, with their time column and how they're filtered to the site's rows.
@@ -451,6 +452,17 @@ def sync(src, dst, settings: Settings, leagues: list[str] | None = None) -> Sync
             result.tables.append("league")
 
         result.tables += _sync_built(src, dst)
+
+        # The usage totals (api/usage.py), so a lost database doesn't lose them: the days
+        # from a little before `dst`'s latest (counts still growing; all of them into an
+        # empty copy, as on a restore) and the finished periods, upserted where they
+        # differ. One date is read back. Never the salt or the visitor ids.
+        if not research:
+            latest = db.scalar(dst, "SELECT max(day) FROM usage_daily")
+            since = ("WHERE day >= ?", [latest - timedelta(days=USAGE_DAYS)]) if latest else ()
+            changed = _upsert_changed(src, dst, "usage_daily", ["day", "event"], *since)
+            if _upsert_changed(src, dst, "usage_period", ["period"]) or changed:
+                result.tables.append("usage")
 
         result.pages_added, result.pages_removed = _sync_pages(src, dst, settings, research, lids)
 

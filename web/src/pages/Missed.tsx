@@ -15,6 +15,7 @@ import { makeMoney, type Money } from '../lib/money'
 import { eachText, lotText, whole, type Currency } from '../lib/lots'
 import { queryFallback } from '../lib/queryFallback'
 import { useLeague } from '../lib/useLeague'
+import { trackFeature } from '../lib/usage'
 
 // The landing page, Market recap: what traded in the latest published hours and what a
 // player could look into next. Worded as options to check, not promises: the backtest
@@ -373,7 +374,10 @@ function MarketMovers({ w, money, href }: { w: MissedWindow; money: Money; href:
       icon={Waves}
       more={
         more && (
-          <button type="button" onClick={() => setAll(!all)} className="cursor-pointer text-sm text-accent hover:text-accent-strong">
+          <button type="button" onClick={() => {
+              if (!all) trackFeature('recap-show-all')
+              setAll(!all)
+            }} className="cursor-pointer text-sm text-accent hover:text-accent-strong">
             {all ? 'Show fewer' : 'Show more'}
           </button>
         )
@@ -556,7 +560,13 @@ function RangeBar({
 function ShowAll({ all, total, onToggle }: { all: boolean; total: number; onToggle: () => void }) {
   if (total <= TOP) return null
   return (
-    <button type="button" onClick={onToggle} className="cursor-pointer text-sm text-accent hover:text-accent-strong">
+    <button
+      type="button"
+      onClick={() => {
+        if (!all) trackFeature('recap-show-all')
+        onToggle()
+      }}
+      className="cursor-pointer text-sm text-accent hover:text-accent-strong">
       {all ? 'Show fewer' : `Show all ${total}`}
     </button>
   )
@@ -591,7 +601,10 @@ function Rates({ label, title, children }: { label: string; title: string; child
         type="button"
         aria-expanded={open}
         aria-controls={id}
-        onClick={() => setPinned(!pinned)}
+        onClick={() => {
+          if (!pinned) trackFeature('recap-pin')
+          setPinned(!pinned)
+        }}
         onFocus={() => setHover(true)}
         onBlur={() => setHover(false)}
         className={`flex min-h-8 cursor-pointer items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-colors ${

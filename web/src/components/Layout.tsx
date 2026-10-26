@@ -3,6 +3,7 @@ import { useEffect, type ReactNode } from 'react'
 import { NavLink, useLocation } from 'react-router'
 import { useRememberedSettings } from '../lib/rememberSettings'
 import { useTheme } from '../lib/theme'
+import { trackFeature, trackPage } from '../lib/usage'
 import { FreshnessBadge } from './Freshness'
 import { SocialLinks } from './Social'
 
@@ -32,6 +33,9 @@ export function Layout({ children }: { children: ReactNode }) {
   const { pathname } = useLocation()
   useEffect(() => {
     document.title = pageTitle(pathname)
+    // Counted once the visitor has stayed a moment, so a redirect isn't a page view.
+    const timer = setTimeout(() => trackPage(pathname), 1000)
+    return () => clearTimeout(timer)
   }, [pathname])
   return (
     <div className="min-h-dvh">
@@ -76,7 +80,10 @@ export function Layout({ children }: { children: ReactNode }) {
             </span>
             <button
               type="button"
-              onClick={toggleTheme}
+              onClick={() => {
+                trackFeature('theme')
+                toggleTheme()
+              }}
               aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
               title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
               className="grid size-8 cursor-pointer place-items-center rounded-full border border-border text-muted transition-colors hover:border-accent/50 hover:text-accent"

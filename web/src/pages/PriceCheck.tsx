@@ -34,6 +34,7 @@ import {
 } from '../lib/priceCheck'
 import { queryFallback } from '../lib/queryFallback'
 import { useLeague } from '../lib/useLeague'
+import { trackFeature } from '../lib/usage'
 import { useNumberParam, useParam } from '../lib/useParam'
 
 // The Price check page (docs/price-check.md): one item at a time. Its price this league in
@@ -84,7 +85,15 @@ export default function PriceCheck() {
       {queryFallback(index, 4) ??
         (data && (
           <>
-            <Search data={data} value={itemId || undefined} onChange={setItem} divineChaos={info.divine_chaos} />
+            <Search
+              data={data}
+              value={itemId || undefined}
+              divineChaos={info.divine_chaos}
+              onChange={(id) => {
+                trackFeature('price-check-item')
+                setItem(id)
+              }}
+            />
             {itemId ? (
               <ItemView league={league!} itemId={itemId} entry={data.items.find((x) => x.item_id === itemId)} info={info} money={money} />
             ) : (
@@ -345,7 +354,10 @@ function PriceChart({ item, info }: { item: PriceCheckItem; info: LiveLeague }) 
   return (
     <Block id="chart" title="Price this league" icon={LineChart}>
       <div className="flex">
-        <Segmented label="Range" value={range} options={Object.keys(RANGES) as Range[]} onChange={setRange} format={(r) => RANGES[r]} />
+        <Segmented label="Range" value={range} options={Object.keys(RANGES) as Range[]} onChange={(r) => {
+            trackFeature('price-check-range')
+            setRange(r)
+          }} format={(r) => RANGES[r]} />
       </div>
       {!bounds || priced === 0 ? (
         <Empty>{item.name} hasn't traded in this range yet.</Empty>
@@ -375,7 +387,10 @@ function Selling({ item, money, divineChaos }: { item: PriceCheckItem; money: Mo
   return (
     <Block id="sell" title="Selling a stack" icon={Coins} note="How your stack compares with what each market trades in an hour, and whether to list it at once or spread it out.">
       <Toolbar>
-        <NumberField label="How many" value={qty} onChange={setQty} min={1} max={1_000_000} step={1} />
+        <NumberField label="How many" value={qty} onChange={(n) => {
+          trackFeature('price-check-stack')
+          setQty(n)
+        }} min={1} max={1_000_000} step={1} />
       </Toolbar>
       <Stack
         item={{ name: item.name, ...item.stack }}

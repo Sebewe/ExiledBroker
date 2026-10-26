@@ -7,6 +7,7 @@ import { PageHeader } from '../components/Section'
 import { count } from '../lib/format'
 import { useItemHref } from '../lib/itemHref'
 import { queryFallback } from '../lib/queryFallback'
+import { trackFeature } from '../lib/usage'
 import { useParam } from '../lib/useParam'
 
 // What a typical early-league wallet holds; picks cost at most this much each.
@@ -81,7 +82,10 @@ export default function Launch() {
                     role="tab"
                     type="button"
                     aria-selected={on}
-                    onClick={() => setPicked(id)}
+                    onClick={() => {
+                      trackFeature('launch-pick')
+                      setPicked(id)
+                    }}
                     className={`relative flex cursor-pointer flex-col items-start gap-0.5 rounded-lg border px-3 py-2.5 text-left transition-colors duration-150 sm:px-4 ${
                       on ? 'border-accent/60 bg-accent/10' : 'border-border bg-surface hover:border-accent/30'
                     }`}
