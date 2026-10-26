@@ -1,141 +1,70 @@
 # ExiledBroker
 
-A Path of Exile market tool for league starts. It turns historical and live exchange data into launch-week price patterns and arbitrage opportunities: card turn-ins and Chaos↔Divine loops. Later it will predict how prices move using past leagues and the new patch notes.
+ExiledBroker is a market tool for the first two weeks of a Path of Exile league. Every few months the game resets its economy, and for a fortnight prices move fast and predictably: ExiledBroker reads the game's hourly currency-exchange history, learns how prices moved after past launches, and tells a trader what to buy on day one, when to sell, and which trades paid in the last hour.
 
-> **Data credit:** daily economy history comes from [poe.ninja](https://poe.ninja), whose economy dumps are published under [CC BY-SA](https://creativecommons.org/licenses/by-sa/3.0/). Thank you to poe.ninja for making this data available to the community. Hourly currency-exchange history comes from Grinding Gear Games' public API, and item names from [RePoE](https://github.com/repoe-fork/repoe). ExiledBroker is not affiliated with or endorsed by Grinding Gear Games or poe.ninja.
+It is built for players who trade seriously at league start and want numbers rather than folklore, and every recommendation is checked against what would actually have happened.
 
-> **Living document.** This README and [`docs/`](docs) track the project's design and progress. Update the Status table, [decision log](docs/decisions.md) and layout as work lands.
+![ExiledBroker: Path of Exile currency exchange, hour by hour](web/public/og.png)
+
+## What it does
+
+- **Market recap** (the landing page). What traded in the latest published hour: volatile items worth flipping, currency loops (Chaos to an item to Divines and back) and divination-card turn-ins that paid, ranked by how often the same orders actually went through over the last three days.
+- **Price check.** One item at a time: its price this league in Chaos and Divines, a sell-now or hold verdict for the next day and the next three days drawn from past leagues' price paths, the best hour of the day to sell, and how long a stack takes the market to absorb.
+- **Launch market.** What to buy on day one, on days two to four and on days five to ten with a few Divines, ranked from the last five leagues.
+- **Research.** The project's findings as a readable journal, how each tool works, and a backtest that answers the obvious question: would following the site have made money?
+
+## The problem
+
+A new league starts with an empty economy, so the useful question is not "what is this worth" but "where will it be in a week". The answer is in past leagues: Grinding Gear Games publishes every hour of its currency exchange, and poe.ninja publishes daily prices for every league since 2016. The raw data is about ten million rows across 32 leagues, though, with gaps, renames and thin markets that produce misleading prices. ExiledBroker turns it into a few decisions a player can act on in the middle of a busy launch day.
+
+## Key design ideas
+
+**It runs on a $5 hosting plan.** The site's work happens once an hour, when the game publishes a new hour of data. A pipeline loads the hour and precomputes every page's default view; the API then serves those views from memory, gzipped once and tagged so browsers and the CDN can reuse them, and a visitor's browser asks the server for new data only when a new hour is due. Simulated with the hosting provider's own billing rates, the whole site (web server, database, hourly pipeline) comes to $2.72 of usage a month at 10 daily visitors, $3.73 at 100 and an estimated $4.90 at 1,000. Performance budgets in the test suite fail a change that reads more than its page needs.
+
+**Usage is counted without cookies.** The site needs to know which pages people use, but not who they are. Visits are counted with a hashed identifier under a monthly salt that is then deleted; no IP address and nothing on the visitor's device is stored, so no consent banner is needed. [Usage counts](docs/usage.md) explains the reasoning.
+
+**Uncertain rewards are priced at their worst case.** Some divination cards pay out a random item from a pool ("5x Fossil"). The game doesn't publish the odds, so instead of guessing an average, a card is valued at the cheapest thing it can roll. If a set still costs less than that floor, the trade pays whatever drops.
+
+**The backtest asks whether the order would have filled.** It is easy to make an arbitrage tool look profitable by assuming every trade happens at the average price. ExiledBroker's backtest replays the site's own advice an hour late, as a player would see it, in the whole-number lots the exchange accepts, at fair prices and at harsh ones near the worst traded, and counts an order only if the market actually traded through it. The result is honest: the launch-day picks returned 1.2 to 3.5 times their stake in Divines in every league tested even at the worst prices, while the hourly loops and card turn-ins at best break even. The site says so on the page.
+
+**It is polite to its data sources.** Each exchange hour is immutable, so it is fetched once, ever. Every request goes through one rate-limited client, one at a time, and reference data uses conditional requests. Being blocked by either source would end the project.
+
+## How it's built
+
+A Python pipeline fetches the data, normalises it into DuckDB for research and Postgres for the site, and precomputes each page's views every hour; a FastAPI service serves them to a React frontend. It is set up to run on Railway behind Cloudflare, with an off-site backup on Supabase's free tier.
+
+**Stack:** Python, polars, DuckDB, Postgres, FastAPI, pydantic, React, TypeScript, Vite, TanStack Query, ECharts, Tailwind, Docker.
 
 ## Status
 
-| Phase | Goal | State |
-|---|---|---|
-| 0 | Scaffolding: package, CLI, schema, config, service layer | ✅ Done |
-| 1 | Historical ingest: daily poe.ninja dumps + hourly GGG exchange, league calendar, price mappings, core pool, divination cards | ✅ All 32 challenge leagues daily; hourly for the four exchange-era leagues and the current league (Allflame) |
-| 2 | Exploration: recurring launch-week patterns (`analysis/`), loops and card turn-ins (now on the Market recap) | ✅ Run across all five exchange-era leagues: what repeats is [finding 10](docs/findings.md#10-what-repeats-across-the-five-exchange-era-leagues) |
-| 3 | Patch corpus: scraper, extractor, review tool | ⬜ |
-| 4 | Baseline + backtest: first honest accuracy numbers | 🟨 The site's tools backtested at fair and harsh prices: Launch picks pay, hourly tools at best break even ([finding 4](docs/findings.md#4-backtest-the-launch-picks-pay-the-hourly-tools-at-best-break-even), the Backtest page) |
-| 5 | Signals: "farm X", "buy Y on day 2, sell day 6" | 🟨 The Farming page's mechanic ranking is retired (2026-10-25); the Price check page replaces it: one item's price in Chaos and Divines, a sell-or-hold verdict if one beats "no change", the stack seller and the best hour to sell ([findings 6–8](docs/findings.md), [price-check.md](docs/price-check.md)). Built end to end (data, API, page, seed, backup, the pipeline adds each finished league's paths); the 375 px check is left |
-| 6 | Live mode: hourly ingest of the running league, live arbitrage view, later drift alerts | 🟨 Live feed and Market recap page built; alerts not started (the poe.ninja poller is dropped with uniques, 2026-10-25) |
-| 7 | Hosted site: React on the JSON API, all on Railway (web, Postgres, hourly pipeline), with an off-site backup on Supabase | 🟨 Built and simulated locally with Railway's billing ($2.7–3.7 a month of usage at 10–100 daily visitors, ~$4.9 estimated at 1000, inside the $5 Hobby fee); the backup is seeded; the Cloudflare fallback Worker (`deploy/cloudflare/`) and the pipeline's failure alert (`EB_HEALTHCHECK_URL`) are built; not deployed |
+Built and tested end to end, and designed and simulated for launch-day load, but not yet deployed. It will go live ahead of the next league, which launches in about a month. Progress by phase and the next steps are in the [roadmap](docs/roadmap.md).
 
-Legend: ⬜ not started · 🟨 in progress · ✅ done. Phases 1–2 alone are useful: knowing which categories reliably spike in the first week is already an edge.
+## Further reading
 
-## Next steps
-
-The next league launches in about a month. Before then:
-
-- **Go live on Railway** (waiting on Railway reopening signups): the checklist is [go-live.md](docs/go-live.md). The code side is done (Postgres-only server, rehearsed league switch, fallback Worker, failure alert); what's left is account setup: the Railway project, the healthchecks.io check, an uptime monitor, Cloudflare in front, then the seed and catch-up test. Each deploy is checked with `eb site smoke <url>`; launch day and rollback are sections 9 and 10, and Fly.io / Render are compared in [hosting.md](docs/hosting.md#if-railway-stays-closed-flyio-or-render) in case Railway stays closed.
-- **Register the new league** once its name and date are announced (`eb exchange sync -l "<Name>" --start <date>`), so the site shows "waiting for the first trades" from launch.
-
-After that:
-- **Phase 2 again on the next league** once its fortnight is complete (~2026-11-27): the first out-of-sample check of [finding 10](docs/findings.md).
-- **Site split** into Trade and Research sections: Research is built (journal, How the tools work, Backtest, Multi-layered conversions, About); next are the Trade pages' simplification and the History graphs (plan in `docs/roadmap.md`).
-
-## The site
-
-| Page | What it shows | API |
-|---|---|---|
-| **Market recap** (landing) | What traded in the last 1–3 published hours: the latest hour's volatile flips, then every loop and card turn-in that paid (liquid markets only; a random card reward at its worst roll), likeliest to go through first with how often its orders went through in the last 3 days, and behind Show rates the orders the backtest's best option would place this hour and its 24-hour price range, what moved, and options to look into | `/api/status`, `/api/missed/{league}` |
-| **Price check** (replaces Farming; `/farming` redirects to it) | One item at a time: its price this league in Chaos and Divines, sell now / hold / no clear signal for 24 hours and 3 days in the launch fortnight (from past leagues' paths, `eb price-check build`), the biggest moves after it, the stack seller (a stack as hours of the market's trading) and the best hour to sell ([price-check.md](docs/price-check.md)) | `/api/price-check/{league}`, `/api/price-check/{league}/{item_id}` |
-| **Research** (`/research`) | The journal: [findings](docs/findings.md) rendered as notes, newest first (`npm run gen:notes` after editing them; no server cost), and How the tools work, the method the trading pages link to | |
-| **Backtest** (Research) | Would following the site have paid? The site's tools replayed an hour late at fair and harsh prices (`eb backtest run`) | `/api/backtest` |
-| **Launch market** | What to buy on day 1, days 2–4 and days 5–10 with a couple of Divines, ranked from the last five leagues | `/api/launch/picks` |
-| **Multi-layered conversions**, **About** (Research) | Side markets measured; sources, credits and privacy | |
-| **Admin** (`/admin`, not linked; the owner's) | The site's usage counts and the pipeline's health per league ([admin.md](docs/admin.md)) | `/api/stats`, `/api/admin/overview`, behind `EB_ADMIN_TOKEN` |
-
-"Now" is the latest published exchange hour, about an hour behind real time. Every page handles a league with no data yet, the first hours, and a stopped feed. Interactive API docs are at `/docs` when the API is running.
+- [Architecture](docs/architecture.md): the data flow, the pages and their endpoints, the code layout.
+- [Findings](docs/findings.md): what the data says about league launches, from the backtest to the best hour to sell.
+- [Hosting and performance](docs/hosting.md): the cost model, the simulated bill and every performance issue found.
+- [Data](docs/data.md): the sources and how raw exchange hours become prices.
+- [Security and abuse](docs/security.md): the layers in front of the API and the remaining risks.
+- [Decision log](docs/decisions.md): every design decision, dated, with its reasoning.
+- [Going live](docs/go-live.md): the launch checklist and the rollback plan.
 
 ## Quick start
 
+Python 3.11+ and Node 24.
+
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -e '.[dev,pg]'
-.venv/bin/eb init-db                    # create data/exiledbroker.duckdb
-.venv/bin/eb dumps sync && .venv/bin/eb dumps load   # daily history, all challenge leagues (resumable)
-.venv/bin/eb exchange sync -l Mirage    # hourly exchange, first 14 days (resumable)
-.venv/bin/eb live watch                 # keep the current league loaded
-.venv/bin/eb serve                      # API at http://127.0.0.1:8000/api
-cd web && npm install && npm run dev    # frontend at http://localhost:5173 (Node 24)
-.venv/bin/pytest                        # tests
+.venv/bin/eb init-db && .venv/bin/eb dumps sync && .venv/bin/eb dumps load   # daily history
+.venv/bin/eb serve                        # API at http://127.0.0.1:8000/api
+cd web && npm install && npm run dev      # site at http://localhost:5173
+.venv/bin/pytest                          # tests
 ```
 
-The hosted setup, locally (Postgres in Docker stands in for Railway's):
+The full setup, including the hourly exchange and the hosted stack in Docker, is in [Architecture](docs/architecture.md#running-it-locally).
 
-```bash
-docker compose up -d db
-EB_DATABASE_URL=postgresql://eb:eb@localhost:55432/exiledbroker .venv/bin/eb site seed
-EB_DATABASE_URL=postgresql://eb:eb@localhost:55432/exiledbroker .venv/bin/eb serve
-docker compose up -d --build api        # or the whole site as Railway runs it, on :8000
-```
+## Credits and license
 
-Settings come from `EB_*` environment variables or `.env` (`src/exiledbroker/config.py`). Unattended ingest, logs and stopping a run: [data.md](docs/data.md#running-the-ingest). The full command list for development is in [CLAUDE.md](CLAUDE.md).
+Daily price history comes from [poe.ninja](https://poe.ninja), whose economy dumps are published under [CC BY-SA](https://creativecommons.org/licenses/by-sa/3.0/). Hourly currency-exchange history comes from Grinding Gear Games' public API, and item names from [RePoE](https://github.com/repoe-fork/repoe). ExiledBroker is not affiliated with or endorsed by Grinding Gear Games or poe.ninja.
 
-## How it works
-
-```
-poe.ninja dumps (daily) ─┐
-GGG exchange (hourly) ───┼─► ingest/ ─► normalize/ ─► DuckDB (local, all history)
-RePoE, loot filter ──────┘                  │
-                                            └─► Postgres (hosted, running league only)
-                                                        │
-                                      services/ ─► api/ (FastAPI, cached) ─► web/ (React)
-```
-
-- **The pipeline writes, the site reads.** CLI jobs fetch and load; the API only reads, through `services/`. The hourly pipeline (`eb pipeline run`) is the only writer of the hosted database.
-- **Everything is resumable and incremental.** Downloads resume, files are written atomically, and loads add new hours and remove only what left the window. Nothing finished is fetched or rewritten again.
-- **Every price has a `day_offset`** from its league's launch, so leagues compare directly.
-- **Store and send only what the site reads.** Summaries are computed in SQL, tables are cached per data version and served gzipped with an ETag. Cost is measured by budgets in the tests ([hosting.md](docs/hosting.md)).
-
-## Docs
-
-| Doc | Contents |
-|---|---|
-| [docs/data.md](docs/data.md) | Sources, how dumps and exchange hours become rows, the live feed, core pool, divination cards, new-league handling, data model, running the ingest |
-| [docs/go-live.md](docs/go-live.md) | The checklist for going live on Railway, with decisions and open questions |
-| [docs/hosting.md](docs/hosting.md) | Hosting shape, cost issues and their fixes, performance tooling and findings |
-| [docs/supabase.md](docs/supabase.md) | The off-site backup on Supabase: what a sync does and costs, restoring, setting it up |
-| [docs/security.md](docs/security.md) | Security and abuse: the layers in front of the API, what was checked, remaining risks ranked |
-| [docs/findings.md](docs/findings.md) | Phase-2 findings from past launches |
-| [docs/farming.md](docs/farming.md) | The retired Farming page: how it was built (superseded by price-check.md) |
-| [docs/price-check.md](docs/price-check.md) | The Price check page (replacing Farming): its plan, response contract and status |
-| [docs/demand.md](docs/demand.md) | The Demand feature: planned, researched (finding 11) and shelved |
-| [docs/admin.md](docs/admin.md) | The admin page: what it shows, the token, setting it up once deployed |
-| [docs/decisions.md](docs/decisions.md) | Decision log by topic, dated |
-| [docs/roadmap.md](docs/roadmap.md) | The prediction design (patch notes, models, backtest), planned modules, add-ons, risks |
-| [CLAUDE.md](CLAUDE.md) | Commands, architecture and coding rules for working on the code |
-
-## Project layout
-
-```
-ExiledBroker/
-├── src/exiledbroker/
-│   ├── cli.py              # eb dumps | exchange | live | site seed/smoke | perf report | serve | init-db
-│   ├── config.py           # settings (EB_* env vars / .env)
-│   ├── ingest/             # fetching: http client, atomic files, poe.ninja dumps, GGG exchange,
-│   │                       #   live updates, RePoE names, core pool, loot filter, reference data
-│   ├── normalize/          # loading: dump loader, incremental exchange loader, leagues,
-│   │                       #   price-mapping groups, divination cards, mapping refresh
-│   ├── storage/            # schema.sql (DuckDB + Postgres), db helpers + query meter, site seed
-│   ├── services/           # read-side queries shared by the API: market, live, cross_market,
-│   │                       #   divination, scoring, prices, leagues, overview
-│   ├── analysis/           # phase-2 research tools (local only)
-│   ├── api/                # FastAPI app, routes (live, trading, market), models, cached views, warm-up
-│   └── perf.py             # eb perf report
-├── web/                    # React + Vite + TS frontend (pages, components, generated API types)
-├── tests/                  # incl. real-data replay fixture, performance budgets, Postgres checks
-├── docs/                   # design docs (see above)
-├── config/core_pool.toml   # manual core-pool overrides
-├── scripts/ingest.sh       # unattended, resumable ingest
-├── Dockerfile, docker-compose.yml
-├── deploy/                 # railway/ (service configs), railway-sim/ (local Railway with billing)
-├── .github/workflows/ci.yml
-└── data/                   # gitignored: raw downloads, Parquet, logs, exiledbroker.duckdb
-```
-
-Planned modules are listed in [roadmap.md](docs/roadmap.md#planned-modules).
-
-**Stack:** Python (`httpx`, `polars`, DuckDB, `pydantic`, `typer`, FastAPI), Postgres (Railway; off-site backup on Supabase), React + Vite + TypeScript (TanStack Query/Table, ECharts, Tailwind); `scikit-learn`/LightGBM later.
-
-## License
-
-MIT. See [LICENSE](LICENSE).
+MIT licensed. See [LICENSE](LICENSE).

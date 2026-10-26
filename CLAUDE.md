@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-ExiledBroker is a Path of Exile 1 market tool: historical and live exchange data → league-start price patterns, arbitrage (card turn-ins, Chaos↔Divine loops) and, later, predictions. `README.md` and `docs/` are the project's **living design documents**: the README's Status table, Next steps and layout, plus `docs/decisions.md` (decision log by topic, dated), `docs/data.md`, `docs/hosting.md` (cost issues, performance findings), `docs/findings.md` and `docs/roadmap.md`. Read the relevant doc before larger changes and update it with them; keep the README short and put detail in `docs/`.
+ExiledBroker is a Path of Exile 1 market tool: historical and live exchange data → league-start price patterns, arbitrage (card turn-ins, Chaos↔Divine loops) and, later, predictions. `README.md` is the product page (what it is, for a reader new to the project); `docs/` holds the **living design documents**: `docs/roadmap.md` (Status table, Next steps), `docs/architecture.md` (data flow, pages and endpoints, layout), `docs/decisions.md` (decision log by topic, dated), `docs/data.md`, `docs/hosting.md` (cost issues, performance findings) and `docs/findings.md`. Read the relevant doc before larger changes and update it with them; keep the README short and non-technical and put detail in `docs/`.
 
 ## Be very polite to GGG and poe.ninja (non-negotiable)
 
