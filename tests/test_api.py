@@ -349,6 +349,10 @@ def test_serves_the_frontend(tmp_path, settings):  # noqa: F811
     assert c.get("/../pyproject.toml").text == "<div id=root></div>"  # no escaping dist
     assert c.get("/api/health").json()["status"] == "ok"
     assert c.get("/api/nope").status_code == 404  # API paths never fall through
+    # A previous deploy's chunk is gone: 404, so the page reloads (web/src/lib/chunkReload)
+    # rather than running index.html as JavaScript.
+    gone = c.get("/assets/Launch-old.js")
+    assert gone.status_code == 404 and gone.headers["cache-control"] == "no-store"
 
 
 def test_security_headers(tmp_path, settings):  # noqa: F811

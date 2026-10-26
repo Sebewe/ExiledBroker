@@ -754,6 +754,53 @@ def site_seed(
     typer.echo(f"Seeded {', '.join(result.leagues)}: {rows}")
 
 
+@site_app.command("smoke")
+def site_smoke(
+    url: Annotated[str, typer.Argument(help="The site, e.g. https://exiledbroker.trade")],
+    edge: Annotated[
+        bool,
+        typer.Option("--edge", help="It's behind Cloudflare: also check edge cache hits."),
+    ] = False,
+    origin: Annotated[
+        str | None,
+        typer.Option(
+            "--origin",
+            help="The *.up.railway.app address: check it refuses requests without the "
+            "origin key (EB_ORIGIN_KEY set) and still answers the health check.",
+        ),
+    ] = None,
+) -> None:
+    """After a deploy: fetch every page, built file and API endpoint the site serves and
+    check each answer (about 30 requests to the site, nothing to GGG or poe.ninja).
+    Exits 1 when a check fails; warnings (a late feed) don't fail it."""
+    import httpx
+
+    from exiledbroker import smoke
+
+    # Our own site, not an upstream: a plain client, no retries, so a failure shows.
+    headers = {"User-Agent": f"{get_settings().user_agent} smoke-test"}
+    with httpx.Client(base_url=url.rstrip("/"), headers=headers, timeout=30) as c:
+        other = (
+            httpx.Client(base_url=origin.rstrip("/"), headers=headers, timeout=30)
+            if origin
+            else None
+        )
+        try:
+            results = smoke.run(c.get, edge=edge, origin_check=other.get if other else None)
+        except httpx.HTTPError as e:
+            typer.echo(f"FAIL  can't reach the site: {e!r}")
+            raise typer.Exit(1) from e
+        finally:
+            if other is not None:
+                other.close()
+    for check in results:
+        typer.echo(str(check))
+    failed = [c for c in results if c.ok is False]
+    typer.echo(f"\n{len(results) - len(failed)} of {len(results)} checks passed.")
+    if failed:
+        raise typer.Exit(1)
+
+
 @site_app.command("backup")
 def site_backup(
     league: Annotated[

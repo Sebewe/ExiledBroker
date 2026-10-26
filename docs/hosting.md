@@ -118,6 +118,26 @@ Profiled 2026-10-26: what the web service's memory is, what was cut, and whether
 
 **Recommended: stay on Railway Hobby.** The $0 setup saves $5 a month for a rebuild of how the site is served, three providers' limits and a less punctual pipeline; at the usage measured there's no bill to cut until traffic outgrows $5, and then the levers are already known (go-live item 5).
 
+### If Railway stays closed: Fly.io or Render
+
+Railway's signups are closed (as of 2026-10-26), a few weeks before the next league. Not migrating; this is what the fallback would be. Prices read from the providers' pages on 2026-10-26 (Fly.io's RAM price changed on 2026-10-01); check them again before choosing.
+
+| | Railway Hobby (as built) | Fly.io | Render |
+|---|---|---|---|
+| Web (always on, ~0.2 GB) | in the $5 | shared-cpu-1x, 512 MB (256 MB is too tight at ~200 MB RSS): ~$4–5 a month | Starter, 512 MB: ~$7. The free instance sleeps after inactivity and takes ~1 min to wake, past the Worker's 15 s timeout: visitors would get the fallback page |
+| Postgres (~0.3 GB) | in the $5 | Managed Postgres starts at $38. Instead: the `postgres:17` image on its own Machine with a 1 GB volume (~$2–3), which we'd back up ourselves (the Supabase sync already does) | Basic: ~$6–7. The free database expires |
+| The hourly pipeline | Railway cron at `:06` | A scheduled Machine (`--schedule hourly`) starts at some point in the hour, not at `:06`; for a fixed minute run `supercronic` in an always-on 256 MB Machine (~$2) | A Cron Job service (`6 * * * *`), billed per minute it runs (cents) |
+| Private network | free | free (6PN, `<app>.internal`) | free within a region |
+| **About a month** | **$5** | **~$8–10** | **~$14** |
+
+What changes in the go-live checklist, either way:
+- **Section 3:** config-as-code is `fly.toml` (three apps or process groups) or `render.yaml` (a Blueprint) instead of `deploy/railway/*.json`; same `Dockerfile`, same variables (`EB_DATABASE_URL` to the private address, `EB_BACKUP_URL`, `EB_HEALTHCHECK_URL`, `EB_ADMIN_TOKEN`, `EB_ORIGIN_KEY`, `EB_NEXT_LEAGUE`/`_START`). The health check stays `/api/health`. Uvicorn listens on `$PORT` (Render sets it; on Fly set `internal_port = 8000`).
+- **Section 5:** neither has Railway's hard usage limit. Fly has none (watch the invoice; fixed machine sizes cap memory); Render bills fixed instance prices, so a spike can't run up the bill, only slow it. The healthchecks.io and uptime monitors are unchanged.
+- **Section 7 and 8:** `ORIGIN` in `wrangler.toml` and the DNS target become the `*.fly.dev` / `*.onrender.com` address; the origin key, the Worker and Cloudflare's rules are unchanged. `eb site smoke --origin` points at the new address.
+- **Costs:** the Railway simulation (`deploy/railway-sim/`) meters Railway's usage billing; on Fly or Render the bill is the fixed sizes above, so the simulation only matters for memory, which still decides the instance size.
+
+**Recommended if it comes to it: Fly.io**, closer to the $5 and to how Railway runs things (Docker image, private network, per-second machines), at the cost of running our own Postgres container. Render is simpler (managed Postgres, a real cron) but about three times the bill.
+
 ## Supabase: tried as the database, now the off-site backup
 
 Tried on 2026-10-23 as the site's database (free tier: 500 MB, 5 GB egress a month, AWS us-east-1), with web and the pipeline on Railway. It fitted only after the pipeline fix below, at ~1.4 GB of egress a month, and needed rules around every read of it (reads cross from Railway's network, on Google Cloud, to AWS: billed egress), so it became the off-site backup instead (`docs/decisions.md`, [supabase.md](supabase.md)): written to every hour, read only to restore.
