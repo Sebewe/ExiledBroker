@@ -232,3 +232,6 @@ data/*
 
 # The Python template above ignores every lib/ (build output); the frontend has source there.
 !web/src/lib/
+.DS_Store
+.claude/skills/developing-with-streamlit
+.claude/settings.json
