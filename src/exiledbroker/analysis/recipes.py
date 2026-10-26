@@ -368,7 +368,7 @@ def main() -> None:  # pragma: no cover - research entry point
             for name, spec in config.get("reroll", {}).items()
         ]
     rv = _concat(rerolls)
-    with pl.Config(tbl_rows=400, tbl_cols=20, tbl_width_chars=220, fmt_str_lengths=60):
+    with pl.Config(tbl_rows=-1, tbl_cols=20, tbl_width_chars=220, fmt_str_lengths=60):
         print(f"Leagues: {', '.join(leagues)}; days {DAYS[0]}-{DAYS[1]}")
         if missing:
             print(f"Not in the item table (skipped): {', '.join(missing)}")
