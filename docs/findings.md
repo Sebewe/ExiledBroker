@@ -527,8 +527,47 @@ In the first 2 days a falling price says most of what a "dumped" reading would. 
 
 **Decided (2026-10-26):** the Market recap's card turn-ins will include random-reward cards valued at their floor, with a note that the value is the worst roll ([decisions](decisions.md)). The pools reach the server as a small table resolved at load time. Not built yet.
 
+## 13. Recipes: splinters, a few essence and oil upgrades and one Harvest crest change beat their inputs at typical prices; nothing survives harsh prices, and the scarab vendor never pays
+
+*`analysis/recipes.py` (`python -m exiledbroker.analysis.recipes`, about a second; the first run's per-league table was cut by polars, so a few leagues' hour shares are missing above), recipes in `config/recipes.toml`. Days 0–13 of Settlers, Mercenaries, Keepers, Mirage and Allflame. Combines and vendor upgrades are priced each hour both items traded in the Chaos market; rerolls are priced daily at their floor, as for random card rewards (finding 12). Fair prices are the hour's average. Harsh prices buy the inputs at the hour's high and sell at the low (or in Divines at the worst rate). Built 2026-10-26, read-only, no requests.*
+
+| Recipe | Fair median margin: worst league / median league | Hours it paid (leagues shown in full) | Harsh, worst league |
+|---|---|---|---|
+| 300 Simulacrum Splinters → Simulacrum | +12% / +18%, positive in 5 of 5 | 91–99% | −63% |
+| 100 Ritual Splinters → Ritual Vessel | +12% / +21%, 5 of 5 | 61–74% | −50% |
+| 20 Exalted Shards → Exalted Orb | +8% / +13%, 3 of 3 traded | 68–84% | −67% |
+| 3 Shrieking → 1 Deafening Essence of Suffering | +4% / +21% (Allflame +61%), 5 of 5 | 56–87% | −13% (Settlers +3%) |
+| 3 Opalescent → 1 Silver Oil | +3% / +3%, 5 of 5 | 67–78% | −33% |
+| 3 Shrieking → 1 Deafening Essence of Anguish, Doubt | Allflame +60% to +69% (harsh +5% to +33%), elsewhere −28% to +17% | – | – |
+| Scarab vendor (3 identical for 1 random other) | at the floor −66% to −88% for every scarab in every league | 0% | – |
+| Harvest change, Al-Hezmin's Crest → another crest | +1% / +17% (Allflame +73%), 5 of 5; 0.03–1.85c a crest, which pays for 1–53 Vivid Lifeforce | 57–93% | −60% |
+| Harvest change, Delirium Orbs, Breach splinters, Breachstones | about 0% at best, mostly negative | – | – |
+
+- **Splinters and a few upgrades trade below what they make, every league.** The size is like card sets (finding 10's +16% to +27%), and so is the catch: at harsh prices every recipe loses in nearly every league, so only limit orders would capture it (finding 4).
+- **Most vendor upgrades lose, and the low tiers are dust.** Whispering to Wailing essences cost the 1c minimum each, so 3 for 1 loses two thirds by construction. Only 5 of the 118 recipes priced paid in every league they traded (the five above).
+- **The scarab vendor never pays at the floor.** Scarabs trade within a narrow band of each other, so 3 for the cheapest other loses about two thirds. Whether it pays on average depends on GGG's unpublished weights: the floor can't say.
+- **Harvest: one lead, Al-Hezmin's Crest.** It is the cheapest crest every league, so changing it into any other pays at the floor. Whether that's profit depends on the craft's Vivid Lifeforce cost a crest, which GGG doesn't publish: in Mercenaries, Keepers and Allflame the gain covers about 43–53 units, in Settlers 7 and Mirage 1. **To check in game.** The other change crafts are at best break-even before lifeforce.
+- **Caveats:** some shard markets are too thin to price (Alteration, Alchemy and Transmutation shards traded in 5–31 hours, at whole-number minimums), and the strongly negative splinter recipes (Breach, the Karui, Vaal and Eternal emblems) are worth checking against the in-game stack size before reading anything into them. Gold fees and the time to gather a set aren't modelled.
+
+## 14. Cross-rate triangles: the item-to-item markets are priced in line; the gaps that pay are new-league currencies and cheap orbs at whole-number ratios
+
+*`analysis/triangles.py` (`python -m exiledbroker.analysis.triangles`, about 20 seconds), over the raw pages on disk. Days 0–13 of the five exchange leagues. A triangle buys A in the Chaos (or Divine) market, trades A for B in the A/B market and sells B, all in one hour; worst prices take each leg's worst ratio. Loops are listed only if their cross market traded at least 100c (or 0.5 div) an hour. Built 2026-10-26, read-only, no requests.*
+
+| | Settlers | Mercenaries | Keepers | Mirage | Allflame |
+|---|---|---|---|---|---|
+| Item-to-item markets | 1,768 | 834 | 1,023 | 811 | 991 |
+| Share of traded market-hours | 12% | 6% | 9% | 7% | 7% |
+| Median fair gap of a loop | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% |
+| Loop-hours paying at worst prices, via Chaos / Divines | 7% / 30% | 17% / 35% | 17% / 28% | 21% / 32% | 24% / 33% |
+
+- **The cross markets agree with the Chaos and Divine prices.** The median loop's fair gap is 0.0% in every league; the share that "pays" at worst prices is mostly dust-priced pairs and wide hourly ranges, the same effect as finding 2's loops.
+- **Nothing pays above the trade floor in every league.** The best repeat is Orb of Fusing → Orb of Alteration via Divines (paid in 15–49% of hours, in all five), with Fusing, Chromatic Orb and Orb of Regret → Exalted Orb via Divines in three. These are cheap orbs priced in Divines at whole-number ratios (finding 5's correction): their cross markets trade under 1 Divine an hour, so it isn't money.
+- **What does pay is new-league currency.** In Allflame, Orb of Fusing or Gemcutter's Prism → Dead Man's Sulphur → Chaos paid at worst prices in 70–95% of hours (+300% to +500% fair gap), on 116–160c of cross trading an hour. In Mirage, the coins (Knowledge → Skill → Power) paid in 39–44% of hours on about 130c an hour. One league each, so it's a lead for the untried "new league's own currency" study, not a rule. Chromatic Orb → Exalted Orb via Chaos paid in 33–43% of hours in Mercenaries and Keepers (~135c an hour).
+- **Lifeforce and the Shaper/Elder fragment pairs are efficient:** they trade in every league and pay in 0–14% of hours.
+
 ## Still to do
 
+- **Check two leads from findings 13 and 14 in game:** the Vivid Lifeforce cost of changing an Al-Hezmin's Crest, and whether the new league's own currency trades at a discount in other currencies' markets at launch (Dead Man's Sulphur, the Mirage coins).
 - **Check in-game whether GGG's hourly lowest and highest ratios are executed trades** (findings 2, 4, 5). It's the one question hourly data can't answer, and it decides whether the loops' limit orders, the card limit orders and the volatile flips are real.
 - **Rerun finding 10 on the next league once its fortnight completes (~2026-11-27).** The sixth league is the first real out-of-sample check of these patterns; the Launch picks and Price check's paths gain it as one more league (rebuild and reseed).
 - **Patch notes (phase 3)** to explain the level shifts that past prices can't (finding 3's group levels, finding 8's Necropolis and Tattoos).
