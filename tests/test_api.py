@@ -303,6 +303,9 @@ def test_only_what_the_pages_request_is_served(client, settings):  # noqa: F811
         "/api/backtest",
         "/api/price-check/{league}",
         "/api/price-check/{league}/{item_id}",
+        # The pre-launch preview: stored documents by key, 404 unless the snapshot holds
+        # it (test_preview.py)
+        "/api/preview/{key}",
         "/api/hit",  # the usage beacon: one event from a fixed list, counted in memory
         "/api/stats",  # the usage counts, for the owner only (admin token)
         "/api/admin/overview",  # the owner's only, behind EB_ADMIN_TOKEN (test_admin.py)

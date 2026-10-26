@@ -2,7 +2,7 @@ import { Activity, AlertTriangle, ArrowDown, ArrowDownRight, ArrowRight, ArrowUp
 import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import type { LiveLeague, MissedCard, MissedFlip, MissedLoop, MissedWindow, Mover, Upcoming } from '../api/client'
-import { useMissed, useServerNow, useStatus } from '../api/queries'
+import { useLeagues, useMissed, useServerNow, useStatus } from '../api/queries'
 import { Select } from '../components/Controls'
 import { FreshnessBanner } from '../components/Freshness'
 import { Notice } from '../components/Notice'
@@ -58,16 +58,27 @@ function clock(ms: number) {
 }
 
 const hourOf = (iso: string) => utcHour(iso).replace(/^.*, /, '')
+/** An announced day (`2026-11-13`) as "Nov 13". */
+const launchDay = (day: string) => new Date(`${day}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
 
 /** The announced league: counting down to its launch, then to its first published hour.
  *  `compact` is the strip shown above the running league's recap before launch. */
 function Countdown({ upcoming, compact = false }: { upcoming: Upcoming; compact?: boolean }) {
   const now = useNow()
+  const name = upcoming.name ?? 'The next league'
+  if (!upcoming.start_at || !upcoming.first_data_at) {
+    // GGG has announced the day, not the time yet.
+    return (
+      <Notice kind="info" title={`${name} launches ${launchDay(upcoming.start_date)}`}>
+        The launch time isn't announced yet. Its first recap lands about an hour after launch, once GGG publishes the first hour of trades.
+      </Notice>
+    )
+  }
   const start = Date.parse(upcoming.start_at)
   const first = Date.parse(upcoming.first_data_at)
   if (compact) {
     return (
-      <Notice kind="info" title={`${upcoming.name} launches in ${clock(start - now)}`}>
+      <Notice kind="info" title={`${name} launches in ${clock(start - now)}`}>
         {utcHour(upcoming.start_at)}. Its first recap lands about an hour later, once GGG publishes the first hour of trades.
       </Notice>
     )
@@ -80,7 +91,7 @@ function Countdown({ upcoming, compact = false }: { upcoming: Upcoming; compact?
       aria-label="Countdown"
     >
       <Timer aria-hidden className="size-6 text-accent" />
-      <p className="text-sm text-muted">{launched ? `${upcoming.name} is live. First trades published in about` : `${upcoming.name} launches in`}</p>
+      <p className="text-sm text-muted">{launched ? `${name} is live. First trades published in about` : `${name} launches in`}</p>
       <p className="num text-5xl font-semibold tracking-tight text-accent-strong sm:text-6xl" role="timer">
         {launched ? (due > 0 ? clock(due) : 'any minute') : clock(start - now)}
       </p>
@@ -96,9 +107,10 @@ function Countdown({ upcoming, compact = false }: { upcoming: Upcoming; compact?
 export default function Missed() {
   const status = useStatus()
   const serverNow = useServerNow()
-  const names = status.data?.leagues.map((l) => l.name) ?? []
+  const leagues = useLeagues() // the live leagues, or the preview's on the chosen day
+  const names = leagues.map((l) => l.name)
   const [league, setLeague] = useLeague(names)
-  const info = status.data?.leagues.find((l) => l.name === league)
+  const info = leagues.find((l) => l.name === league)
   const summary = useMissed(info?.latest_hour ? league : undefined)
   const w = summary.data?.find((x) => x.hours === 1)
   const money = makeMoney(info?.divine_chaos)
@@ -121,7 +133,7 @@ export default function Missed() {
   // The announced league once it has started (or with nothing else to show): its
   // countdown is the page until its first hour is loaded.
   const upcoming = status.data!.upcoming
-  const started = upcoming && Date.parse(upcoming.start_at) <= serverNow
+  const started = !!upcoming?.start_at && Date.parse(upcoming.start_at) <= serverNow
   if (upcoming && (started || !info)) {
     return (
       <>

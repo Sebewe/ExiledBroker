@@ -1988,6 +1988,264 @@
         "title": "PipelineLeague",
         "type": "object"
       },
+      "PreviewDay": {
+        "description": "One day the preview can be rewound to: the site as it stood at the end of launch\nday `day` (1-based), and the league as /api/status listed it then.",
+        "properties": {
+          "day": {
+            "title": "Day",
+            "type": "integer"
+          },
+          "league": {
+            "$ref": "#/components/schemas/LiveLeague"
+          }
+        },
+        "required": [
+          "day",
+          "league"
+        ],
+        "title": "PreviewDay",
+        "type": "object"
+      },
+      "PreviewItemNext": {
+        "description": "An item's whole series in the preview's league, from launch to `next_until`\n(day 10's end), for \"what happened next\" after the chosen day. Same points as\nPriceCheckItem.series: [hour, Chaos, Divines at that hour's rate].",
+        "properties": {
+          "item_id": {
+            "title": "Item Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "series": {
+            "items": {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              ],
+              "type": "array"
+            },
+            "title": "Series",
+            "type": "array"
+          },
+          "unit": {
+            "enum": [
+              "divine",
+              "chaos"
+            ],
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_id",
+          "name",
+          "unit",
+          "series"
+        ],
+        "title": "PreviewItemNext",
+        "type": "object"
+      },
+      "PreviewManifest": {
+        "description": "The pre-launch preview's snapshot (docs/preview.md, `eb preview build`): a past\nleague's early days, served from /api/preview/{key}. Keys: `manifest` (this),\n`d{day}/missed`, `d{day}/price-check`, `d{day}/price-check/{item_id}`,\n`d{day}/launch-picks`, `d{day}/recap-next` and `next/price-check/{item_id}`.",
+        "properties": {
+          "built_at": {
+            "format": "date-time",
+            "title": "Built At",
+            "type": "string"
+          },
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/PreviewDay"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "default_day": {
+            "title": "Default Day",
+            "type": "integer"
+          },
+          "launched_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Launched At"
+          },
+          "league": {
+            "title": "League",
+            "type": "string"
+          },
+          "next_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Until"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "league",
+          "launched_at",
+          "days",
+          "default_day",
+          "next_until",
+          "built_at",
+          "version"
+        ],
+        "title": "PreviewManifest",
+        "type": "object"
+      },
+      "PreviewRecapNext": {
+        "description": "`d{day}/recap-next`: every loop, card turn-in and flip in that day's recap\n(`d{day}/missed`, all look-backs), and whether it kept paying.",
+        "properties": {
+          "hours": {
+            "title": "Hours",
+            "type": "integer"
+          },
+          "latest_hour": {
+            "format": "date-time",
+            "title": "Latest Hour",
+            "type": "string"
+          },
+          "trades": {
+            "items": {
+              "$ref": "#/components/schemas/PreviewTradeNext"
+            },
+            "title": "Trades",
+            "type": "array"
+          }
+        },
+        "required": [
+          "latest_hour",
+          "hours",
+          "trades"
+        ],
+        "title": "PreviewRecapNext",
+        "type": "object"
+      },
+      "PreviewTradeNext": {
+        "description": "What one of the recap's trades did in the 24 hours after the chosen day's last\nhour. \"Paid\" is the recap's own test, hour by hour: a loop's edge beat the 2% buffer\n(in `direction`), a card turn-in's margin was positive, a flip's hour traded both at\nor below its bid and at or above its ask.",
+        "properties": {
+          "direction": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Direction"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "loop",
+              "card",
+              "flip"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "next_hour_paid": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Hour Paid"
+          },
+          "paid": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Paid",
+            "type": "array"
+          },
+          "paid_hours": {
+            "title": "Paid Hours",
+            "type": "integer"
+          },
+          "still_paid": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Still Paid"
+          },
+          "traded_hours": {
+            "title": "Traded Hours",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "item_id",
+          "paid",
+          "paid_hours",
+          "traded_hours",
+          "next_hour_paid",
+          "still_paid"
+        ],
+        "title": "PreviewTradeNext",
+        "type": "object"
+      },
       "PriceCheckIndex": {
         "description": "The search list and the movers, one per data version.",
         "properties": {
@@ -2671,6 +2929,16 @@
             "title": "Now",
             "type": "string"
           },
+          "preview": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PreviewManifest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "upcoming": {
             "anyOf": [
               {
@@ -2691,25 +2959,57 @@
         "type": "object"
       },
       "Upcoming": {
-        "description": "The announced next league, until its first trades are loaded.",
+        "description": "The announced next league, until its first trades are loaded. GGG may announce\nthe day before the time, and the time before the name.",
         "properties": {
           "first_data_at": {
-            "format": "date-time",
-            "title": "First Data At",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Data At"
           },
           "name": {
-            "title": "Name",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
           },
           "start_at": {
-            "format": "date-time",
-            "title": "Start At",
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start At"
+          },
+          "start_date": {
+            "format": "date",
+            "title": "Start Date",
             "type": "string"
+          },
+          "time_known": {
+            "title": "Time Known",
+            "type": "boolean"
           }
         },
         "required": [
           "name",
+          "start_date",
+          "time_known",
           "start_at",
           "first_data_at"
         ],
@@ -3257,6 +3557,100 @@
         ]
       }
     },
+    "/api/preview/{key}": {
+      "get": {
+        "description": "One document of the pre-launch preview's snapshot, as built: the pages' data on\none of the preview's days, or what happened next. Send the manifest's `version` as\n`v`; such a response is cached for a day.",
+        "operationId": "preview_document_api_preview__key__get",
+        "parameters": [
+          {
+            "description": "`manifest`, `d{day}/missed`, `d{day}/price-check`, `d{day}/price-check/{item_id}`, `d{day}/launch-picks`, `d{day}/recap-next` or `next/price-check/{item_id}`; 404 unless the snapshot holds it.",
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "description": "`manifest`, `d{day}/missed`, `d{day}/price-check`, `d{day}/price-check/{item_id}`, `d{day}/launch-picks`, `d{day}/recap-next` or `next/price-check/{item_id}`; 404 unless the snapshot holds it.",
+              "maxLength": 160,
+              "title": "Key",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The data version the page has (`/api/status`'s `data_version`). Ignored by the server: it only keys caches, so a new hour never gets an older copy.",
+            "in": "query",
+            "name": "v",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The data version the page has (`/api/status`'s `data_version`). Ignored by the server: it only keys caches, so a new hour never gets an older copy.",
+              "title": "V"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/PreviewManifest"
+                    },
+                    {
+                      "$ref": "#/components/schemas/PreviewRecapNext"
+                    },
+                    {
+                      "$ref": "#/components/schemas/PreviewItemNext"
+                    },
+                    {
+                      "$ref": "#/components/schemas/PriceCheckIndex"
+                    },
+                    {
+                      "$ref": "#/components/schemas/PriceCheckItem"
+                    },
+                    {
+                      "items": {
+                        "$ref": "#/components/schemas/MissedWindow"
+                      },
+                      "type": "array"
+                    },
+                    {
+                      "items": {
+                        "$ref": "#/components/schemas/LaunchWindow"
+                      },
+                      "type": "array"
+                    }
+                  ],
+                  "title": "Response Preview Document Api Preview  Key  Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Document",
+        "tags": [
+          "preview"
+        ]
+      }
+    },
     "/api/price-check/{league}": {
       "get": {
         "description": "The search list (every core-pool exchange item the league has traded: price now,\nunits an hour, 24-hour verdict and move in Divines) and the movers: the strongest\n24-hour calls in the launch fortnight, else the biggest 24-hour moves.",
@@ -3442,7 +3836,7 @@
     },
     "/api/status": {
       "get": {
-        "description": "Leagues on the exchange, newest data first, the data version, and the announced\nnext league until it has trades. Cheap: poll this, and refetch everything else when\n`data_version` changes.",
+        "description": "Leagues on the exchange, newest data first, the data version, the announced next\nleague until it has trades, and the pre-launch preview while it's on. Cheap: poll\nthis, and refetch everything else when `data_version` changes.",
         "operationId": "status_api_status_get",
         "responses": {
           "200": {

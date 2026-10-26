@@ -8,6 +8,7 @@ from fastapi import APIRouter, Request, Response
 from exiledbroker.api import deps
 from exiledbroker.api.deps import View
 from exiledbroker.api.models import LiveLeague, MissedWindow, Status
+from exiledbroker.api.routes import preview
 from exiledbroker.services import live, missed
 
 router = APIRouter(tags=["live"])
@@ -23,7 +24,7 @@ def missed_view(league: str) -> View:
 
 def upcoming(leagues: list) -> dict | None:
     """The announced next league until it has trades loaded (`live.upcoming_league`)."""
-    return live.upcoming_league(deps.settings(), {lg.name for lg in leagues if lg.latest_hour})
+    return live.upcoming_league(deps.settings(), live.traded(leagues))
 
 
 # Browsers check the status only when a new hour is due (web/src/lib/schedule.ts); this
@@ -33,16 +34,18 @@ STATUS_CACHE = "public, max-age=60"
 
 @router.get("/status", response_model=Status)
 def status(response: Response) -> dict:
-    """Leagues on the exchange, newest data first, the data version, and the announced
-    next league until it has trades. Cheap: poll this, and refetch everything else when
-    `data_version` changes."""
+    """Leagues on the exchange, newest data first, the data version, the announced next
+    league until it has trades, and the pre-launch preview while it's on. Cheap: poll
+    this, and refetch everything else when `data_version` changes."""
     leagues = deps.payload(leagues_view()).rows
+    announced = upcoming(leagues)
     response.headers["Cache-Control"] = STATUS_CACHE
     return {
         "now": deps.now_utc(),
         "data_version": deps.public_version(),
         "leagues": leagues,
-        "upcoming": upcoming(leagues),
+        "upcoming": announced,
+        "preview": preview.status_preview(announced),
     }
 
 

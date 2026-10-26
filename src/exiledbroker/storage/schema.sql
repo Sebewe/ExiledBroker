@@ -403,3 +403,13 @@ CREATE TABLE IF NOT EXISTS usage_period (
     visitors  BIGINT NOT NULL,
     returned  BIGINT NOT NULL  -- seen on 2 or more days of the period
 );
+
+-- The pre-launch preview's snapshot (docs/preview.md, `eb preview build`): a past
+-- league's early days as the site showed them, one gzipped JSON document per key
+-- (src/exiledbroker/preview/snapshot.py lists the keys). Built locally, copied to the
+-- site by `eb site seed`, served as stored by /api/preview/{key}.
+CREATE TABLE IF NOT EXISTS preview_snapshot (
+    key       VARCHAR PRIMARY KEY,
+    built_at  TIMESTAMP NOT NULL,
+    body      BYTEA NOT NULL
+);

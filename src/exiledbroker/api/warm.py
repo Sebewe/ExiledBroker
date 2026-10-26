@@ -11,6 +11,7 @@ from fastapi import HTTPException
 
 from exiledbroker.api import deps
 from exiledbroker.api.deps import View
+from exiledbroker.api.routes import preview
 from exiledbroker.api.routes.live import leagues_view, missed_view
 from exiledbroker.api.routes.market import backtest_view, launch_picks_view
 from exiledbroker.api.routes.price_check import index_view, movers_views
@@ -36,6 +37,7 @@ def warm() -> int:
     views = default_views()
     for view in views:
         deps.payload(view)
+    preview.index()  # /api/status reads the preview's manifest from it
     return len(views)
 
 

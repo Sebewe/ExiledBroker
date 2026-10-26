@@ -46,7 +46,7 @@ describe('nextCheckIn', () => {
   })
 
   it("counts down to an announced league's first hour", () => {
-    const upcoming = { name: 'Next', start_at: '2026-10-22T09:00:00Z', first_data_at: '2026-10-22T10:10:00Z' }
+    const upcoming = { name: 'Next', start_date: '2026-10-22', time_known: true, start_at: '2026-10-22T09:00:00Z', first_data_at: '2026-10-22T10:10:00Z' }
     const s: Status = { ...status(null), leagues: [], upcoming }
     expect(nextCheckIn(s, T, T)).toBe(70 * MIN)
   })

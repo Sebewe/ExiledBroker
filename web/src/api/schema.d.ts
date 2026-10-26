@@ -127,6 +127,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/preview/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preview Document
+         * @description One document of the pre-launch preview's snapshot, as built: the pages' data on
+         *     one of the preview's days, or what happened next. Send the manifest's `version` as
+         *     `v`; such a response is cached for a day.
+         */
+        get: operations["preview_document_api_preview__key__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/price-check/{league}": {
         parameters: {
             query?: never;
@@ -202,9 +224,9 @@ export interface paths {
         };
         /**
          * Status
-         * @description Leagues on the exchange, newest data first, the data version, and the announced
-         *     next league until it has trades. Cheap: poll this, and refetch everything else when
-         *     `data_version` changes.
+         * @description Leagues on the exchange, newest data first, the data version, the announced next
+         *     league until it has trades, and the pre-launch preview while it's on. Cheap: poll
+         *     this, and refetch everything else when `data_version` changes.
          */
         get: operations["status_api_status_get"];
         put?: never;
@@ -840,6 +862,109 @@ export interface components {
             runs_day: number;
         };
         /**
+         * PreviewDay
+         * @description One day the preview can be rewound to: the site as it stood at the end of launch
+         *     day `day` (1-based), and the league as /api/status listed it then.
+         */
+        PreviewDay: {
+            /** Day */
+            day: number;
+            league: components["schemas"]["LiveLeague"];
+        };
+        /**
+         * PreviewItemNext
+         * @description An item's whole series in the preview's league, from launch to `next_until`
+         *     (day 10's end), for "what happened next" after the chosen day. Same points as
+         *     PriceCheckItem.series: [hour, Chaos, Divines at that hour's rate].
+         */
+        PreviewItemNext: {
+            /** Item Id */
+            item_id: string;
+            /** Name */
+            name: string;
+            /** Series */
+            series: [
+                string,
+                number | null,
+                number | null
+            ][];
+            /**
+             * Unit
+             * @enum {string}
+             */
+            unit: "divine" | "chaos";
+        };
+        /**
+         * PreviewManifest
+         * @description The pre-launch preview's snapshot (docs/preview.md, `eb preview build`): a past
+         *     league's early days, served from /api/preview/{key}. Keys: `manifest` (this),
+         *     `d{day}/missed`, `d{day}/price-check`, `d{day}/price-check/{item_id}`,
+         *     `d{day}/launch-picks`, `d{day}/recap-next` and `next/price-check/{item_id}`.
+         */
+        PreviewManifest: {
+            /**
+             * Built At
+             * Format: date-time
+             */
+            built_at: string;
+            /** Days */
+            days: components["schemas"]["PreviewDay"][];
+            /** Default Day */
+            default_day: number;
+            /** Launched At */
+            launched_at: string | null;
+            /** League */
+            league: string;
+            /** Next Until */
+            next_until: string | null;
+            /** Version */
+            version: string;
+        };
+        /**
+         * PreviewRecapNext
+         * @description `d{day}/recap-next`: every loop, card turn-in and flip in that day's recap
+         *     (`d{day}/missed`, all look-backs), and whether it kept paying.
+         */
+        PreviewRecapNext: {
+            /** Hours */
+            hours: number;
+            /**
+             * Latest Hour
+             * Format: date-time
+             */
+            latest_hour: string;
+            /** Trades */
+            trades: components["schemas"]["PreviewTradeNext"][];
+        };
+        /**
+         * PreviewTradeNext
+         * @description What one of the recap's trades did in the 24 hours after the chosen day's last
+         *     hour. "Paid" is the recap's own test, hour by hour: a loop's edge beat the 2% buffer
+         *     (in `direction`), a card turn-in's margin was positive, a flip's hour traded both at
+         *     or below its bid and at or above its ask.
+         */
+        PreviewTradeNext: {
+            /** Direction */
+            direction?: string | null;
+            /** Item Id */
+            item_id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "loop" | "card" | "flip";
+            /** Next Hour Paid */
+            next_hour_paid: boolean | null;
+            /** Paid */
+            paid: (boolean | null)[];
+            /** Paid Hours */
+            paid_hours: number;
+            /** Still Paid */
+            still_paid: boolean | null;
+            /** Traded Hours */
+            traded_hours: number;
+        };
+        /**
          * PriceCheckIndex
          * @description The search list and the movers, one per data version.
          */
@@ -1043,25 +1168,28 @@ export interface components {
              * Format: date-time
              */
             now: string;
+            preview?: components["schemas"]["PreviewManifest"] | null;
             upcoming?: components["schemas"]["Upcoming"] | null;
         };
         /**
          * Upcoming
-         * @description The announced next league, until its first trades are loaded.
+         * @description The announced next league, until its first trades are loaded. GGG may announce
+         *     the day before the time, and the time before the name.
          */
         Upcoming: {
-            /**
-             * First Data At
-             * Format: date-time
-             */
-            first_data_at: string;
+            /** First Data At */
+            first_data_at: string | null;
             /** Name */
-            name: string;
+            name: string | null;
+            /** Start At */
+            start_at: string | null;
             /**
-             * Start At
-             * Format: date-time
+             * Start Date
+             * Format: date
              */
-            start_at: string;
+            start_date: string;
+            /** Time Known */
+            time_known: boolean;
         };
         /** UsageDay */
         UsageDay: {
@@ -1333,6 +1461,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MissedWindow"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_document_api_preview__key__get: {
+        parameters: {
+            query?: {
+                /** @description The data version the page has (`/api/status`'s `data_version`). Ignored by the server: it only keys caches, so a new hour never gets an older copy. */
+                v?: string | null;
+            };
+            header?: never;
+            path: {
+                /** @description `manifest`, `d{day}/missed`, `d{day}/price-check`, `d{day}/price-check/{item_id}`, `d{day}/launch-picks`, `d{day}/recap-next` or `next/price-check/{item_id}`; 404 unless the snapshot holds it. */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewManifest"] | components["schemas"]["PreviewRecapNext"] | components["schemas"]["PreviewItemNext"] | components["schemas"]["PriceCheckIndex"] | components["schemas"]["PriceCheckItem"] | components["schemas"]["MissedWindow"][] | components["schemas"]["LaunchWindow"][];
                 };
             };
             /** @description Validation Error */

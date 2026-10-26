@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Literal
 
@@ -72,10 +72,19 @@ class Settings(BaseSettings):
     api_warm: bool = True
     # Only PoE1 for now; every league row still carries its game.
     default_game: str = "poe1"
-    # The next league, as GGG announced it (name and launch time, UTC), for the landing
-    # page's countdown to its first published hour. Unset: no countdown.
+    # The next league, as GGG announced it, for the landing page's countdown to its first
+    # published hour and the preview's strip. The start is a time (UTC unless it says) or
+    # just a date (`2026-11-13`) while GGG has announced only the day; the name may be
+    # unknown until the reveal. Unset start: nothing announced, no countdown. The
+    # pipeline switches to the new league only once both the name and the time are set
+    # (ingest/pipeline.pick_league).
     next_league: str | None = None
-    next_league_start: datetime | None = None
+    next_league_start: datetime | date | None = None
+    # The pre-launch preview (docs/preview.md): the site rewound to a past league's early
+    # days, from the snapshot `eb preview build` writes (preview_snapshot). "auto": shown
+    # while a snapshot is there and the announced next league has no trades yet; "on":
+    # whenever a snapshot is there (local development); "off": never.
+    preview: Literal["auto", "on", "off"] = "auto"
     # Cookie-free usage counts (api/usage.py, docs/usage.md): on, and how long a visitor's
     # salt lives (the window "returning visitors" are counted in). The stats endpoint
     # (/api/stats) answers only with `admin_token`; unset, it doesn't exist.
@@ -114,6 +123,37 @@ class Settings(BaseSettings):
     )
     loot_filter_strictness: str = "2-SEMI-STRICT"
     repoe_base_items_url: str = "https://repoe-fork.github.io/base_items.min.json"
+
+    @field_validator("next_league", mode="before")
+    @classmethod
+    def _blank_name_is_unknown(cls, v):
+        return v or None
+
+    @field_validator("next_league_start", mode="before")
+    @classmethod
+    def _date_only_start(cls, v):
+        """`2026-11-13` is a date (time not announced yet), not midnight UTC."""
+        if isinstance(v, str) and len(v.strip()) == 10:
+            return date.fromisoformat(v.strip())
+        return v or None
+
+    @property
+    def next_league_start_at(self) -> datetime | None:
+        """The announced launch as a UTC time; None while only the date (or nothing) is
+        announced."""
+        start = self.next_league_start
+        if not isinstance(start, datetime):
+            return None
+        return start.astimezone(UTC) if start.tzinfo else start.replace(tzinfo=UTC)
+
+    @property
+    def next_league_date(self) -> date | None:
+        """The announced launch day (UTC when a time is known), or None."""
+        start = self.next_league_start
+        if start is None:
+            return None
+        at = self.next_league_start_at
+        return at.date() if at else start
 
     @field_validator("admin_token")
     @classmethod

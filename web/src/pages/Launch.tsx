@@ -1,7 +1,7 @@
 import { Crown, Flame, Sprout, TrendingDown } from 'lucide-react'
 import { Link } from 'react-router'
 import type { LaunchPick, LaunchWindow, LiveLeague } from '../api/client'
-import { useLaunchPicks, useStatus } from '../api/queries'
+import { useLaunchPicks, useLeagues, useStatus } from '../api/queries'
 import { ItemName } from '../components/ItemLink'
 import { Notice } from '../components/Notice'
 import { PageHeader } from '../components/Section'
@@ -49,7 +49,7 @@ function launchDay(l: LiveLeague | undefined) {
 export default function Launch() {
   const status = useStatus()
   const board = useLaunchPicks()
-  const live = status.data?.leagues.find((l) => l.latest_hour)
+  const live = useLeagues().find((l) => l.latest_hour) // in the preview: its league that day
   const day = launchDay(live)
   const windows = board.data ?? []
   const current = day == null ? undefined : windows.find((w) => day >= w.first_day && day <= w.last_day)
