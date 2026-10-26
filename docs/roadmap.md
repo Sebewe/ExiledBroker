@@ -40,7 +40,7 @@ Signals then become a ranked list: "farm X", "buy Y on day 2, sell on day 6".
 ## Phase 6: live, still to do
 
 - **Prediction alerts** once there are predictions to drift from.
-- **Divination card expected value** for random rewards: researched ([finding 12](findings.md#12-cards-with-random-rewards-two-delirium-orb-cards-beat-their-floor-at-typical-prices-nothing-survives-harsh-prices-in-the-launch-fortnight)); whether to show it on the Market recap is the user's call.
+- **Divination card expected value** for random rewards: researched ([finding 12](findings.md#12-cards-with-random-rewards-two-delirium-orb-cards-beat-their-floor-at-typical-prices-nothing-survives-harsh-prices-in-the-launch-fortnight)); the user chose to show them on the Market recap's card turn-ins at their floor (2026-10-26, [decisions](decisions.md)); to build: the pools as a small server table resolved at load, and the "worst roll" note.
 
 ## Planned modules
 
