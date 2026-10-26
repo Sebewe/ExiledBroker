@@ -54,7 +54,7 @@ EB_DATABASE_URL=postgresql://eb:eb@localhost:55432/exiledbroker .venv/bin/eb ser
 cd web && npm install
 npm run dev          # http://localhost:5173, proxies /api to `eb serve` on :8000
 npm run gen:api      # after changing API models: regenerate openapi.json + src/api/schema.d.ts
-npm run typecheck && npm run lint && npm test && npm run build
+npm run typecheck && npm run lint && npm test && npm run build && npm run check:bundle   # first-visit and chart-chunk size budgets
 
 # The image Railway runs (web: API + built frontend; pipeline: eb pipeline run, hourly)
 docker compose up -d --build api             # the site as hosted, on http://localhost:8000
