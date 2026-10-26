@@ -529,6 +529,7 @@ In the first 2 days a falling price says most of what a "dumped" reading would. 
 
 ## Still to do
 
+- **Run the recipe and triangle checks on the local data and write up what they find** (approved 2026-10-26 from a survey of untried methods). `python -m exiledbroker.analysis.recipes` prices combines (shards, splinters), the vendor's 3-for-1 essence and oil upgrades, the scarab vendor's 3-for-a-random-one and Harvest's change crafts at their floor (`config/recipes.toml`; Harvest as the gain per item and the lifeforce it would pay for, since GGG publishes no per-item cost). `python -m exiledbroker.analysis.triangles` reads the raw pages on disk for the item-to-item markets the loader drops (Exalted/Alchemy and the like) and prices Chaos and Divine triangles through them at fair and worst prices. Both read only what's stored: no requests.
 - **Check in-game whether GGG's hourly lowest and highest ratios are executed trades** (findings 2, 4, 5). It's the one question hourly data can't answer, and it decides whether the loops' limit orders, the card limit orders and the volatile flips are real.
 - **Rerun finding 10 on the next league once its fortnight completes (~2026-11-27).** The sixth league is the first real out-of-sample check of these patterns; the Launch picks and Price check's paths gain it as one more league (rebuild and reseed).
 - **Patch notes (phase 3)** to explain the level shifts that past prices can't (finding 3's group levels, finding 8's Necropolis and Tattoos).

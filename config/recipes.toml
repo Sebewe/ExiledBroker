@@ -1,0 +1,196 @@
+# Item recipes the research prices against the exchange (analysis/recipes.py).
+#
+# Three kinds:
+#   [[combine]]  a fixed number of one item becomes a fixed number of another: shards and
+#                splinters stack into an orb or a fragment. Priced every hour both trade.
+#   [tiers.*]    a vendor turns `ratio` of one tier into one of the next, for every item
+#                name that exists at both tiers (essences, oils).
+#   [reroll.*]   `count` of one item becomes one random other item of its pool (the scarab
+#                vendor recipe, Harvest's "change" crafts). Valued at the floor, the
+#                cheapest item the pool can roll, as for random card rewards (finding 12):
+#                a pool that's too broad can only lower the floor. Priced daily.
+#
+# Names are item.canonical_name. A recipe whose items don't trade in a league is skipped
+# and listed, so a misspelt name shows up instead of silently pricing nothing.
+# Ratios checked 2026-10-26: shards 20 (RePoE: "A stack of 20 shards becomes a Mirror
+# of Kalandra"), the scarab vendor's 3 identical for 1 different (vhpg, 3.24), oils
+# 3 for the next tier at a vendor (wiki). Check after a patch.
+
+# --- Shards: 20 make an orb ---------------------------------------------------------
+[[combine]]
+input = "Mirror Shard"
+count = 20
+output = "Mirror of Kalandra"
+
+[[combine]]
+input = "Exalted Shard"
+count = 20
+output = "Exalted Orb"
+
+[[combine]]
+input = "Chaos Shard"
+count = 20
+output = "Chaos Orb"
+
+[[combine]]
+input = "Annulment Shard"
+count = 20
+output = "Orb of Annulment"
+
+[[combine]]
+input = "Regal Shard"
+count = 20
+output = "Regal Orb"
+
+[[combine]]
+input = "Alchemy Shard"
+count = 20
+output = "Orb of Alchemy"
+
+[[combine]]
+input = "Alteration Shard"
+count = 20
+output = "Orb of Alteration"
+
+[[combine]]
+input = "Transmutation Shard"
+count = 20
+output = "Orb of Transmutation"
+
+[[combine]]
+input = "Binding Shard"
+count = 20
+output = "Orb of Binding"
+
+[[combine]]
+input = "Horizon Shard"
+count = 20
+output = "Orb of Horizons"
+
+[[combine]]
+input = "Engineer's Shard"
+count = 20
+output = "Engineer's Orb"
+
+[[combine]]
+input = "Harbinger's Shard"
+count = 20
+output = "Harbinger's Orb"
+
+[[combine]]
+input = "Ancient Shard"
+count = 20
+output = "Ancient Orb"
+
+[[combine]]
+input = "Fracturing Shard"
+count = 20
+output = "Fracturing Orb"
+
+# --- Splinters: 100 make a fragment (300 for a Simulacrum) --------------------------
+[[combine]]
+input = "Splinter of Xoph"
+count = 100
+output = "Xoph's Breachstone"
+
+[[combine]]
+input = "Splinter of Tul"
+count = 100
+output = "Tul's Breachstone"
+
+[[combine]]
+input = "Splinter of Esh"
+count = 100
+output = "Esh's Breachstone"
+
+[[combine]]
+input = "Splinter of Uul-Netol"
+count = 100
+output = "Uul-Netol's Breachstone"
+
+[[combine]]
+input = "Splinter of Chayula"
+count = 100
+output = "Chayula's Breachstone"
+
+[[combine]]
+input = "Timeless Karui Splinter"
+count = 100
+output = "Timeless Karui Emblem"
+
+[[combine]]
+input = "Timeless Maraketh Splinter"
+count = 100
+output = "Timeless Maraketh Emblem"
+
+[[combine]]
+input = "Timeless Eternal Empire Splinter"
+count = 100
+output = "Timeless Eternal Emblem"
+
+[[combine]]
+input = "Timeless Templar Splinter"
+count = 100
+output = "Timeless Templar Emblem"
+
+[[combine]]
+input = "Timeless Vaal Splinter"
+count = 100
+output = "Timeless Vaal Emblem"
+
+[[combine]]
+input = "Simulacrum Splinter"
+count = 300
+output = "Simulacrum"
+
+[[combine]]
+input = "Ritual Splinter"
+count = 100
+output = "Ritual Vessel"
+
+# --- Vendor upgrades: `ratio` of a tier for one of the next -------------------------
+[tiers.essence]
+# "<Tier> Essence of <Kind>": 3 of a tier for 1 of the next (Shrieking to Deafening too).
+ratio = 3
+pattern = "{tier} Essence of {kind}"
+tiers = ["Whispering", "Muttering", "Weeping", "Wailing", "Screaming", "Shrieking", "Deafening"]
+
+[tiers.oil]
+# "<Tier> Oil": Clear (lowest) to Golden (highest).
+ratio = 3
+pattern = "{tier} Oil"
+tiers = [
+    "Clear", "Sepia", "Amber", "Verdant", "Teal", "Azure", "Indigo",
+    "Violet", "Crimson", "Black", "Opalescent", "Silver", "Golden",
+]
+
+# --- Rerolls: valued at the floor ---------------------------------------------------
+[reroll.scarab]
+# The vendor: 3 identical scarabs for 1 of a different type.
+count = 3
+like = ["%Scarab%"]
+
+# Harvest's "change" crafts turn a stack into a different item of its kind, for
+# lifeforce. GGG publishes no costs per item, so these report the gain per item before
+# lifeforce and how many units of that lifeforce the gain would pay for (compare that
+# with the craft's cost in game).
+[reroll.harvest_delirium_orb]
+count = 1
+like = ["% Delirium Orb"]
+lifeforce = "Primal Crystallised Lifeforce"
+
+[reroll.harvest_breach_splinter]
+count = 1
+like = ["Splinter of %"]
+lifeforce = "Wild Crystallised Lifeforce"
+
+[reroll.harvest_breachstone]
+count = 1
+# Plain breachstones only: "Xoph's Charged Breachstone" doesn't match.
+like = ["%'s Breachstone"]
+lifeforce = "Wild Crystallised Lifeforce"
+
+[reroll.harvest_conqueror_crest]
+count = 1
+like = ["%'s Crest"]
+lifeforce = "Vivid Crystallised Lifeforce"
