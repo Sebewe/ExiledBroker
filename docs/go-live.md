@@ -90,6 +90,19 @@ What tens of thousands of visitors at once would do, and the fixes: [hosting.md]
 - [x] Finish the cost report in [hosting.md](hosting.md#the-railway-bill) (the real 24 h run was dropped, 2026-10-23).
 - [ ] Rebuild and check every page on the Railway URL: no data, catching up, live, and stale.
 
+### 8. Abuse protection (Cloudflare and Railway settings)
+
+The code side is done (2026-10-26, [security.md](security.md)): the Worker refuses methods and bodies the site never sends and limits each address on `/api`, the app can refuse anything that didn't come through Cloudflare, the API docs are off in the image. These need the dashboards, in this order:
+
+- [ ] **Origin key, Cloudflare side first.** Generate one: `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`. Rules > Transform Rules > Modify Request Header > create: when Hostname equals `exiledbroker.trade` (all incoming requests), **Set static** header `X-EB-Origin-Key` to the key. It covers every path to Railway: through the Worker, the assets route that bypasses it, and the route failing open.
+- [ ] **Then the Railway side:** the web service's variable `EB_ORIGIN_KEY` = the same key, sealed. Not before the rule exists, or every visitor gets 403. Check: `curl -s -o /dev/null -w '%{http_code}' https://<service>.up.railway.app/api/status` gives 403, the same through `https://exiledbroker.trade` gives 200, and `/api/health` on the Railway address still gives 200 (Railway's health check). Rotating the key: change the rule, then the variable, within a minute.
+- [ ] **The Worker's rate limiter** deploys with it (`[[ratelimits]]` in `wrangler.toml`, 60 `/api` requests a minute per address). After `npx wrangler deploy`, check the binding shows under the Worker's Settings > Bindings. A quick loop of 70 `curl`s at `/api/status` should end in 429s.
+- [ ] **WAF rate-limiting rule** (Security > WAF > Rate limiting rules; the free plan has one): if URI Path starts with `/api/`, counting by IP, more than 50 requests in 10 seconds, Block for 10 seconds. It acts before the Worker, so a flood doesn't spend the Worker's daily quota.
+- [ ] **Bot Fight Mode** (Security > Bots) on, and "Block AI bots" on. Then check the uptime monitor (section 5) still gets 200 from `/api/status`; if it's challenged, turn Bot Fight Mode off (the free plan can't exempt one client).
+- [ ] **Emergency lever, know where it is:** Security > Settings > Security level "I'm under attack" puts a browser check in front of every visitor. Turn it on only during an attack: it also stops the uptime monitor.
+- [ ] **GitHub:** Settings > Code security, turn on Dependabot alerts (free), so a vulnerable dependency is reported. Run `pip-audit` and `npm audit` once more before flipping DNS.
+- [ ] **Admin panel** (when it ships): `EB_ADMIN_TOKEN` on the web service, 32+ random bytes, sealed. Optionally Cloudflare Access (Zero Trust, free up to 50 users) on `/admin*` and `/api/admin*`.
+
 ## Settled questions
 
 - **A. Rebuilds without raw pages:** keep the live window's pages compressed in Postgres (about 80 MB), replacing them as new hours arrive (2026-10-23).

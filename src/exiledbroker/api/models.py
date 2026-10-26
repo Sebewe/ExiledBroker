@@ -27,7 +27,8 @@ class Upcoming(BaseModel):
 
 class Status(BaseModel):
     now: datetime
-    data_version: str | None  # changes when new data is loaded; refetch then
+    # Changes when new data is loaded or a new build is deployed; refetch then.
+    data_version: str | None
     leagues: list[LiveLeague]  # newest data first
     upcoming: Upcoming | None = None
 

@@ -93,6 +93,7 @@ RePoE, loot filter ──────┘                  │
 | [docs/go-live.md](docs/go-live.md) | The checklist for going live on Railway, with decisions and open questions |
 | [docs/hosting.md](docs/hosting.md) | Hosting shape, cost issues and their fixes, performance tooling and findings |
 | [docs/supabase.md](docs/supabase.md) | The off-site backup on Supabase: what a sync does and costs, restoring, setting it up |
+| [docs/security.md](docs/security.md) | Security and abuse: the layers in front of the API, what was checked, remaining risks ranked |
 | [docs/findings.md](docs/findings.md) | Phase-2 findings from past launches |
 | [docs/farming.md](docs/farming.md) | The retired Farming page: how it was built (superseded by price-check.md) |
 | [docs/price-check.md](docs/price-check.md) | The Price check page (replacing Farming): its plan, response contract and status |

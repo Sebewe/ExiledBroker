@@ -400,7 +400,7 @@ def load_league(
         refresh_mappings(con, settings)
         items, rows = db.rows(
             site,
-            "SELECT count(DISTINCT item_id), count(*) FROM price_observation "
+            "SELECT count(DISTINCT item_id) AS items, count(*) AS n FROM price_observation "
             "WHERE league_id = ? AND source = ?",
             [lid, SOURCE],
         )[0]

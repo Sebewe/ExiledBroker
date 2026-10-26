@@ -9,6 +9,7 @@ export default {
       origin: env.ORIGIN, // unset: the request goes to whatever the route's DNS points at
       page,
       timeoutMs: Number(env.TIMEOUT_MS) || DEFAULT_TIMEOUT_MS,
+      limiter: env.API_LIMITER, // the rate-limit binding (wrangler.toml); unset: no limit
     });
   },
 };
