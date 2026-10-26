@@ -6,6 +6,7 @@ import type { SellHours } from '../api/client'
 import type { Horizon, PriceCheckIndex, PriceCheckItem, SeriesPoint } from '../api/client'
 import type { ChartTokens } from '../lib/chartOptions'
 import { PREVIEW_DOCS, previewRoutes, previewStatus } from '../test/preview'
+import { portfolio } from '../lib/portfolio'
 import PriceCheck from './PriceCheck'
 
 // ECharts needs a canvas, which jsdom hasn't got: stand in for the chart, building its
@@ -439,5 +440,22 @@ describe('Price check in the preview', () => {
     expect(day.getByText('It fell: selling then paid. The call held.')).toBeInTheDocument()
     const days3 = within(screen.getByRole('group', { name: '3 days later' }))
     expect(days3.getByText('It fell: selling then would have paid. The call missed.')).toBeInTheDocument()
+  })
+
+  it('stakes the item in the paper portfolio', async () => {
+    serve(routes())
+    renderPage(`/price-check?item=${EXALT}`)
+    fireEvent.click(await screen.findByRole('button', { name: 'Add to paper portfolio' }))
+    expect(screen.getByRole('link', { name: 'In your paper portfolio' })).toHaveAttribute('href', '/portfolio?day=2')
+    expect(JSON.parse(localStorage.getItem('eb-portfolio')!).positions).toEqual([{ item_id: EXALT, name: 'Exalted Orb', stake: 10 }])
+    localStorage.clear()
+    portfolio.reload()
+  })
+
+  it('offers no portfolio for the Divine Orb, the yardstick', async () => {
+    serve(routes())
+    renderPage('/price-check?item=currency:divine-orb')
+    await screen.findByRole('button', { name: 'Show what happened next' })
+    expect(screen.queryByRole('button', { name: 'Add to paper portfolio' })).toBeNull()
   })
 })

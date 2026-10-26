@@ -43,6 +43,7 @@ PAGES = [
     "/",
     "/launch",
     "/price-check",
+    "/portfolio",  # the pre-launch preview's paper portfolio
     "/research",
     "/research/notes",
     "/research/method",

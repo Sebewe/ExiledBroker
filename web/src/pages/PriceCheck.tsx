@@ -12,6 +12,7 @@ import { Notice } from '../components/Notice'
 import { Empty } from '../components/Opportunity'
 import { Skeleton } from '../components/QueryState'
 import { ItemReveal } from '../components/RevealItem'
+import { PortfolioAdd } from '../components/PortfolioAdd'
 import { PageHeader } from '../components/Section'
 import { BestHours, Stack } from '../components/StackSeller'
 import { bandsOf } from '../lib/impact'
@@ -266,6 +267,9 @@ function ItemView({
           {item.name}
         </h2>
         {item.label && <span className="text-sm text-faint">{item.label}</span>}
+        <span className="self-center sm:ml-auto">
+          <PortfolioAdd item={item} />
+        </span>
       </header>
       <VerdictCard item={item} />
       {/* The preview's reveal, closed again for another item or day. */}

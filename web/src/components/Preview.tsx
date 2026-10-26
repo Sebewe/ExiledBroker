@@ -13,7 +13,7 @@ import { trackFeature } from '../lib/usage'
 // picker. The pages themselves read the chosen day's snapshot through api/queries.ts.
 
 /** The pages that read the snapshot, and so offer the day picker. */
-const PICKER_PAGES = [/^\/$/, /^\/price-check(\/|$)/, /^\/launch$/]
+const PICKER_PAGES = [/^\/$/, /^\/price-check(\/|$)/, /^\/launch$/, /^\/portfolio$/]
 
 /** The server's clock, ticking every second (for the countdown). */
 function useTickingNow() {

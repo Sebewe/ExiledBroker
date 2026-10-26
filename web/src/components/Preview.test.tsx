@@ -113,10 +113,16 @@ describe('preview shell', () => {
     expect(screen.queryByText(/data .* old/)).not.toBeInTheDocument()
   })
 
+  it('adds the paper portfolio to the menu', async () => {
+    renderAt('/', previewStatus())
+    expect(await screen.findByRole('link', { name: 'Paper portfolio' })).toHaveAttribute('href', '/portfolio')
+  })
+
   it('is absent while the preview is off', async () => {
     renderAt('/', liveStatus())
     expect(await screen.findByText(/Allflame · data/)).toBeInTheDocument()
     expect(screen.queryByText('Preview')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Paper portfolio' })).not.toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Preview' })).not.toBeInTheDocument()
   })
 })
