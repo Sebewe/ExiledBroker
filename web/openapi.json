@@ -2721,6 +2721,45 @@
         ]
       }
     },
+    "/api/hit": {
+      "post": {
+        "description": "Count a page view or a feature's use. No cookies, nothing stored in the browser;\nDo-Not-Track and Global Privacy Control are honoured. Always 204.",
+        "operationId": "hit_api_hit_post",
+        "parameters": [
+          {
+            "description": "A page (`page:/launch`) or feature.",
+            "in": "query",
+            "name": "e",
+            "required": true,
+            "schema": {
+              "description": "A page (`page:/launch`) or feature.",
+              "maxLength": 40,
+              "title": "E",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Hit",
+        "tags": [
+          "usage"
+        ]
+      }
+    },
     "/api/launch/picks": {
       "get": {
         "description": "What to buy in each early-league window, ranked from past leagues (empty until\n`eb launch picks` has been run on the research database and seeded).",
@@ -2974,6 +3013,58 @@
         "summary": "Price Check Item",
         "tags": [
           "price check"
+        ]
+      }
+    },
+    "/api/stats": {
+      "get": {
+        "description": "Visitors, returning visitors and each page's and feature's use, for the site's\nowner (`Authorization: Bearer <EB_ADMIN_TOKEN>`; without the setting, 404).",
+        "operationId": "stats_api_stats_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Stats Api Stats Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stats",
+        "tags": [
+          "usage"
         ]
       }
     },

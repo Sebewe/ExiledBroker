@@ -42,6 +42,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/hit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Hit
+         * @description Count a page view or a feature's use. No cookies, nothing stored in the browser;
+         *     Do-Not-Track and Global Privacy Control are honoured. Always 204.
+         */
+        post: operations["hit_api_hit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/launch/picks": {
         parameters: {
             query?: never;
@@ -121,6 +142,27 @@ export interface paths {
          *     and the best-hour inputs. 404 for an item the league's list doesn't hold.
          */
         get: operations["price_check_item_api_price_check__league___item_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stats
+         * @description Visitors, returning visitors and each page's and feature's use, for the site's
+         *     owner (`Authorization: Bearer <EB_ADMIN_TOKEN>`; without the setting, 404).
+         */
+        get: operations["stats_api_stats_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1035,6 +1077,36 @@ export interface operations {
             };
         };
     };
+    hit_api_hit_post: {
+        parameters: {
+            query: {
+                /** @description A page (`page:/launch`) or feature. */
+                e: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     picks_api_launch_picks_get: {
         parameters: {
             query?: {
@@ -1157,6 +1229,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PriceCheckItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stats_api_stats_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
