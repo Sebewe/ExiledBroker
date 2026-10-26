@@ -1,11 +1,11 @@
 # The admin page
 
-`/admin` is the site owner's page: the pipeline's health now, the site's usage counts once the cookie-free metrics land. It isn't linked anywhere and shows nothing without the token. Built 2026-10-26.
+`/admin` is the site owner's page: the site's usage counts and the pipeline's health. It isn't linked anywhere and shows nothing without the token. Built 2026-10-26.
 
 ## What it shows
 
 - **Pipeline**, per league, from `ingest_run` (one row per live update, failed or not, kept 90 days; `services/pipeline_health.summary`): when it last ran and last succeeded, the latest hour loaded, the latest run's state and error, and over the past 24 hours the runs and failures, median run time, requests, bytes downloaded and hours added. It warns when the latest update failed or nothing has succeeded for 2 hours.
-- **Usage** (visitors per day, uniques, returning, per-page and per-feature counts): comes from the cookie-free metrics work and is added to the same response when it lands.
+- **Usage**, from `/api/stats` (the cookie-free counts, [usage.md](usage.md)): this month's visitors and returning visitors (seen on 2+ days of the month; there is no per-day returning figure), all-time views and visitor-days, each month, the last 30 days, and each page's and feature's use in the recent window and all time. Plain tables, no charts. The admin page's own visits aren't counted.
 
 ## Access
 

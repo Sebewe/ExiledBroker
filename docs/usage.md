@@ -53,7 +53,7 @@ memory (and `/api/stats` says `"stored": false`).
 ## Reading the counts
 
 `GET /api/stats` with `Authorization: Bearer $EB_ADMIN_TOKEN` (set it on Railway's web
-service; without it the endpoint answers 404):
+service; without it the endpoint answers 404, and a wrong token gets 401). The admin page (`/admin`, [admin.md](admin.md)) shows them:
 
 ```bash
 curl -s -H "Authorization: Bearer $EB_ADMIN_TOKEN" https://exiledbroker.trade/api/stats

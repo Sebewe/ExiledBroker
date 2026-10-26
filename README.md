@@ -42,7 +42,7 @@ After that:
 | **Backtest** | Would following the site have paid? The site's tools replayed an hour late at fair and harsh prices (`eb backtest run`) | `/api/backtest` |
 | **Launch market** | What to buy on day 1, days 2–4 and days 5–10 with a couple of Divines, ranked from the last five leagues | `/api/launch/picks` |
 | **About** | Sources and credits | |
-| **Admin** (`/admin`, not linked; the owner's) | The pipeline's health per league, and the site's usage counts once they land ([admin.md](docs/admin.md)) | `/api/admin/overview`, behind `EB_ADMIN_TOKEN` |
+| **Admin** (`/admin`, not linked; the owner's) | The site's usage counts and the pipeline's health per league ([admin.md](docs/admin.md)) | `/api/stats`, `/api/admin/overview`, behind `EB_ADMIN_TOKEN` |
 
 "Now" is the latest published exchange hour, about an hour behind real time. Every page handles a league with no data yet, the first hours, and a stopped feed. Interactive API docs are at `/docs` when the API is running.
 

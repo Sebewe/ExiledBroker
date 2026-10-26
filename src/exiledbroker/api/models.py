@@ -507,6 +507,8 @@ class AdminOverview(BaseModel):
     now: datetime
     data_version: str | None
     pipeline: list[PipelineLeague]  # the most recently run league first
+
+
 # Usage counts (/api/stats, api/usage.py, docs/usage.md)
 class UsageTotal(BaseModel):
     views: int  # page views, all time
