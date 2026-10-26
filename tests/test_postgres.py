@@ -74,7 +74,7 @@ def engines(tmp_path_factory):
 
 
 def _price_check_tables(con) -> None:
-    """What `eb price-check build`, `eb launch picks` and `eb farming build` leave for
+    """What `eb price-check build`, `eb launch picks` and `eb sell-helper build` leave for
     Price check, in miniature: every item's path at each bin of the fortnight (3 leagues
     each, a fall of 20%), the fitted constants, a few leagues' launch prices for ITEM
     and the stack seller's impact note. Seeded to Postgres with everything else, so the
@@ -183,7 +183,7 @@ def test_the_seed_copies_every_table_price_check_reads(engines):
         assert db.scalar(pg, f"SELECT count(*) FROM {table}") == db.scalar(
             duck, f"SELECT count(*) FROM {table}"
         ), table
-    for table in (*price_paths.TABLES, "launch_history", "farming_report"):
+    for table in (*price_paths.TABLES, "launch_history", "sell_helper_report"):
         assert db.scalar(pg, f"SELECT count(*) FROM {table}") > 0, table
     # Served from Postgres, the verdict and the launch prices are the ones the paths give.
     assert price_check.constants(pg) == price_check.constants(duck) != {}

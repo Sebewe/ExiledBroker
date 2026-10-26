@@ -254,11 +254,11 @@ def test_eb_site_restore_says_the_size_first_and_needs_yes(local, dbs, monkeypat
 # --- The tables built from past leagues -----------------------------------------------
 
 
-def _farming_report(con, built_at: datetime) -> None:
-    db.execute(con, "DELETE FROM farming_report")
+def _sell_helper_report(con, built_at: datetime) -> None:
+    db.execute(con, "DELETE FROM sell_helper_report")
     db.execute(
         con,
-        "INSERT INTO farming_report VALUES ('report', ?, ?)",
+        "INSERT INTO sell_helper_report VALUES ('report', ?, ?)",
         [built_at, '{"impact": {"y": null, "bands": [0.25, 1.0]}}'],
     )
 
@@ -269,26 +269,26 @@ def _has_table(url: str, table: str) -> bool:
         return bool(db.scalar(con, q, [table]))
 
 
-def test_the_farming_report_is_backed_up_incrementally(local, dbs, monkeypatch):  # noqa: F811
+def test_the_sell_helper_report_is_backed_up_incrementally(local, dbs, monkeypatch):  # noqa: F811
     """Seeded with the report, then the report rebuilt: each sync sends only what
     changed, and a pass where nothing did reads back only the stamps."""
     s, server = local
     with db.session(s.db_path) as con:
-        _farming_report(con, datetime(2026, 10, 24, 9))
+        _sell_helper_report(con, datetime(2026, 10, 24, 9))
     _seed(s, dbs["eb_site"])
     reads = BackupReads(monkeypatch)
     first, _ = run(hosted(s, dbs), server, 9)
-    assert "farming report" in first.backup.tables
+    assert "sell helper report" in first.backup.tables
     assert_same(dbs["eb_site"], dbs["eb_backup"])
 
     before = reads.bytes
     second, _ = run(hosted(s, dbs), server, 10)  # a new hour; nothing built changed
-    assert not {"farming report", "launch tables"} & set(second.backup.tables)
+    assert not {"sell helper report", "launch tables"} & set(second.backup.tables)
     assert reads.bytes - before < 2_000, reads.bytes - before
 
-    with psycopg.connect(dbs["eb_site"], autocommit=True) as con:  # `eb farming build`, seeded
-        _farming_report(con, datetime(2026, 10, 25, 9))
-    assert backup.back_up(hosted(s, dbs)).tables == ["farming report"]
+    with psycopg.connect(dbs["eb_site"], autocommit=True) as con:  # `eb sell-helper build`, seeded
+        _sell_helper_report(con, datetime(2026, 10, 25, 9))
+    assert backup.back_up(hosted(s, dbs)).tables == ["sell helper report"]
     assert_same(dbs["eb_site"], dbs["eb_backup"])
     assert not backup.back_up(hosted(s, dbs)).changed
 

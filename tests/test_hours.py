@@ -187,7 +187,7 @@ def test_recent_vs_past_forecasts_days_7_to_14():
     assert r["past"] < r["zero"] / 20 and r["recent"] < r["zero"] / 20
 
 
-def test_farming_baskets_from_the_config(tmp_path):
+def test_mechanic_baskets_from_the_config(tmp_path):
     from exiledbroker.config import Settings
 
     con = db.connect(tmp_path / "t.duckdb")
@@ -206,10 +206,10 @@ def test_farming_baskets_from_the_config(tmp_path):
         '[[mechanic]]\nid = "essence"\nname = "Essence"\n'
         'outputs = ["Essence of Horror"]\nlegacy = ["Remnant of Corruption"]\n'
     )
-    got = hr.farming_baskets(con, Settings(data_dir=tmp_path, mechanics_file=toml))
+    got = hr.mechanic_baskets(con, Settings(data_dir=tmp_path, mechanics_file=toml))
     # Legacy outputs count: this reads past leagues.
     assert got == {"essence": ["currency:essence-of-horror", "currency:remnant-of-corruption"]}
     # No file: the provisional name rules.
     none = Settings(data_dir=tmp_path, mechanics_file=tmp_path / "missing.toml")
-    assert hr.farming_baskets(con, none)["Essence"] == ["currency:essence-of-horror"]
+    assert hr.mechanic_baskets(con, none)["Essence"] == ["currency:essence-of-horror"]
     con.close()

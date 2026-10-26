@@ -172,7 +172,7 @@ BACKUP_CHECK = """SELECT json_build_object(
     'pages', (SELECT count(*) FROM exchange_page),
     'items', (SELECT count(*) FROM item),
     'history', (SELECT count(*) FROM launch_history),
-    'farming_report', (SELECT max(built_at)::text FROM farming_report))"""
+    'sell_helper_report', (SELECT max(built_at)::text FROM sell_helper_report))"""
 
 
 def summary(service: str = "postgres", database: str = "railway") -> dict:
@@ -413,7 +413,7 @@ def switch(args) -> dict:
     first = launch - 2 * 3600 + CRON_MINUTE * 60
     reset_and_seed(["--league", "Mirage", "--drop", LEAGUE], first, announced)
     seeded = summary()
-    built = {k: seeded[k] for k in ("history", "farming_report")}
+    built = {k: seeded[k] for k in ("history", "sell_helper_report")}
     print(f"seeded tables built from past leagues: {json.dumps(built)}")
     steps = []
     for h in range(-1, 5):

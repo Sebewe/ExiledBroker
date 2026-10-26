@@ -1,6 +1,6 @@
 """Hour of day: does it matter when a farmer sells? (finding 6 in docs/findings.md).
 Research only, on the local database; `report` is what the sell helper's `hours` ships
-(services/sell_helper.py, `eb farming build`), built locally from past leagues.
+(services/sell_helper.py, `eb sell-helper build`), built locally from past leagues.
 
 Price: each item-hour's log Chaos price minus the item's mean log price over the WINDOW
 hours centred on it (at least MIN_WINDOW of them traded). A centred mean rather than the
@@ -16,7 +16,7 @@ The effect fades as a league ages, so everything is per PHASE of the league. A b
 own profile is shown only if it holds across leagues (`stability`); otherwise the pooled
 one.
 
-Baskets are `{mechanic id: [item_id]}`, from config/mechanics.toml (`farming_baskets`:
+Baskets are `{mechanic id: [item_id]}`, from config/mechanics.toml (`mechanic_baskets`:
 outputs plus legacy outputs, since this reads past leagues); the `PROVISIONAL` name rules
 stand in when the file is missing.
 
@@ -100,7 +100,7 @@ def baskets(con, rules: dict[str, str] = PROVISIONAL) -> dict[str, list[str]]:
     return out
 
 
-def farming_baskets(con, settings: Settings) -> dict[str, list[str]]:
+def mechanic_baskets(con, settings: Settings) -> dict[str, list[str]]:
     """{mechanic id: item ids} from config/mechanics.toml, outputs plus legacy outputs;
     the PROVISIONAL name rules if there's no file."""
     mechanics = mechanics_config.load_mechanics(settings)
@@ -473,7 +473,7 @@ def main() -> None:
     px = pl.concat([hourly(con, lg) for lg in leagues])
     dev = pl.concat([deviations(px.filter(pl.col("league") == lg)) for lg in leagues])
     dev_div = pl.concat([deviations(hourly(con, lg, "divine")) for lg in leagues])
-    rep = report(px, dev, dev_div, farming_baskets(con, settings))
+    rep = report(px, dev, dev_div, mechanic_baskets(con, settings))
     print("UTC hour:                     " + " ".join(f"{h:5d}" for h in range(24)))
     for name, r in rep.items():
         print(

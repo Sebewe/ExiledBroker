@@ -2,8 +2,8 @@
 (docs/price-check.md, workstreams C and E): the best-hour sentence and the stack seller.
 
 - **Hour of day and stack impact** (findings 6 and 7) are constants built locally from
-  past leagues' hours (`eb farming build`, which needs numpy: the site image has none)
-  and stored as one JSON document in `farming_report`, like the Backtest report.
+  past leagues' hours (`eb sell-helper build`, which needs numpy: the site image has none)
+  and stored as one JSON document in `sell_helper_report`, like the Backtest report.
   `constants` returns the league's phase's hour profiles and the impact note.
 - **An item's recent trading per market** (`markets`): units traded, hours traded and
   the typical hourly swing over the latest 3 days, reduced in SQL.
@@ -18,7 +18,7 @@ import polars as pl
 
 from exiledbroker.storage import db
 
-REPORT = "farming_report"
+REPORT = "sell_helper_report"
 RECENT_HOURS = 3 * 24  # volumes, swings and hours traded: the latest 3 days
 # Finding 7: a stack is shown as hours of the market's trading, not as a price drop.
 IMPACT = {
@@ -35,7 +35,7 @@ IMPACT = {
 
 
 def store_report(con, doc: dict) -> None:
-    """Replace the stored report (`eb farming build`)."""
+    """Replace the stored report (`eb sell-helper build`)."""
     db.execute(con, f"DELETE FROM {REPORT}")
     db.execute(
         con,
@@ -45,13 +45,13 @@ def store_report(con, doc: dict) -> None:
 
 
 def report(con) -> dict | None:
-    """The stored report, or None before `eb farming build`."""
+    """The stored report, or None before `eb sell-helper build`."""
     rows = db.rows(con, f"SELECT body FROM {REPORT} WHERE id = 'latest'")
     return json.loads(rows[0][0]) if rows else None
 
 
 def built_at(con):
-    """When the report was built (None before `eb farming build`)."""
+    """When the report was built (None before `eb sell-helper build`)."""
     return db.scalar(con, f"SELECT max(built_at) FROM {REPORT}")
 
 
@@ -97,7 +97,7 @@ def hours(doc: dict | None, day_offset: float | None) -> dict | None:
 
 def constants(con, day_offset: float | None) -> dict:
     """The stored constants for a day of the league: `hours` (that phase's profiles)
-    and `impact`, both null until `eb farming build` has been run and seeded."""
+    and `impact`, both null until `eb sell-helper build` has been run and seeded."""
     doc = report(con)
     return {"hours": hours(doc, day_offset), "impact": doc.get("impact") if doc else None}
 

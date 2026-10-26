@@ -564,15 +564,15 @@ def mechanics_check() -> None:
     typer.echo(f"\nAll {sum(len(r.mechanic.names()) for r in results)} names resolve.")
 
 
-farming_app = typer.Typer(
-    help="The sell helper's constants (farming_report; the Farming page is retired).",
+sell_helper_app = typer.Typer(
+    help="The sell helper's constants: hour of day and stack bands (sell_helper_report).",
     no_args_is_help=True,
 )
-app.add_typer(farming_app, name="farming")
+app.add_typer(sell_helper_app, name="sell-helper")
 
 
-@farming_app.command("build")
-def farming_build() -> None:
+@sell_helper_app.command("build")
+def sell_helper_build() -> None:
     """Build the sell helper's constants from past leagues' hours: the hour-of-day
     profiles per phase of the league (finding 6) and the stack-impact bands (finding 7),
     kept as one report in the local database (copy it to the site with `eb site seed`).
@@ -597,7 +597,7 @@ def farming_build() -> None:
         px = pl.concat([hours.hourly(con, lg) for lg in leagues])
         dev = pl.concat([hours.deviations(px.filter(pl.col("league") == lg)) for lg in leagues])
         dev_div = pl.concat([hours.deviations(hours.hourly(con, lg, "divine")) for lg in leagues])
-        rep = hours.report(px, dev, dev_div, hours.farming_baskets(con, settings))
+        rep = hours.report(px, dev, dev_div, hours.mechanic_baskets(con, settings))
         doc = {
             "leagues": leagues,
             "phases": [[n, lo, None if math.isinf(hi) else hi] for n, lo, hi in hours.PHASES],
@@ -715,7 +715,7 @@ def site_seed(
     ] = False,
 ) -> None:
     """Copy leagues' site rows, the Launch history and picks, and the backtest and
-    farming reports from the local DuckDB into Postgres. Replaces
+    sell helper reports from the local DuckDB into Postgres. Replaces
     those leagues' rows there; other leagues are left alone. Sends nothing to GGG."""
     import psycopg
 

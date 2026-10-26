@@ -295,12 +295,14 @@ CREATE TABLE IF NOT EXISTS backtest_report (
 -- a no-op once it's gone; delete this line once every database has run it.
 DROP TABLE IF EXISTS item_day_history;
 
--- The sell helper's constants (services/sell_helper.py, `eb farming build`): finding 6's
--- hour-of-day profiles per phase and finding 7's impact bands, as one JSON document built
--- locally from past leagues (analysis/hours.py needs numpy, which the site doesn't have)
--- and copied to the site whole, like backtest_report. Kept from the Farming page for
--- Price check.
-CREATE TABLE IF NOT EXISTS farming_report (
+-- The sell helper's constants (services/sell_helper.py, `eb sell-helper build`): finding
+-- 6's hour-of-day profiles per phase and finding 7's impact bands, as one JSON document
+-- built locally from past leagues (analysis/hours.py needs numpy, which the site doesn't
+-- have) and copied to the site whole, like backtest_report. Kept from the Farming page
+-- for Price check. Called farming_report until 2026-10-26: renamed in place wherever the
+-- schema runs (a no-op once done; delete the ALTER once every database has run it).
+ALTER TABLE IF EXISTS farming_report RENAME TO sell_helper_report;
+CREATE TABLE IF NOT EXISTS sell_helper_report (
     id        VARCHAR PRIMARY KEY,
     built_at  TIMESTAMP NOT NULL,
     body      VARCHAR NOT NULL

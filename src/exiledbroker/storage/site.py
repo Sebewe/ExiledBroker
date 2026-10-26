@@ -11,8 +11,8 @@ hosted pipeline.
 Re-seeding a league replaces that league's rows only. Shared tables (items, card
 and price mappings, reference data) are upserted, so other leagues' rows survive. The
 tables built from past leagues the site doesn't hold (the launch tables, the backtest
-and farming reports, Price check's paths) are replaced whole: the local copy holds
-every captured league (`eb launch picks`, `eb backtest run`, `eb farming build`,
+and sell helper reports, Price check's paths) are replaced whole: the local copy holds
+every captured league (`eb launch picks`, `eb backtest run`, `eb sell-helper build`,
 `eb price-check build`)."""
 
 from dataclasses import dataclass
@@ -44,7 +44,7 @@ REPLACED_TABLES = [
     "launch_pick",
     "launch_pick_league",
     "backtest_report",
-    "farming_report",
+    "sell_helper_report",
     "price_path_league",
     "price_path",
     "price_path_constant",
@@ -138,7 +138,7 @@ def seed(
                 "SELECT count(*) FROM information_schema.tables WHERE table_name = ?",
                 [table],
             ):
-                continue  # an older local copy: `eb launch picks` / `eb farming build` not run
+                continue  # an older local copy: `eb launch picks` / `eb sell-helper build` not run
             cols = _columns(duck, table)
             data = db.rows(duck, f"SELECT {', '.join(cols)} FROM {table}")
             _copy(pg, table, cols, data)

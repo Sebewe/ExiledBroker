@@ -154,7 +154,7 @@ FarmingReport(id, built_at, body)                               -- the sell help
 ExchangeHourLoaded, IngestLoad, IngestRun, ReferenceData       -- load bookkeeping
 ```
 
-**The sell helper's data** (kept from the Farming page, retired 2026-10-25, for Price check). It reads `cross_market_hour` for the live league, which already holds every traded item, so the keep rule and loaders didn't change. The Farming page's `item_day_history` (past leagues per basket item and day, ~10 MB on Postgres) is dropped by the schema. `farming_report` holds the hour-of-day profiles (finding 6) and the stack bands (finding 7), built locally by `eb farming build` (it needs numpy, which the site's image lacks) and copied by `eb site seed`. The order-book stock fields aren't loaded: finding 7 found they add nothing.
+**The sell helper's data** (kept from the Farming page, retired 2026-10-25, for Price check). It reads `cross_market_hour` for the live league, which already holds every traded item, so the keep rule and loaders didn't change. The Farming page's `item_day_history` (past leagues per basket item and day, ~10 MB on Postgres) is dropped by the schema. `sell_helper_report` holds the hour-of-day profiles (finding 6) and the stack bands (finding 7), built locally by `eb sell-helper build` (it needs numpy, which the site's image lacks) and copied by `eb site seed`. The order-book stock fields aren't loaded: finding 7 found they add nothing.
 
 The key design choice is **`day_offset`**: every price is stored relative to its league's start, so Settlers' day 3 and Mirage's day 3 compare directly. The `game` column on leagues and items leaves room for PoE2. Planned tables (patch notes, aliases, predictions) are in [roadmap.md](roadmap.md#planned-data-model).
 

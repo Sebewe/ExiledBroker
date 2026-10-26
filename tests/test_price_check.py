@@ -130,7 +130,7 @@ def test_every_table_price_check_reads_is_in_the_schema_and_seeded():
     read = set()
     for module in (price_check, price_paths, sell_helper, core_pool):
         read |= _tables_read(module) & in_schema
-    assert {"cross_market_hour", "price_path", "price_path_constant", "farming_report"} <= read
+    assert {"cross_market_hour", "price_path", "price_path_constant", "sell_helper_report"} <= read
     assert {"launch_history", "exchange_hour_loaded", "tracked_item", "reference_data"} <= read
     seeded = {*site.LEAGUE_TABLES, *site.SHARED_TABLES, *site.REPLACED_TABLES}
     assert read <= seeded, sorted(read - seeded)

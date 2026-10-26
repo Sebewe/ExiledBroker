@@ -66,7 +66,7 @@ docker compose --profile worker up -d        # also the live worker (makes reque
 .venv/bin/eb live sync|watch [-l Allflame]           # running league: launch fortnight + latest 14 days
 .venv/bin/eb launch picks                             # reduce past leagues to the Launch history, rank the picks (then `eb site seed`)
 .venv/bin/eb mechanics check                          # check config/mechanics.toml (mechanic item lists: core pool, search labels) against the local database
-.venv/bin/eb farming build                           # the stack seller's hour-of-day and stack constants (then `eb site seed`)
+.venv/bin/eb sell-helper build                       # the stack seller's hour-of-day and stack constants (then `eb site seed`)
 .venv/bin/eb backtest run                             # replay the site's tools at fair and harsh prices for the Backtest page (then `eb site seed`)
 scripts/ingest.sh [exchange|dumps|all|live]          # unattended runner, logs to data/logs/latest.log
 EB_BACKUP_URL=… .venv/bin/eb site backup [-l Allflame]   # sync the site's database (or the local copy's league) to the off-site backup

@@ -19,7 +19,7 @@ transaction on `dst` (always Postgres):
   differs;
 - the tables built from past leagues (`site.REPLACED_TABLES`), each group replaced when
   its stamp (a few counts and build times, `_stamps`) differs: the Launch tables, the
-  backtest report, the farming report (the hour-of-day and stack constants) and Price
+  backtest report, the sell helper report (the hour-of-day and stack constants) and Price
   check's paths (once a league: ~25k rows, ~3 MB);
 - the raw pages of the window (from `src`'s `exchange_page`, or from disk for the
   local copy), and none outside it;
@@ -230,7 +230,7 @@ def _sync_reference(src, dst) -> bool:
 # The tables built from past leagues (site.REPLACED_TABLES), in the groups that are
 # rebuilt together, each replaced whole when its stamp differs.
 LAUNCH_TABLES = ["launch_history", "launch_window", "launch_pick", "launch_pick_league"]
-REPORTS = ["backtest_report", "farming_report"]
+REPORTS = ["backtest_report", "sell_helper_report"]
 PRICE_TABLES = ["price_path_league", "price_path", "price_path_constant"]  # Price check's
 assert {*LAUNCH_TABLES, *REPORTS, *PRICE_TABLES} == set(site.REPLACED_TABLES)
 
