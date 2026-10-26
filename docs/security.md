@@ -27,7 +27,7 @@ A request meets these in order. Each one turns away what it can before anything 
 - **Docs off in production:** `/docs`, `/redoc` and `/openapi.json` aren't served when `EB_API_DOCS=false`, which the image sets. The frontend's types are still generated from code (`api/schema.py`).
 - **CORS:** the site calls its own origin, so it needs none. The image sets `EB_CORS_ORIGINS=[]` (the localhost defaults stay for `npm run dev`). CORS only stops other sites' pages from reading the API in a visitor's browser; it does nothing against scripts, which the layers above handle.
 - **Headers already in place:** CSP with hashed inline scripts and `frame-ancestors 'none'`, `nosniff`, `X-Frame-Options: DENY`, a strict referrer policy, `no-store` on API errors (`api/app.py`).
-- **Admin and write endpoints:** none on `main` today. The admin panel (being built) is 404 unless `EB_ADMIN_TOKEN` is set, takes a bearer token compared in constant time, and answers `no-store`. The usage beacon (being built) is the first write endpoint: the Worker only lets POST through under `/api/` with a body of at most 4 kB, and both rate limits apply to it.
+- **Admin and write endpoints:** the admin page's `/api/admin/overview` and `/api/stats` ([admin.md](admin.md)) are 404 unless `EB_ADMIN_TOKEN` is set (32+ characters, or the app won't start), take a bearer token compared in constant time (401 otherwise, before any database read), take no query parameters, and answer `no-store`. The usage beacon is the only write endpoint: the Worker only lets POST through under `/api/` with a body of at most 4 kB, and both rate limits apply to it.
 
 ## Remaining risks, ranked
 

@@ -31,6 +31,11 @@ describe('usage beacons', () => {
     expect(beacon).toHaveBeenCalledTimes(4)
   })
 
+  it("doesn't count the admin page", () => {
+    trackPage('/admin')
+    expect(beacon).not.toHaveBeenCalled()
+  })
+
   it('sends nothing with Do-Not-Track or Global Privacy Control', () => {
     Object.defineProperty(navigator, 'doNotTrack', { value: '1', configurable: true })
     trackPage('/')

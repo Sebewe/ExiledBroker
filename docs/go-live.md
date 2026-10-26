@@ -48,11 +48,12 @@ What the last four switches on disk show (Settlers → Mercenaries → Keepers �
 
 - [ ] Project with Railway's Postgres template, plus `web` and `pipeline` services pointing their config-as-code at `deploy/railway/web.json` / `pipeline.json`.
 - [ ] Variables:
-  - web: `EB_DATABASE_URL`;
+  - web: `EB_DATABASE_URL`, and `EB_ADMIN_TOKEN` (32+ random characters, sealed) for the admin page ([admin.md](admin.md));
   - pipeline: `EB_DATABASE_URL` (both set to Postgres's private URL), `EB_BACKUP_URL` = Supabase's session-pooler URL, sealed ([supabase.md](supabase.md#the-connection-string)), and `EB_HEALTHCHECK_URL` = the healthchecks.io ping URL, sealed (item 5);
   - **both** services: `EB_NEXT_LEAGUE` / `EB_NEXT_LEAGUE_START` before a launch (the web service shows the countdown, the pipeline switches leagues).
 - [x] **Domain on Cloudflare (2026-10-25).** `exiledbroker.trade` and `www` are proxied `AAAA 100::` placeholder records (Cloudflare's "no origin" address, until launch: then the root record points at Railway, section 7). SSL/TLS is Full (strict), Always Use HTTPS is on, and a redirect rule sends `www` to the root domain (301, path and query kept). HSTS is off until the site is live. Until the Worker is deployed the domain answers 522 (no origin).
 - [ ] Deploy the Worker once the web service is up: `ORIGIN` in `deploy/cloudflare/wrangler.toml` (the route is already `exiledbroker.trade/*`), `npx wrangler login` (interactive, the user) and `npx wrangler deploy`.
+- [ ] Optional: Cloudflare Access (free) on `/admin*` and `/api/admin*` in front of the admin token ([admin.md](admin.md#once-deployed)).
 - [ ] Railway waits for CI before deploying a push to `main` (decided 2026-10-23: turn on "Wait for CI" on both app services).
 - Go live first on the current league (Allflame) as a demo people can try; the next league launches around 2026-11-13, not announced in detail yet. Set `EB_NEXT_LEAGUE` / `_START` on both services once its name and start time are out.
 

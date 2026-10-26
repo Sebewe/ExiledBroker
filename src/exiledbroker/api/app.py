@@ -19,7 +19,7 @@ from fastapi.responses import FileResponse
 from exiledbroker import __version__
 from exiledbroker.api import usage
 from exiledbroker.api.guard import PerClientLimit, RequireEdgeKey
-from exiledbroker.api.routes import live, market, price_check
+from exiledbroker.api.routes import admin, live, market, price_check
 from exiledbroker.api.routes import usage as usage_routes
 from exiledbroker.config import get_settings
 from exiledbroker.storage import db
@@ -191,7 +191,7 @@ def create_app(web_dist: Path | None = None) -> FastAPI:
     def health() -> dict[str, str]:
         return {"status": "ok", "version": __version__, "game": settings.default_game}
 
-    for routes in (live, market, price_check, usage_routes):
+    for routes in (live, market, price_check, usage_routes, admin):
         api.include_router(routes.router)
     app.include_router(api)
 

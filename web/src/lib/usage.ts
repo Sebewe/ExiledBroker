@@ -42,6 +42,7 @@ let used = new Set<Feature>()
  *  so redirects aren't counted). */
 export function trackPage(pathname: string) {
   used = new Set()
+  if (pathname.startsWith('/admin')) return // the owner reading the counts isn't a visit
   send(`page:${pageOf(pathname)}`)
 }
 

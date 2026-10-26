@@ -37,6 +37,11 @@ export type DayHour = Schemas['DayHour']
 export type StackImpact = Schemas['StackImpact']
 export type HourEffect = Schemas['HourEffect']
 export type MechanicHours = Schemas['MechanicHours']
+// The admin page (docs/admin.md)
+export type AdminOverview = Schemas['AdminOverview']
+export type PipelineLeague = Schemas['PipelineLeague']
+export type UsageStats = Schemas['UsageStats']
+export type UsageEvent = Schemas['UsageEvent']
 /** 24 values by UTC hour; null for an hour with no data. */
 export type HourProfile = SellHours['price']
 

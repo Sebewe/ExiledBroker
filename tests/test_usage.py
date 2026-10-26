@@ -196,10 +196,13 @@ def test_frontend_names_match_the_servers():
         assert f"'{feature}'" in src
 
 
+TOKEN = "s3cret-" * 6  # admin tokens are 32+ characters
+
+
 @pytest.fixture
 def app_client(tmp_path, monkeypatch):
     monkeypatch.setenv("EB_DATA_DIR", str(tmp_path))
-    monkeypatch.setenv("EB_ADMIN_TOKEN", "s3cret")
+    monkeypatch.setenv("EB_ADMIN_TOKEN", TOKEN)
     from exiledbroker.api import app as app_module
 
     return TestClient(app_module.create_app(web_dist=tmp_path / "none"))
@@ -215,11 +218,13 @@ def test_the_beacon_and_the_stats(app_client):
     r = app_client.post("/api/hit?e=page:/launch", headers=headers)
     assert r.headers["cache-control"] == "no-store"
 
-    assert app_client.get("/api/stats").status_code == 404
-    assert app_client.get("/api/stats?key=s3cret").status_code == 404  # header only
+    assert app_client.get("/api/stats").status_code == 401
+    assert app_client.get(f"/api/stats?key={TOKEN}").status_code == 401  # header only
     wrong = app_client.get("/api/stats", headers={"authorization": "Bearer wrong"})
-    assert wrong.status_code == 404
-    stats = app_client.get("/api/stats", headers={"authorization": "Bearer s3cret"}).json()
+    assert wrong.status_code == 401
+    ok = app_client.get("/api/stats", headers={"authorization": f"Bearer {TOKEN}"})
+    assert ok.headers["cache-control"] == "no-store, private"
+    stats = ok.json()
     assert stats["total"] == {"views": 2, "visitor_days": 1, "since": None}
     assert stats["events"] == [
         {

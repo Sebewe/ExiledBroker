@@ -9,6 +9,7 @@ import NotFound from './pages/NotFound'
 // opened, so a first visit downloads only what it shows (a link straight to Price check
 // fetches its chunk in parallel with the main one).
 const About = lazy(() => import('./pages/About'))
+const Admin = lazy(() => import('./pages/Admin')) // the owner's, not linked anywhere
 const Backtest = lazy(() => import('./pages/Backtest'))
 const Conversions = lazy(() => import('./pages/Conversions'))
 const Launch = lazy(() => import('./pages/Launch'))
@@ -30,6 +31,7 @@ export default function App() {
           <Route path="farming" element={<Navigate to="/price-check" replace />} />
           <Route path="conversions" element={<Conversions />} />
           <Route path="about" element={<About />} />
+          <Route path="admin" element={<Admin />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </Suspense>

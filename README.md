@@ -42,6 +42,7 @@ After that:
 | **Backtest** | Would following the site have paid? The site's tools replayed an hour late at fair and harsh prices (`eb backtest run`) | `/api/backtest` |
 | **Launch market** | What to buy on day 1, days 2–4 and days 5–10 with a couple of Divines, ranked from the last five leagues | `/api/launch/picks` |
 | **About** | Sources and credits | |
+| **Admin** (`/admin`, not linked; the owner's) | The site's usage counts and the pipeline's health per league ([admin.md](docs/admin.md)) | `/api/stats`, `/api/admin/overview`, behind `EB_ADMIN_TOKEN` |
 
 "Now" is the latest published exchange hour, about an hour behind real time. Every page handles a league with no data yet, the first hours, and a stopped feed. Interactive API docs are at `/docs` when the API is running.
 
@@ -98,6 +99,7 @@ RePoE, loot filter ──────┘                  │
 | [docs/farming.md](docs/farming.md) | The retired Farming page: how it was built (superseded by price-check.md) |
 | [docs/price-check.md](docs/price-check.md) | The Price check page (replacing Farming): its plan, response contract and status |
 | [docs/demand.md](docs/demand.md) | The Demand feature: planned, researched (finding 11) and shelved |
+| [docs/admin.md](docs/admin.md) | The admin page: what it shows, the token, setting it up once deployed |
 | [docs/decisions.md](docs/decisions.md) | Decision log by topic, dated |
 | [docs/roadmap.md](docs/roadmap.md) | The prediction design (patch notes, models, backtest), planned modules, add-ons, risks |
 | [CLAUDE.md](CLAUDE.md) | Commands, architecture and coding rules for working on the code |

@@ -1,15 +1,14 @@
 """Usage counts (api/usage.py): the pages' beacon and the owner's stats. The beacon
 takes one event from a fixed list and never reads the database; the stats answer only
-with the admin token (EB_ADMIN_TOKEN)."""
+with the admin token (EB_ADMIN_TOKEN, `admin.require_admin`), for the admin page."""
 
-import hmac
 from typing import Annotated
 
-from fastapi import APIRouter, Header, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
-from exiledbroker.api import deps
 from exiledbroker.api import usage as counting
 from exiledbroker.api.models import UsageStats
+from exiledbroker.api.routes.admin import NO_STORE, require_admin
 
 router = APIRouter(tags=["usage"])
 
@@ -27,13 +26,13 @@ def hit(
     return Response(status_code=204)
 
 
-@router.get("/stats", response_model=UsageStats)
-def stats(request: Request, authorization: Annotated[str | None, Header()] = None) -> dict:
+@router.get("/stats", response_model=UsageStats, dependencies=[Depends(require_admin)])
+def stats(request: Request, response: Response) -> dict:
     """Visitors, returning visitors and each page's and feature's use, for the site's
-    owner (`Authorization: Bearer <EB_ADMIN_TOKEN>`; without the setting, 404)."""
-    expected = deps.settings().admin_token
-    given = (authorization or "").removeprefix("Bearer ").strip()
+    owner (`Authorization: Bearer <EB_ADMIN_TOKEN>`: without the setting 404, without
+    the right token 401). Never cached."""
     counter = getattr(request.app.state, "usage", None)
-    if not expected or counter is None or not hmac.compare_digest(given, expected):
+    if counter is None:
         raise HTTPException(404, "not found")
+    response.headers["Cache-Control"] = NO_STORE
     return counter.stats()
