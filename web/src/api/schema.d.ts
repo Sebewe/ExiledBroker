@@ -983,7 +983,10 @@ export type $defs = Record<string, never>;
 export interface operations {
     backtest_report_api_backtest_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description The data version the page has (`/api/status`'s `data_version`). Ignored by the server: it only keys caches, so a new hour never gets an older copy. */
+                v?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -997,6 +1000,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BacktestReport"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -1025,7 +1037,10 @@ export interface operations {
     };
     picks_api_launch_picks_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description The data version the page has (`/api/status`'s `data_version`). Ignored by the server: it only keys caches, so a new hour never gets an older copy. */
+                v?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -1041,11 +1056,23 @@ export interface operations {
                     "application/json": components["schemas"]["LaunchWindow"][];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     missed_opportunities_api_missed__league__get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description The data version the page has (`/api/status`'s `data_version`). Ignored by the server: it only keys caches, so a new hour never gets an older copy. */
+                v?: string | null;
+            };
             header?: never;
             path: {
                 league: string;
@@ -1076,7 +1103,10 @@ export interface operations {
     };
     price_check_index_api_price_check__league__get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description The data version the page has (`/api/status`'s `data_version`). Ignored by the server: it only keys caches, so a new hour never gets an older copy. */
+                v?: string | null;
+            };
             header?: never;
             path: {
                 league: string;
@@ -1107,7 +1137,10 @@ export interface operations {
     };
     price_check_item_api_price_check__league___item_id__get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description The data version the page has (`/api/status`'s `data_version`). Ignored by the server: it only keys caches, so a new hour never gets an older copy. */
+                v?: string | null;
+            };
             header?: never;
             path: {
                 league: string;

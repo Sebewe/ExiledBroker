@@ -2643,6 +2643,27 @@
       "get": {
         "description": "Would following the site's tools have paid? The backtest's report (one item; empty\nuntil `eb backtest run` has been run on the research database and seeded).",
         "operationId": "backtest_report_api_backtest_get",
+        "parameters": [
+          {
+            "description": "The data version the page has (`/api/status`'s `data_version`). Ignored by the server: it only keys caches, so a new hour never gets an older copy.",
+            "in": "query",
+            "name": "v",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The data version the page has (`/api/status`'s `data_version`). Ignored by the server: it only keys caches, so a new hour never gets an older copy.",
+              "title": "V"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -2657,6 +2678,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Backtest Report",
@@ -2694,6 +2725,27 @@
       "get": {
         "description": "What to buy in each early-league window, ranked from past leagues (empty until\n`eb launch picks` has been run on the research database and seeded).",
         "operationId": "picks_api_launch_picks_get",
+        "parameters": [
+          {
+            "description": "The data version the page has (`/api/status`'s `data_version`). Ignored by the server: it only keys caches, so a new hour never gets an older copy.",
+            "in": "query",
+            "name": "v",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The data version the page has (`/api/status`'s `data_version`). Ignored by the server: it only keys caches, so a new hour never gets an older copy.",
+              "title": "V"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -2708,6 +2760,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Picks",
@@ -2728,6 +2790,25 @@
             "schema": {
               "title": "League",
               "type": "string"
+            }
+          },
+          {
+            "description": "The data version the page has (`/api/status`'s `data_version`). Ignored by the server: it only keys caches, so a new hour never gets an older copy.",
+            "in": "query",
+            "name": "v",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The data version the page has (`/api/status`'s `data_version`). Ignored by the server: it only keys caches, so a new hour never gets an older copy.",
+              "title": "V"
             }
           }
         ],
@@ -2775,6 +2856,25 @@
             "schema": {
               "title": "League",
               "type": "string"
+            }
+          },
+          {
+            "description": "The data version the page has (`/api/status`'s `data_version`). Ignored by the server: it only keys caches, so a new hour never gets an older copy.",
+            "in": "query",
+            "name": "v",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The data version the page has (`/api/status`'s `data_version`). Ignored by the server: it only keys caches, so a new hour never gets an older copy.",
+              "title": "V"
             }
           }
         ],
@@ -2827,6 +2927,25 @@
             "schema": {
               "title": "Item Id",
               "type": "string"
+            }
+          },
+          {
+            "description": "The data version the page has (`/api/status`'s `data_version`). Ignored by the server: it only keys caches, so a new hour never gets an older copy.",
+            "in": "query",
+            "name": "v",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The data version the page has (`/api/status`'s `data_version`). Ignored by the server: it only keys caches, so a new hour never gets an older copy.",
+              "title": "V"
             }
           }
         ],

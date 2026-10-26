@@ -31,6 +31,10 @@ What visitors get instead (all `Cache-Control: no-store`, `Retry-After: 120`, an
 
 No retries: one failed fetch is enough to show the page, and the page retries by itself.
 
+## Caching at the edge
+
+Reads (GET, HEAD) are fetched with `cf: { cacheEverything: true }`, so Cloudflare's edge keeps whatever the origin's Cache-Control allows: tables 30 s and the status 60 s (table URLs carry the data version, `?v=`, so a new hour never gets an older copy), hashed assets a year, index.html and every `/api` error never (`no-cache` / `no-store` from the app). In a traffic spike each Cloudflare location asks Railway for a URL about twice a minute, however many visitors it serves ([hosting.md](../../docs/hosting.md#a-traffic-spike-a-streamer-or-a-video)). Check it live: the second request for a table shows `cf-cache-status: HIT`.
+
 ## Deploy
 
 Needs a Cloudflare account with the domain added as a zone (free plan), and Node 24 (`export PATH=~/.local/node/bin:$PATH`).

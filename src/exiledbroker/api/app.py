@@ -41,6 +41,32 @@ class MarkOrigin:
         await self.app(scope, receive, send_marked)
 
 
+class ApiNoStoreByDefault:
+    """`Cache-Control: no-store` on every /api response that doesn't set its own: errors
+    (503 no data yet, 404, 422) and /api/health. Cloudflare's Worker caches what the
+    origin's Cache-Control allows (deploy/cloudflare/), and a response without one would
+    get Cloudflare's default edge TTL (2 hours for a 200, minutes for a 404). The tables
+    and the status set their own (api/deps.py, routes/live.py)."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or not (
+            scope["path"] == "/api" or scope["path"].startswith("/api/")
+        ):
+            return await self.app(scope, receive, send)
+
+        async def send_defaulted(message):
+            if message["type"] == "http.response.start":
+                headers = message.get("headers", [])
+                if not any(k.lower() == b"cache-control" for k, _ in headers):
+                    message["headers"] = [*headers, (b"cache-control", b"no-store")]
+            await send(message)
+
+        await self.app(scope, receive, send_defaulted)
+
+
 def create_app(web_dist: Path | None = None) -> FastAPI:
     settings = get_settings()
     web_dist = web_dist or settings.web_dist
@@ -65,6 +91,7 @@ def create_app(web_dist: Path | None = None) -> FastAPI:
     )
     # Tables arrive pre-gzipped from the cache (api/deps.py); this covers the rest.
     app.add_middleware(GZipMiddleware, minimum_size=1000)
+    app.add_middleware(ApiNoStoreByDefault)
     app.add_middleware(MarkOrigin)  # outermost, so it covers every response
     api = APIRouter(prefix="/api")
 

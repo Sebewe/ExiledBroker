@@ -51,7 +51,7 @@ What the last four switches on disk show (Settlers → Mercenaries → Keepers �
   - web: `EB_DATABASE_URL`;
   - pipeline: `EB_DATABASE_URL` (both set to Postgres's private URL), `EB_BACKUP_URL` = Supabase's session-pooler URL, sealed ([supabase.md](supabase.md#the-connection-string)), and `EB_HEALTHCHECK_URL` = the healthchecks.io ping URL, sealed (item 5);
   - **both** services: `EB_NEXT_LEAGUE` / `EB_NEXT_LEAGUE_START` before a launch (the web service shows the countdown, the pipeline switches leagues).
-- [x] **Domain on Cloudflare (2026-10-25).** `exiledbroker.trade` and `www` are proxied `AAAA 100::` placeholder records (Cloudflare's "no origin" address: the Worker answers every request, so nothing points at Railway and Railway needs no custom domain or certificate). SSL/TLS is Full (strict), Always Use HTTPS is on, and a redirect rule sends `www` to the root domain (301, path and query kept). HSTS is off until the site is live. Until the Worker is deployed the domain answers 522 (no origin).
+- [x] **Domain on Cloudflare (2026-10-25).** `exiledbroker.trade` and `www` are proxied `AAAA 100::` placeholder records (Cloudflare's "no origin" address, until launch: then the root record points at Railway, section 7). SSL/TLS is Full (strict), Always Use HTTPS is on, and a redirect rule sends `www` to the root domain (301, path and query kept). HSTS is off until the site is live. Until the Worker is deployed the domain answers 522 (no origin).
 - [ ] Deploy the Worker once the web service is up: `ORIGIN` in `deploy/cloudflare/wrangler.toml` (the route is already `exiledbroker.trade/*`), `npx wrangler login` (interactive, the user) and `npx wrangler deploy`.
 - [ ] Railway waits for CI before deploying a push to `main` (decided 2026-10-23: turn on "Wait for CI" on both app services).
 - Go live first on the current league (Allflame) as a demo people can try; the next league launches around 2026-11-13, not announced in detail yet. Set `EB_NEXT_LEAGUE` / `_START` on both services once its name and start time are out.
@@ -72,6 +72,16 @@ What the last four switches on disk show (Settlers → Mercenaries → Keepers �
   - [ ] Set up in healthchecks.io: a check with **period 1 hour, grace 45 minutes** (the pass runs at :06 and takes seconds; the grace absorbs a slow GGG or a Railway cron delay), email as the integration (add a phone/Telegram integration if wanted). Copy its ping URL into the Railway **pipeline** service's variables as `EB_HEALTHCHECK_URL`, sealed. It is a secret: anyone with it can mark the check up or down.
   - [ ] Test it once after going live: pause the pipeline's cron for two hours (or use healthchecks.io's "send test notification") and check the email arrives, then that a pass after resuming turns the check green.
   - [ ] **Web service uptime (a setup step, nothing built):** a free uptime monitor (UptimeRobot, or a second healthchecks.io check on its uptime feature) pinging `https://<domain>/api/status` every 5 minutes with an email alert. It sees the site down; the pipeline's switch can't. Point it at the Cloudflare-fronted domain, not the Railway URL, so it also sees the fallback page cases.
+
+### 7. A traffic spike (a streamer or a video)
+
+What tens of thousands of visitors at once would do, and the fixes: [hosting.md](hosting.md#a-traffic-spike-a-streamer-or-a-video). The code side is done (2026-10-25: edge caching in the Worker, `?v=` on table URLs, `no-store` by default, one computation per key, a slim item cache, settings no longer rebuilt per request). At launch:
+
+- [ ] **Point the domain at Railway.** Add `exiledbroker.trade` as a custom domain on the web service, then replace the root `AAAA 100::` record with the proxied CNAME Railway shows (`www` can stay a placeholder: the redirect rule answers it). Failing open, and assets bypassing the Worker, both go to the DNS target, so it must be the real origin. Keep `ORIGIN` set to the `*.up.railway.app` address.
+- [ ] **Assets bypass the Worker:** Workers Routes, add `exiledbroker.trade/assets/*` with Worker **None**. The CDN serves them (immutable for a year) without counting against the Worker's 100,000 requests a day.
+- [ ] **The route fails open** (Workers Routes, the route's request limit failure mode), so a spent quota sends visitors to Railway instead of an error.
+- [ ] **Check the cache works:** `curl -sI "https://exiledbroker.trade/api/missed/<league>?v=<data_version>"` twice: the second shows `cf-cache-status: HIT`; an asset shows `HIT` too; `/api/health` shows `no-store` and is never a hit.
+- [ ] If a spike is coming or happening (Workers analytics nearing 100k a day): Workers Paid, $5 a month for 10 million requests.
 
 ### 6. Before flipping DNS
 

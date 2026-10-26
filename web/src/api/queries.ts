@@ -18,13 +18,15 @@ export function useStatus() {
 }
 
 /** Every data query is keyed on the data version, so it refetches exactly when the worker
- *  has loaded new data, and never otherwise. */
-function useVersioned<T>(key: unknown[], fn: () => Promise<T>, enabled = true) {
+ *  has loaded new data, and never otherwise. The version also goes in the request as `v`
+ *  (ignored by the server): each hour gets its own URL, so neither the browser's cache nor
+ *  Cloudflare's edge can answer a new hour with a copy cached before it. */
+function useVersioned<T>(key: unknown[], fn: (v: string | undefined) => Promise<T>, enabled = true) {
   const status = useStatus()
   const version = status.data?.data_version ?? 'none'
   return useQuery({
     queryKey: [...key, version],
-    queryFn: fn,
+    queryFn: () => fn(status.data?.data_version ?? undefined),
     enabled: enabled && status.isSuccess,
     placeholderData: (previous) => previous, // keep the old table while a new hour loads
   })
@@ -34,26 +36,26 @@ function useVersioned<T>(key: unknown[], fn: () => Promise<T>, enabled = true) {
 export function useMissed(league: string | undefined) {
   return useVersioned(
     ['missed', league],
-    () => unwrap(api.GET('/api/missed/{league}', { params: { path: { league: league! } } })),
+    (v) => unwrap(api.GET('/api/missed/{league}', { params: { path: { league: league! }, query: { v } } })),
     !!league,
   )
 }
 
 /** Ranked from past leagues; the live prices in it change with each loaded hour. */
 export function useLaunchPicks() {
-  return useVersioned(['launch-picks'], () => unwrap(api.GET('/api/launch/picks')))
+  return useVersioned(['launch-picks'], (v) => unwrap(api.GET('/api/launch/picks', { params: { query: { v } } })))
 }
 
 /** The Backtest page's report: built locally from past leagues, one small document. */
 export function useBacktest() {
-  return useVersioned(['backtest'], () => unwrap(api.GET('/api/backtest')))
+  return useVersioned(['backtest'], (v) => unwrap(api.GET('/api/backtest', { params: { query: { v } } })))
 }
 
 /** The Price check page's search list and movers, per loaded hour. */
 export function usePriceCheck(league: string | undefined) {
   return useVersioned(
     ['price-check', league],
-    () => unwrap(api.GET('/api/price-check/{league}', { params: { path: { league: league! } } })),
+    (v) => unwrap(api.GET('/api/price-check/{league}', { params: { path: { league: league! }, query: { v } } })),
     !!league,
   )
 }
@@ -64,7 +66,7 @@ export function usePriceCheckItem(league: string | undefined, itemId: string | u
   return useVersioned(
     ['price-check-item', league, itemId],
     // openapi-fetch's `Readable` widens tuples to arrays: the series is [hour, chaos, divine].
-    () => unwrap(api.GET('/api/price-check/{league}/{item_id}', { params: { path: { league: league!, item_id: itemId! } } })) as Promise<PriceCheckItem>,
+    (v) => unwrap(api.GET('/api/price-check/{league}/{item_id}', { params: { path: { league: league!, item_id: itemId! }, query: { v } } })) as Promise<PriceCheckItem>,
     !!league && !!itemId,
   )
 }

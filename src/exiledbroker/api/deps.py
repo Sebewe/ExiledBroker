@@ -23,17 +23,30 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 import polars as pl
-from fastapi import HTTPException, Request, Response
+from fastapi import HTTPException, Query, Request, Response
 from pydantic import BaseModel, TypeAdapter
 
-from exiledbroker.api.cache import results
-from exiledbroker.config import get_settings
+from exiledbroker.api.cache import items, results
+from exiledbroker.config import Settings, get_settings
 from exiledbroker.storage import db
 
 VERSION_TTL = 15.0  # seconds a data version is trusted before it's read again
+# The `v` query parameter of the table endpoints: the data version the page has, from
+# /api/status. The server ignores it (tables are cached on the server's own version); it
+# only gives each hour its own URL, so neither a browser nor Cloudflare's edge can hand
+# a page that has just seen a new hour a copy cached before it.
+Version = Annotated[
+    str | None,
+    Query(
+        max_length=64,
+        description="The data version the page has (`/api/status`'s `data_version`). "
+        "Ignored by the server: it only keys caches, so a new hour never gets an older copy.",
+    ),
+]
+
 CACHE_CONTROL = "public, max-age=30"  # browsers revalidate with the ETag after this
 
 
@@ -59,25 +72,44 @@ _version: dict[str, Any] = {"where": None, "at": 0.0, "value": None}
 def reset() -> None:
     """Forget everything cached (tests, `eb perf report`)."""
     results.clear()
+    items.clear()
     _stamped.clear()
     _ready.clear()
     with _version_lock:
         _version.update(where=None, at=0.0, value=None)
+    with _settings_lock:
+        _settings.update(at=0.0, value=None)
+
+
+_settings_lock = threading.Lock()
+_settings: dict[str, Any] = {"at": 0.0, "value": None}
+
+
+def settings() -> Settings:
+    """The settings, built at most once per VERSION_TTL. Building them reads the
+    environment and .env (~0.5 ms), and a request needs them several times: rebuilt on
+    every call that was most of a cached request's time (~620 a second on one process,
+    against ~4,000 for /api/health). They are fixed for a deploy; tests that change the
+    environment set VERSION_TTL to 0 (tests/conftest.py)."""
+    with _settings_lock:
+        if _settings["value"] is None or time.monotonic() - _settings["at"] >= VERSION_TTL:
+            _settings.update(at=time.monotonic(), value=get_settings())
+        return _settings["value"]
 
 
 def _where() -> str:
-    settings = get_settings()
-    return settings.database_url or str(settings.db_path)
+    settings_ = settings()
+    return settings_.database_url or str(settings_.db_path)
 
 
 def connection() -> Iterator:
     """A read connection to the site's database. Before anything has been loaded (no
     database, or no schema yet) this raises 503."""
-    settings = get_settings()
+    settings_ = settings()
     where = _where()
-    if not settings.database_url and not settings.db_path.exists():
+    if not settings_.database_url and not settings_.db_path.exists():
         raise HTTPException(503, "no data loaded yet")
-    with db.site_session(settings) as con:
+    with db.site_session(settings_) as con:
         if where not in _ready:
             if not db.scalar(
                 con,
@@ -106,6 +138,7 @@ def data_version(force: bool = False) -> str | None:
         # Left to the LRU they'd be kept ~40 hours (256 entries, ~6 views an hour):
         # 140 MB more memory on the web service with the Farming page (hosting.md).
         results.keep_only(lambda key: key[-1] == value)
+        items.keep_only(lambda key: key[-1] == value)
     return value
 
 
@@ -149,14 +182,22 @@ class View:
     stamp: Callable[[Any], Any] | None = None
     # A response that is one document (compute returns a dict), not a list of rows.
     one: bool = False
+    # One of many views of a kind (Price check's items, one per item): cached in the
+    # item cache as gzipped bytes only (no rows, no plain body), ~26 kB instead of
+    # ~155 kB each, so a whole league's list fits (api/cache.py).
+    slim: bool = False
 
 
 @dataclass(frozen=True)
 class Payload:
-    rows: list  # the validated rows (one item for a one-document view), for code that needs them
-    body: bytes
+    rows: list  # the validated rows (one item for a one-document view); empty for a slim view
+    plain: bytes | None  # the JSON; None for a slim view (decompressed when asked for)
     gzipped: bytes
     etag: str
+
+    @property
+    def body(self) -> bytes:
+        return self.plain if self.plain is not None else gzip.decompress(self.gzipped)
 
 
 _adapters: dict[Any, TypeAdapter] = {}
@@ -189,12 +230,17 @@ def payload(view: View) -> Payload:
         tag = hashlib.sha1(repr((CODE_VERSION, view.name, view.args, tagged)).encode()).hexdigest()[
             :20
         ]
-        made = Payload(checked, body, gzip.compress(body, compresslevel=6), f'W/"{tag}"')
+        gzipped = gzip.compress(body, compresslevel=6)
+        if view.slim:
+            made = Payload([], None, gzipped, f'W/"{tag}"')
+        else:
+            made = Payload(checked, body, gzipped, f'W/"{tag}"')
         if view.stamp:
             _stamped[(view.name, view.args)] = (stamp, made)
         return made
 
-    return results.get_or_compute((view.name, view.args, version), build)
+    cache = items if view.slim else results
+    return cache.get_or_compute((view.name, view.args, version), build)
 
 
 # Stamped views' latest responses, by view: (stamp, payload). One entry per view.

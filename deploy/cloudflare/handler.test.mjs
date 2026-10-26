@@ -175,6 +175,27 @@ test("without an ORIGIN the request goes to its own URL", async () => {
   assert.equal(seen[0].req.url, "https://example.com/api/health");
 });
 
+test("reads go through Cloudflare's cache, kept as the origin's Cache-Control allows", async () => {
+  for (const method of ["GET", "HEAD"]) {
+    const { seen } = await run(visit("/api/missed/Allflame?v=1", {}, method), new Response(null, { headers: APP }));
+    assert.deepEqual(seen[0].init.cf, { cacheEverything: true });
+    assert.equal(seen[0].init.redirect, "manual");
+  }
+});
+
+test("anything else is never cached", async () => {
+  const { seen } = await run(
+    new Request("https://example.com/api/x", { method: "POST", body: "{}" }),
+    new Response(null, { headers: APP }),
+  );
+  assert.equal(seen[0].init.cf, undefined);
+});
+
+test("the fallback is never cached", async () => {
+  const { response } = await run(api("/api/missed/Allflame"), new Response("", { status: 502 }));
+  assert.equal(response.headers.get("cache-control"), "no-store");
+});
+
 test("the fallback page is self-contained", () => {
   assert.doesNotMatch(PAGE, /https?:\/\//i); // no external requests
   assert.doesNotMatch(PAGE, /<script|<link|<img|@import|url\(/i);

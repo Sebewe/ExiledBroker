@@ -1,10 +1,16 @@
-"""The API's result cache: shared by every visitor, bounded, and keyed on the data.
+"""The API's result caches: shared by every visitor, bounded, and keyed on the data.
 
 Each entry is keyed on the endpoint, its arguments and the data version (when the
 latest load finished). A result is computed once per new hour of data, not once per
-request or timer. The size cap matters because some arguments are numbers people
-type (fee buffer, score weights): an uncapped cache would grow with use.
-tests/test_api.py checks the cap."""
+request or timer: concurrent requests for a key that is being computed wait for that
+computation instead of starting their own (a traffic spike on an uncached item would
+otherwise run the same queries dozens of times at once, against a pool of 5
+connections). The size caps matter because the caches would otherwise grow with use;
+tests/test_api.py checks them.
+
+There are two: `results` for the pages' tables (a few per league), and `items` for
+Price check's items, one per item the league's list holds (~900), kept as gzipped bytes
+only (api/deps.py), so caching all of them costs ~25 MB."""
 
 import threading
 from collections import OrderedDict
@@ -12,28 +18,46 @@ from collections.abc import Callable, Hashable
 from typing import Any
 
 MAX_ENTRIES = 256
+MAX_ITEMS = 1024  # a league's Price check list holds ~900 items (Allflame: 876)
 
 
 class ResultCache:
     def __init__(self, max_entries: int = MAX_ENTRIES):
         self.max_entries = max_entries
         self._entries: OrderedDict[Hashable, Any] = OrderedDict()
+        self._pending: dict[Hashable, threading.Event] = {}
         self._lock = threading.Lock()
         self.hits = self.misses = 0
 
     def get_or_compute(self, key: Hashable, compute: Callable[[], Any]) -> Any:
-        with self._lock:
-            if key in self._entries:
-                self._entries.move_to_end(key)
-                self.hits += 1
-                return self._entries[key]
-        value = compute()  # outside the lock: concurrent misses may both compute
+        while True:
+            with self._lock:
+                if key in self._entries:
+                    self._entries.move_to_end(key)
+                    self.hits += 1
+                    return self._entries[key]
+                pending = self._pending.get(key)
+                if pending is None:
+                    pending = self._pending[key] = threading.Event()
+                    break  # this thread computes
+            # Another thread is computing this key: wait, then read its result (or, if
+            # it failed or the entry was dropped meanwhile, compute it here).
+            pending.wait()
+        try:
+            value = compute()  # outside the lock: other keys aren't held up
+        except BaseException:
+            with self._lock:
+                del self._pending[key]
+            pending.set()
+            raise
         with self._lock:
             self.misses += 1
             self._entries[key] = value
             self._entries.move_to_end(key)
             while len(self._entries) > self.max_entries:
                 self._entries.popitem(last=False)
+            del self._pending[key]
+        pending.set()
         return value
 
     def keep_only(self, keep: Callable[[Hashable], bool]) -> int:
@@ -54,3 +78,4 @@ class ResultCache:
 
 
 results = ResultCache()
+items = ResultCache(MAX_ITEMS)

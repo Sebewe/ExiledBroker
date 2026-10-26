@@ -6,11 +6,26 @@
 // above WITHOUT the stamp therefore did not come from the app: it is Railway's edge
 // (a stopped service, a deploy, the usage limit) and gets replaced. So does a fetch
 // that fails or takes longer than `timeoutMs`. Everything else passes through as is.
+//
+// GET and HEAD requests go through Cloudflare's cache (`cacheEverything`), which keeps
+// what the origin's Cache-Control allows: the tables for 30 s and the status for 60 s
+// (each table's URL carries the data version, `?v=`, so an hour never gets an older
+// copy), hashed assets for a year, index.html and every error never (the app says
+// `no-cache` / `no-store`). In a traffic spike each Cloudflare location then asks
+// Railway for a URL at most about twice a minute, however many visitors it serves.
 
 export const APP_HEADER = "x-eb-origin";
 export const FALLBACK_HEADER = "x-eb-fallback";
 export const DEFAULT_TIMEOUT_MS = 15_000;
 export const RETRY_AFTER_SECONDS = 120;
+
+/** The fetch options: the origin's redirects go to the browser unchanged, and reads go
+ *  through Cloudflare's cache, kept as long as the origin's Cache-Control allows. */
+export function upstreamInit(request, signal) {
+  const init = { signal, redirect: "manual" };
+  if (request.method === "GET" || request.method === "HEAD") init.cf = { cacheEverything: true };
+  return init;
+}
 
 const API_MESSAGE =
   "The site is having a problem right now. We're investigating. Try again in a few minutes.";
@@ -85,8 +100,7 @@ export async function handle(
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   let response;
   try {
-    // redirect: "manual" hands the origin's redirects to the browser unchanged.
-    response = await fetchImpl(upstream, { signal: controller.signal, redirect: "manual" });
+    response = await fetchImpl(upstream, upstreamInit(request, controller.signal));
   } catch {
     return fallback(request, page);
   } finally {

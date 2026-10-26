@@ -132,3 +132,19 @@ Found by the tooling, then fixed. Each fix was checked against the previous vers
 | P4 | Every `item` row (8,523) looked hosted | Nothing to fix: the exchange loader inserts only items its league refers to | ✅ hosted: 911 items |
 
 Also fixed because Postgres rejected or reordered them: `cross_market.hourly` selected `item_id` twice (DuckDB renames the duplicate, Postgres can't build the frame), and `prices.item_names` sorted text in SQL (Postgres sorts by locale, DuckDB bytewise), so it now sorts in Python.
+
+## A traffic spike (a streamer or a video)
+
+Checked 2026-10-25: what tens of thousands of visitors at once would do to the hosted setup, and what was changed. Visitors can't cause requests to GGG or poe.ninja or reads from Supabase (the pipeline is separate; the API serves precomputed views), so a spike only loads our own stack.
+
+| Risk | Fix | Status |
+|---|---|---|
+| The fallback Worker sees every request, and its free plan allows 100,000 a day. A first visit is ~15 requests (page, ~10 assets, 3–5 API), so 20k visitors pass the limit within the hour, after which the route fails closed (a Cloudflare error for everyone until 00:00 UTC) | Assets bypass the Worker (a `exiledbroker.trade/assets/*` route with no Worker; the CDN serves them, hashed and immutable for a year); the route fails open; Workers Paid ($5, 10M requests) is the switch if a spike looks big | Go-live checklist section 7 (dashboard steps) |
+| Cloudflare cached nothing: JSON isn't cached by default, and a Worker's own requests to Railway aren't either. Every API call reached the one web process | The Worker fetches reads with `cacheEverything`, so the edge keeps what the origin's Cache-Control allows: tables 30 s, the status 60 s, assets a year, index.html and errors never. Each Cloudflare location then asks Railway for a URL about twice a minute however many visitors it serves | ✅ `deploy/cloudflare/handler.mjs`, tested |
+| Edge or browser caching could hand a page that has just seen a new hour the previous hour's table, which the page then keeps for the hour (the browser's own 30 s cache already had a small window) | The pages send the data version as `?v=` on every table request: each hour has its own URL. The server ignores it (same server cache entry, same ETag) | ✅ `deps.Version`, `queries.ts`, tested both sides |
+| A response without Cache-Control would get Cloudflare's default edge TTL (2 h for a 200, minutes for a 404) | `/api` responses without their own header say `no-store` (errors, the 503 "no data yet", `/api/health`) | ✅ `ApiNoStoreByDefault`, tested |
+| Concurrent requests for one uncached view each computed it (dozens of identical queries on a pool of 5) | One computation per key; the others wait for it | ✅ `ResultCache`, tested with 20 threads |
+| Price check's items (876 for Allflame) didn't fit the 256-entry cache, and each held ~155 kB (validated rows beside the bytes): caching them all would add ~130 MB | Items go in their own cache (1,024 entries) as gzipped bytes only (~26 kB each, ~25 MB for a whole list); a rare client without gzip gets them decompressed | ✅ `View.slim`, tested |
+| A cached request spent most of its time rebuilding the settings (reading the environment and `.env`, ~0.5 ms, several times a request) | The API keeps them for the data version's 15 s window (`deps.settings()`) | ✅ one uvicorn on local Postgres, `ab` at 50 concurrent: cached tables 595 → 4,020 req/s, the status 418 → 3,791 req/s (`/api/health`: ~4,200) |
+
+Cold items stay bounded by the work: ~50 ms an item over 5 connections, about 100 new items a second (300 different items opened by 300 clients at once: all served, the slowest in 5.5 s). With edge caching and one computation per key that path is rare. Memory stayed at ~200 MB through the tests. Only on the live site can Cloudflare's side be checked (`cf-cache-status: HIT`, the fail-open setting): go-live section 7.

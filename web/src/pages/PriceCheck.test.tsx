@@ -197,6 +197,17 @@ describe('Price check', () => {
     expect(await screen.findByRole('list', { name: 'Movers' })).toBeInTheDocument()
   })
 
+  it('asks for each table at the data version it has, so no cache can hand it an older hour', async () => {
+    const fetch = serve(live())
+    renderPage(`/price-check?league=Allflame&item=${encodeURIComponent(SPLINTER)}`)
+    expect(await screen.findByRole('heading', { name: 'Splinter of Xoph', level: 2 })).toBeInTheDocument()
+    const urls = fetch.mock.calls.map(([input]) => new URL(typeof input === 'string' ? input : input.url, 'http://test'))
+    const v = (path: string) => urls.filter((u) => u.pathname === path).map((u) => u.searchParams.get('v'))
+    expect(v('/api/status')).not.toContain('v1') // the status is what says the version
+    expect(v('/api/price-check/Allflame')).toEqual(['v1'])
+    expect(v(itemPath(SPLINTER))).toEqual(['v1'])
+  })
+
   it('leads the item with the verdict for 24 hours and 3 days, then the chart, the stack seller and the launch premium', async () => {
     serve(live())
     renderPage(`/price-check?item=${SPLINTER}&qty=10`)

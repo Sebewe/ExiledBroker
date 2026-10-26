@@ -36,6 +36,7 @@ def item_view(league: str, item_id: str, entry: dict) -> View:
         lambda con: price_check.item(con, league, item_id, entry),
         PriceCheckItem,
         one=True,
+        slim=True,
     )
 
 
@@ -47,7 +48,7 @@ def movers_views(league: str) -> list[View]:
 
 
 @router.get("/price-check/{league}", response_model=PriceCheckIndex)
-def price_check_index(request: Request, league: str) -> Response:
+def price_check_index(request: Request, league: str, v: deps.Version = None) -> Response:
     """The search list (every core-pool exchange item the league has traded: price now,
     units an hour, 24-hour verdict and move in Divines) and the movers: the strongest
     24-hour calls in the launch fortnight, else the biggest 24-hour moves."""
@@ -56,7 +57,12 @@ def price_check_index(request: Request, league: str) -> Response:
 
 
 @router.get("/price-check/{league}/{item_id}", response_model=PriceCheckItem)
-def price_check_item(request: Request, league: str, item_id: str) -> Response:
+def price_check_item(
+    request: Request,
+    league: str,
+    item_id: str,
+    v: deps.Version = None,
+) -> Response:
     """One item: its hourly series over the hosted window, the outlook for the next 24
     hours and 3 days (judged in Divines), the stack seller's inputs, its launch premium
     and the best-hour inputs. 404 for an item the league's list doesn't hold."""

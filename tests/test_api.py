@@ -62,7 +62,9 @@ def test_status_is_cached_by_browsers_for_a_minute(client, settings):  # noqa: F
 def test_no_data_yet(client, settings):  # noqa: F811
     """Before anything is loaded every data endpoint says so, rather than erroring."""
     settings.db_path.unlink()
-    assert client.get("/api/status").status_code == 503
+    no_data = client.get("/api/status")
+    assert no_data.status_code == 503
+    assert no_data.headers["cache-control"] == "no-store"  # never cached at the edge
     with db.session(settings.db_path) as con:  # a schema but no loads yet
         db.init_schema(con)
     deps.reset()
@@ -177,6 +179,79 @@ def test_cache_is_bounded():
         c.get_or_compute(("k", i), lambda i=i: i)
     assert len(c) == 3
     assert c.get_or_compute(("k", 9), lambda: "recomputed") == 9  # newest kept
+
+
+def test_concurrent_misses_compute_once():
+    """A burst of requests for one uncached key (a streamer's audience opening the same
+    item) runs its queries once; the others wait for that result."""
+    import threading
+    import time
+
+    c = cache.ResultCache()
+    calls = []
+
+    def slow():
+        calls.append(1)
+        time.sleep(0.2)
+        return "value"
+
+    got = []
+    threads = [
+        threading.Thread(target=lambda: got.append(c.get_or_compute("k", slow))) for _ in range(20)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(calls) == 1 and got == ["value"] * 20
+
+
+def test_a_failed_computation_lets_the_next_request_retry():
+    c = cache.ResultCache()
+
+    def boom():
+        raise RuntimeError("database went away")
+
+    with pytest.raises(RuntimeError):
+        c.get_or_compute("k", boom)
+    assert c.get_or_compute("k", lambda: "ok") == "ok"
+
+
+def test_items_are_cached_slim_in_their_own_cache(client, settings):  # noqa: F811
+    """Price check's items (one per item, ~900 a league) go in the item cache as gzipped
+    bytes only, so a whole league fits (~26 kB each instead of ~155 kB), and they never
+    push the pages' tables out."""
+    update(settings, FakeExchange(PAGES, now=LAUNCH), 6)
+    plain = client.get(f"/api/price-check/{LEAGUE}/{ITEM}", headers={"accept-encoding": ""})
+    zipped = client.get(f"/api/price-check/{LEAGUE}/{ITEM}")
+    assert plain.status_code == zipped.status_code == 200
+    assert plain.json() == zipped.json()  # a client without gzip gets it decompressed
+    (key,) = cache.items._entries
+    held = cache.items._entries[key]
+    assert key[0] == "price_check_item" and held.plain is None and held.rows == []
+    assert all(k[0] != "price_check_item" for k in cache.results._entries)
+    assert cache.MAX_ITEMS >= 1000
+
+
+def test_api_responses_without_their_own_cache_header_are_never_cached(client, settings):  # noqa: F811
+    """Cloudflare caches what Cache-Control allows; with no header it would apply its
+    default edge TTL (2 hours for a 200, minutes for a 404). So errors and /api/health
+    say no-store, and the tables keep their own short max-age."""
+    update(settings, FakeExchange(PAGES, now=LAUNCH), 3)
+    assert client.get("/api/health").headers["cache-control"] == "no-store"
+    assert client.get("/api/missed/Nowhere").headers["cache-control"] == "no-store"  # 404
+    assert client.get(f"/api/missed/{LEAGUE}").headers["cache-control"] == deps.CACHE_CONTROL
+
+
+def test_the_version_parameter_only_keys_caches(client, settings):  # noqa: F811
+    """The pages send `v` (the data version they have) so each hour has its own URL in
+    browser and edge caches. The server ignores it: same bytes, same server cache entry."""
+    update(settings, FakeExchange(PAGES, now=LAUNCH), 3)
+    a = client.get(f"/api/missed/{LEAGUE}")
+    b = client.get(f"/api/missed/{LEAGUE}", params={"v": "anything"})
+    assert a.content == b.content and a.headers["etag"] == b.headers["etag"]
+    assert [k[0] for k in cache.results._entries].count("missed") == 1
+    assert client.get(f"/api/missed/{LEAGUE}", params={"v": "x" * 65}).status_code == 422
 
 
 def test_validation(client, settings):  # noqa: F811
