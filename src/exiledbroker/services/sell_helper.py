@@ -19,6 +19,12 @@ import polars as pl
 from exiledbroker.storage import db
 
 REPORT = "sell_helper_report"
+# Its name until 2026-10-26. The schema renames it in place, but only writers run the
+# schema (`eb` commands, the pipeline): the site reads read-only, so until one has run on
+# a database (the local copy, the compose Postgres, a site before its next pass) the
+# table still has the old name. Readers fall back to it; drop this once every database
+# has run the schema, with the ALTER in schema.sql.
+LEGACY_REPORT = "farming_report"
 RECENT_HOURS = 3 * 24  # volumes, swings and hours traded: the latest 3 days
 # Finding 7: a stack is shown as hours of the market's trading, not as a price drop.
 IMPACT = {
@@ -44,15 +50,29 @@ def store_report(con, doc: dict) -> None:
     )
 
 
+def _report_table(con) -> str:
+    """The report's table: its current name, or its old one on a database whose schema
+    hasn't been run since the rename (see LEGACY_REPORT)."""
+    names = {
+        r[0]
+        for r in db.rows(
+            con,
+            "SELECT table_name FROM information_schema.tables WHERE table_name IN (?, ?)",
+            [REPORT, LEGACY_REPORT],
+        )
+    }
+    return LEGACY_REPORT if LEGACY_REPORT in names and REPORT not in names else REPORT
+
+
 def report(con) -> dict | None:
     """The stored report, or None before `eb sell-helper build`."""
-    rows = db.rows(con, f"SELECT body FROM {REPORT} WHERE id = 'latest'")
+    rows = db.rows(con, f"SELECT body FROM {_report_table(con)} WHERE id = 'latest'")
     return json.loads(rows[0][0]) if rows else None
 
 
 def built_at(con):
     """When the report was built (None before `eb sell-helper build`)."""
-    return db.scalar(con, f"SELECT max(built_at) FROM {REPORT}")
+    return db.scalar(con, f"SELECT max(built_at) FROM {_report_table(con)}")
 
 
 def hours_phase(doc: dict, day_offset: float | None) -> str:

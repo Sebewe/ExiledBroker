@@ -59,3 +59,17 @@ def test_the_sell_helper_report_is_renamed_on_postgres():
         db.init_schema(pg)
         assert db.rows(pg, "SELECT to_regclass('farming_report')") == [(None,)]
         assert db.rows(pg, "SELECT id FROM sell_helper_report") == [("report",)]
+
+
+def test_the_site_reads_the_report_under_its_old_name_until_the_schema_runs(tmp_path):
+    """The site opens its database read-only and never runs the schema, so a database
+    no writer has touched since the rename still has `farming_report`: Price check's
+    item view read the new name and failed (500) on the local copy, 2026-10-26."""
+    from exiledbroker.services import sell_helper
+
+    with db.session(tmp_path / "old.duckdb") as con:
+        _old_sell_helper_report(con)
+        assert sell_helper.report(con) is None  # its row is 'report', not 'latest'
+        db.execute(con, "UPDATE farming_report SET id = 'latest'")
+        assert sell_helper.report(con) == {}
+        assert sell_helper.built_at(con) is not None
