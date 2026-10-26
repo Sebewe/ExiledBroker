@@ -5,9 +5,9 @@ compatibility_date = "2026-10-01"
 
 # Run on every request to the site. Replace both with your domain (it must be a zone
 # on your Cloudflare account, with its DNS record proxied: the orange cloud).
+# www needs no route: a redirect rule sends it to the root domain (301, path and query kept).
 routes = [
-  { pattern = "example.com/*", zone_name = "example.com" },
-  # { pattern = "www.example.com/*", zone_name = "example.com" },
+  { pattern = "exiledbroker.trade/*", zone_name = "exiledbroker.trade" },
 ]
 
 # Bundle fallback.html as a string for worker.mjs to import.

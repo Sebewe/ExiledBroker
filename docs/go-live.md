@@ -12,7 +12,7 @@ Deadline: the next league launches in about a month. The server must be live, ca
 - ~~**No backups.**~~ Replaced 2026-10-23: **an off-site backup on Supabase's free tier** ([supabase.md](supabase.md)). The pipeline syncs the site's database to it after each pass (uploads only; it reads back ~25 kB), and it's read only to restore. The local copy stays as a third copy.
 - **Usage limits are set**, and when the site is down because of them it shows a static "Something went wrong, we're investigating" page. Real traffic can raise the limit; a bug shouldn't be able to eat the credit.
 - **The league switch is rehearsed** on historical data before it happens for real, including changed API responses (new items, different order and size).
-- **Custom domain:** bought.
+- **Custom domain:** `exiledbroker.trade`, bought through Cloudflare (so its DNS is Cloudflare's), set up 2026-10-25 (section 3).
 - **Uniques:** out of scope (2026-10-25, [decisions.md](decisions.md#scope)): no poller, no tracked uniques.
 
 ## Checklist
@@ -51,7 +51,8 @@ What the last four switches on disk show (Settlers → Mercenaries → Keepers �
   - web: `EB_DATABASE_URL`;
   - pipeline: `EB_DATABASE_URL` (both set to Postgres's private URL), `EB_BACKUP_URL` = Supabase's session-pooler URL, sealed ([supabase.md](supabase.md#the-connection-string)), and `EB_HEALTHCHECK_URL` = the healthchecks.io ping URL, sealed (item 5);
   - **both** services: `EB_NEXT_LEAGUE` / `EB_NEXT_LEAGUE_START` before a launch (the web service shows the countdown, the pipeline switches leagues).
-- [ ] Custom domain on the web service (CNAME), HTTPS from Railway.
+- [x] **Domain on Cloudflare (2026-10-25).** `exiledbroker.trade` and `www` are proxied `AAAA 100::` placeholder records (Cloudflare's "no origin" address: the Worker answers every request, so nothing points at Railway and Railway needs no custom domain or certificate). SSL/TLS is Full (strict), Always Use HTTPS is on, and a redirect rule sends `www` to the root domain (301, path and query kept). HSTS is off until the site is live. Until the Worker is deployed the domain answers 522 (no origin).
+- [ ] Deploy the Worker once the web service is up: `ORIGIN` in `deploy/cloudflare/wrangler.toml` (the route is already `exiledbroker.trade/*`), `npx wrangler login` (interactive, the user) and `npx wrangler deploy`.
 - [ ] Railway waits for CI before deploying a push to `main` (decided 2026-10-23: turn on "Wait for CI" on both app services).
 - Go live first on the current league (Allflame) as a demo people can try; the next league launches around 2026-11-13, not announced in detail yet. Set `EB_NEXT_LEAGUE` / `_START` on both services once its name and start time are out.
 

@@ -36,9 +36,9 @@ No retries: one failed fetch is enough to show the page, and the page retries by
 Needs a Cloudflare account with the domain added as a zone (free plan), and Node 24 (`export PATH=~/.local/node/bin:$PATH`).
 
 1. **Deploy the app change first.** The stamp ships in the Railway web service; if the Worker goes live before it, every error response looks foreign and the site shows the fallback page for the app's own 503s and 404s. Check: `curl -sI https://<service>.up.railway.app/api/health | grep -i x-eb-origin`.
-2. Edit `wrangler.toml`: `routes` (your domain twice, as `pattern` and `zone_name`; add `www.` if used) and `ORIGIN` (the web service's `*.up.railway.app` address, no trailing slash).
+2. Edit `wrangler.toml`: `ORIGIN` (the web service's `*.up.railway.app` address, no trailing slash). The route is already `exiledbroker.trade/*`.
 3. `cd deploy/cloudflare && npx wrangler login && npx wrangler deploy`
-4. In Cloudflare DNS, point the domain at Railway (a CNAME to the `*.up.railway.app` address, or to the custom-domain target Railway shows) with the **Proxy status on** (orange cloud). The Worker only runs on proxied records. Set SSL/TLS to **Full** if the custom domain is also attached on Railway ([go-live.md](../../docs/go-live.md) section 3). Because the Worker sends requests to `ORIGIN` itself, the DNS target is only the route's anchor.
+4. DNS is already done (2026-10-25): `exiledbroker.trade` and `www` are proxied `AAAA 100::` records, the anchor the Worker's route needs (a Worker only runs on proxied records; `100::` means no origin, since the Worker sends requests to `ORIGIN` itself). SSL/TLS is Full (strict), Always Use HTTPS is on, and `www` redirects to the root domain ([go-live.md](../../docs/go-live.md) section 3).
 5. Change `ORIGIN` later in `wrangler.toml` and redeploy, or in the dashboard (Workers > exiledbroker-fallback > Settings > Variables).
 
 ## Test it
