@@ -313,7 +313,8 @@ class Usage:
 
 def read_stats(con, today: date, current: str, days: int = 30) -> dict:
     """Totals, each period's visitors and returning visitors, the last `days` days and
-    each page's and feature's use. A few small aggregates."""
+    each page's and feature's use (all time, and `_recent`: the last `days` days). A
+    few small aggregates."""
     since = today - timedelta(days=days - 1)
     total = db.rows(
         con,
@@ -355,8 +356,8 @@ def read_stats(con, today: date, current: str, days: int = 30) -> dict:
                     "event": e,
                     "views": int(n),
                     "visitors": int(u),
-                    f"views_{days}d": int(n30),
-                    f"visitors_{days}d": int(u30),
+                    "views_recent": int(n30),
+                    "visitors_recent": int(u30),
                 }
                 for e, n, u, n30, u30 in events
             ),

@@ -211,8 +211,16 @@ def test_the_beacon_and_the_stats(app_client):
     wrong = app_client.get("/api/stats", headers={"authorization": "Bearer wrong"})
     assert wrong.status_code == 404
     stats = app_client.get("/api/stats", headers={"authorization": "Bearer s3cret"}).json()
-    assert stats["total"] == {"views": 2, "visitor_days": 1}
-    assert stats["events"] == [{"event": "page:/launch", "views": 2, "visitors": 1}]
+    assert stats["total"] == {"views": 2, "visitor_days": 1, "since": None}
+    assert stats["events"] == [
+        {
+            "event": "page:/launch",
+            "views": 2,
+            "visitors": 1,
+            "views_recent": 0,
+            "visitors_recent": 0,
+        }
+    ]
 
 
 def test_no_stats_without_a_key(tmp_path, monkeypatch):

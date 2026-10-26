@@ -9,6 +9,7 @@ from fastapi import APIRouter, Header, HTTPException, Query, Request, Response
 
 from exiledbroker.api import deps
 from exiledbroker.api import usage as counting
+from exiledbroker.api.models import UsageStats
 
 router = APIRouter(tags=["usage"])
 
@@ -26,7 +27,7 @@ def hit(
     return Response(status_code=204)
 
 
-@router.get("/stats")
+@router.get("/stats", response_model=UsageStats)
 def stats(request: Request, authorization: Annotated[str | None, Header()] = None) -> dict:
     """Visitors, returning visitors and each page's and feature's use, for the site's
     owner (`Authorization: Bearer <EB_ADMIN_TOKEN>`; without the setting, 404)."""

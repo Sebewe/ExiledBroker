@@ -984,6 +984,69 @@ export interface components {
              */
             start_at: string;
         };
+        /** UsageDay */
+        UsageDay: {
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /** Views */
+            views: number;
+            /** Visitors */
+            visitors: number;
+        };
+        /** UsageEvent */
+        UsageEvent: {
+            /** Event */
+            event: string;
+            /** Views */
+            views: number;
+            /**
+             * Views Recent
+             * @default 0
+             */
+            views_recent: number;
+            /** Visitors */
+            visitors: number;
+            /**
+             * Visitors Recent
+             * @default 0
+             */
+            visitors_recent: number;
+        };
+        /** UsagePeriod */
+        UsagePeriod: {
+            /** Finished */
+            finished: boolean;
+            /** Period */
+            period: string;
+            /** Returning */
+            returning: number;
+            /** Visitors */
+            visitors: number;
+        };
+        /** UsageStats */
+        UsageStats: {
+            /** Days */
+            days: components["schemas"]["UsageDay"][];
+            /** Events */
+            events: components["schemas"]["UsageEvent"][];
+            /** Periods */
+            periods: components["schemas"]["UsagePeriod"][];
+            /** Stored */
+            stored: boolean;
+            total: components["schemas"]["UsageTotal"];
+        };
+        /** UsageTotal */
+        UsageTotal: {
+            /** Since */
+            since?: string | null;
+            /** Views */
+            views: number;
+            /** Visitor Days */
+            visitor_days: number;
+        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -1259,9 +1322,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["UsageStats"];
                 };
             };
             /** @description Validation Error */
