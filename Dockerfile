@@ -17,7 +17,11 @@ RUN find dist -type f \( -name '*.js' -o -name '*.css' -o -name '*.html' -o -nam
 # --- App ----------------------------------------------------------------------------
 FROM python:3.11-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 \
-    EB_WEB_DIST=/app/web/dist EB_DATA_DIR=/app/data
+    EB_WEB_DIST=/app/web/dist EB_DATA_DIR=/app/data \
+    _RJEM_MALLOC_CONF=dirty_decay_ms:0,muzzy_decay_ms:0
+# polars' allocator (jemalloc, read from _RJEM_MALLOC_CONF) gives freed pages back at
+# once instead of holding them ~10 s: the web service's steady memory 213 -> 183 MB on
+# the synthetic league, for ~0.1 s more CPU an hour (docs/hosting.md#memory).
 WORKDIR /app
 RUN useradd --create-home app && mkdir -p /app/data && chown app /app/data
 COPY pyproject.toml README.md LICENSE ./

@@ -83,6 +83,41 @@ Before the Farming page (2026-10-23) it was $2.64 and $2.83 at 10 and 100 visito
 - **What would push it over $5:** much more always-on memory (a second web replica, a larger cache), a Railway volume holding history again, or an endpoint that recomputes per visitor (the API serves only the four precomputed responses since the Farming page was retired, `docs/decisions.md`). The Supabase backup isn't on this bill.
 - **p95 latency** 20–34 ms at 10 and 100 visitors, no errors. The league-switch replay (`run.py switch`) passed with the Farming view warmed.
 
+## Memory
+
+Profiled 2026-10-26: what the web service's memory is, what was cut, and whether another provider would be cheaper. Measured with the synthetic league (`deploy/railway-sim/synthetic.py`, 300 Allflame hours) seeded into a local Postgres 16, Python 3.13 (the image runs 3.11), one process doing what the web service does (`warm.warm()`: the 25 default views, then re-warmed six times as six new hours would).
+
+**Where the web service's memory goes** (RSS, MB):
+
+| Stage | RSS | Of which |
+|---|---|---|
+| Python started | 9 | |
+| The app imported | 112 | FastAPI + pydantic ~30, psycopg ~12, polars ~37, DuckDB ~21 (never used on the server: modules import it at the top), the rest ~3 |
+| Default views warmed, steady over six new hours | 204–217 | Python's own objects **6.4 MB** (`tracemalloc`: the cached gzipped tables included). File-backed pages 52 → 99 MB (library code paged in as it runs, mostly polars' kernels) and anonymous 54 → 66 MB, plus what polars' allocator keeps |
+| The same with `_RJEM_MALLOC_CONF=dirty_decay_ms:0,muzzy_decay_ms:0` | **178–183** | |
+
+- **The cached tables aren't the memory; the libraries are.** The views are a few MB of bytes. What grows is native: the code of polars that the services run, and freed memory that polars' allocator (jemalloc) holds for ~10 s before giving it back, which a warm's many short frames keep topped up.
+- **Kept: the allocator setting** (`Dockerfile`). jemalloc returns freed pages at once: steady memory 204–217 → ~183 MB, about 30 MB (≈ $0.30 a month at $10/GB-month). It costs ~0.1 s more CPU per hourly warm (0.65 → 0.76 s, ~1 CPU-minute a month). `tests/test_dockerfile.py` checks polars still reads that variable, so an upgrade that drops jemalloc or renames it fails CI instead of silently losing the setting.
+- **Tried, no change:** one polars thread (`POLARS_MAX_THREADS=1`: 204 → 209), `MALLOC_ARENA_MAX=2` (204 → 217; glibc's arenas aren't where the memory is, which is why PR #4 saw nothing).
+- **Not done, and why:** importing DuckDB only where it's used would save ~20 MB, but it's imported at the top of ~20 modules for type hints and `db`'s engine checks (≈ $0.20 a month). Taking polars off the web's path would save the most (~37 MB of import and most of the 47 MB of code paged in), but every service returns polars frames: a rewrite of `services/`. Neither lowers the bill (below).
+- **This RSS is higher than the simulation's 0.084 GB mean** because `docker stats`, which the simulation meters, leaves out inactive page cache, and most of the file-backed part is that. The ratio is what carries over: the setting saves roughly a seventh of the web's memory.
+- **Postgres's side:** after the warms, Postgres's processes held 25–30 MB (PSS) on the synthetic league whether `shared_buffers` was 128 MB or 32 MB, because the views read little. What fills its buffers is the pipeline's hourly writes and the league's size (0.11–0.12 GB measured on the real copy). Lowering `shared_buffers` would cap that part, but the operating system's page cache may then hold the same pages; measure it in the simulation before changing Railway's template (go-live item 5).
+
+### Is another provider cheaper?
+
+**Hobby is $5 a month whatever the usage up to $5** (Railway's plans page, 2026-10-26: "Hobby usage of $3 results in a $5 bill"). The site's usage is $2–4, so cutting memory buys headroom against the $5 (a launch week, a bigger league), not a smaller bill. Only leaving Hobby lowers the bill, and the only way below it is to have no always-on process on Railway at all.
+
+| Setup | Bill a month | What it takes | Reliability |
+|---|---|---|---|
+| **Railway Hobby, as built** (web, Postgres, pipeline cron) | **$5** (usage $2–4 included) | Nothing more | One provider, a free private network; the Cloudflare Worker covers outages |
+| Railway's Free plan ($1 credit, 0.5 GB a service) | $0 until the credit runs out | Same code | Always-on web + Postgres is $1.5–3 of usage: the services would stop mid-month. Doesn't fit |
+| Static tables on Cloudflare (Worker + R2, free: 10 GB, 1M writes and 10M reads a month) + Neon's free Postgres (1 GB, 100 CU-hours, 5 GB egress; sleeps after 5 min) + the pipeline on Railway Free or GitHub Actions | **$0** | The pipeline would render every table as a file each hour and upload it, and the Worker would serve them. Price check's ~900 items are built on demand today; static, all of them would be rebuilt each hour, reading ~45 MB an hour from the database (~32 GB a month against Neon's 5 GB), so item histories would first have to become incremental (append the new hour, not rebuild). Rewrites the serving layer, its tests and the frontend's error states | Three providers and their limits to watch. GitHub's scheduled runs start late (often 5–30 min) and are sometimes skipped, and come from shared IPs, which GGG sees; Railway Free's cron avoids that if its $1 covers ~$0.03 of passes plus Postgres elsewhere |
+| Supabase as the database | — | Tried 2026-10-23 (above): every read crosses providers and counts against 5 GB | Now the backup instead |
+| Cloudflare D1 (SQLite) | $0 | `services/` SQL is Postgres's (`percentile_cont`, `FILTER`); a port of every query and the loader's writes | Unproven for this shape |
+| The pipeline on GitHub Actions instead of Railway's cron | Saves ~$0.03 | A workflow and secrets | Worse (late and skipped runs, shared IPs) |
+
+**Recommended: stay on Railway Hobby.** The $0 setup saves $5 a month for a rebuild of how the site is served, three providers' limits and a less punctual pipeline; at the usage measured there's no bill to cut until traffic outgrows $5, and then the levers are already known (go-live item 5).
+
 ## Supabase: tried as the database, now the off-site backup
 
 Tried on 2026-10-23 as the site's database (free tier: 500 MB, 5 GB egress a month, AWS us-east-1), with web and the pipeline on Railway. It fitted only after the pipeline fix below, at ~1.4 GB of egress a month, and needed rules around every read of it (reads cross from Railway's network, on Google Cloud, to AWS: billed egress), so it became the off-site backup instead (`docs/decisions.md`, [supabase.md](supabase.md)): written to every hour, read only to restore.
