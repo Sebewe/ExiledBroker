@@ -151,7 +151,7 @@ The generated types (`web/openapi.json` → `web/src/api/schema.d.ts`) are the r
 ```jsonc
 {
   "item_id": "…", "name": "…", "label": "…", "latest_hour": "…", "day_offset": 4.2,
-  "thick": true, "change_24h": -0.06,
+  "unit": "divine", "thick": true, "change_24h": -0.06,   // unit "chaos" for Divine Orb (below)
   "series": [["2026-10-25T09:00:00Z", 1.4, 0.007]],   // traded hours: [hour, Chaos, Divines at the hour's rate]
   "outlook": {
     "h24": {"verdict": "sell", "state": "judged", "typical": -0.12, "low": -0.30, "high": 0.09, "leagues": 5, "basis": "item"},
@@ -169,3 +169,5 @@ The generated types (`web/openapi.json` → `web/src/api/schema.d.ts`) are the r
 ```
 
 Prices are in Chaos and the browser converts with `divine_chaos` as today. The stack quantity never reaches the server.
+
+**Divine Orb** (2026-10-26) is in the list and has an item view, though `cross_market_hour` has no row for it (it is the rate): both come from its own market's hourly rows in `price_observation`. Its list row's `change_24h` is in Chaos, and it is never a mover. Its item has `"unit": "chaos"` (every other item: `"divine"`), `outlook: null`, series points `[hour, Chaos, null]`, `stack.divine: null`, `launch_prices: null`, and `last_day` hours without a Divine rate; the page charts its Chaos price alone and shows it in Chaos whatever the visitor's unit.

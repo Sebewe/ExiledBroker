@@ -2146,7 +2146,14 @@
             "type": "string"
           },
           "outlook": {
-            "$ref": "#/components/schemas/PriceOutlook"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PriceOutlook"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "series": {
             "items": {
@@ -2189,6 +2196,14 @@
           "thick": {
             "title": "Thick",
             "type": "boolean"
+          },
+          "unit": {
+            "enum": [
+              "divine",
+              "chaos"
+            ],
+            "title": "Unit",
+            "type": "string"
           }
         },
         "required": [
@@ -2197,6 +2212,7 @@
           "label",
           "latest_hour",
           "day_offset",
+          "unit",
           "thick",
           "change_24h",
           "series",

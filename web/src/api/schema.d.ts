@@ -882,7 +882,7 @@ export interface components {
             launch_prices: components["schemas"]["LaunchPrices"] | null;
             /** Name */
             name: string;
-            outlook: components["schemas"]["PriceOutlook"];
+            outlook: components["schemas"]["PriceOutlook"] | null;
             /** Series */
             series: [
                 string,
@@ -892,6 +892,11 @@ export interface components {
             stack: components["schemas"]["StackMarkets"];
             /** Thick */
             thick: boolean;
+            /**
+             * Unit
+             * @enum {string}
+             */
+            unit: "divine" | "chaos";
         };
         /**
          * PriceCheckListItem

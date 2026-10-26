@@ -179,6 +179,8 @@ def _cases(duck) -> dict:
         "price_check.stack": lambda c: price_check.stack(c, LEAGUE, latest, ITEM, 30),
         "price_check.last_day": lambda c: price_check.last_day(c, LEAGUE, latest, ITEM),
         "price_check.launch_prices": lambda c: price_check.launch_prices(c, ITEM),
+        "price_check.divine_hours": lambda c: price_check.divine_hours(c, LEAGUE),
+        "price_check.divine_entry": lambda c: price_check.divine_entry(c, LEAGUE, latest),
         "price_check.paths": lambda c: price_check.paths(c, 2),
         "price_check.last_bins": lambda c: price_check.last_bins(c),
         "price_check.constants": lambda c: price_check.constants(c),
@@ -251,6 +253,7 @@ LIVE_QUERIES = [
     "price_check.series",
     "price_check.stack",
     "price_check.last_day",
+    "price_check.divine_hours",
 ]
 
 

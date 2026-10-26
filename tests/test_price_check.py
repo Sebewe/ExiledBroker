@@ -229,6 +229,32 @@ def test_the_list_and_an_item_without_paths(client, loaded):  # noqa: F811
     assert all(h["chaos_units"] or h["divine_units"] for h in day)
 
 
+def test_divine_orb_has_its_own_view_in_chaos(client, loaded):  # noqa: F811
+    """Divine Orb isn't in cross_market_hour (it is the rate): it is listed from its own
+    market's hourly rows and gets a view priced in Chaos, with no outlook."""
+    doc = client.get(f"/api/price-check/{LEAGUE}").json()
+    div = next(x for x in doc["items"] if x["item_id"] == price_check.DIVINE_ID)
+    assert div["name"] == "Divine Orb" and div["verdict_24h"] == "none"
+    assert div["chaos"] > 1 and div["volume_h"] > 0
+    assert price_check.DIVINE_ID not in doc["movers"]
+    assert [x["name"] for x in doc["items"]] == sorted(x["name"] for x in doc["items"])
+    with db.session(loaded.db_path) as con:
+        latest = price_check.league_state(con, LEAGUE)["latest"]
+        rows = price_check.divine_hours(con, LEAGUE)
+    item = client.get(f"/api/price-check/{LEAGUE}/{price_check.DIVINE_ID}").json()
+    assert item["unit"] == "chaos" and item["outlook"] is None
+    assert item["launch_prices"] is None and item["stack"]["divine"] is None
+    assert len(item["series"]) == len(rows) > 0
+    assert all(c > 1 and d is None for _, c, d in item["series"])
+    chaos = item["stack"]["chaos"]
+    assert chaos["volume_h"] > 0 and 0 < chaos["hours_traded"] <= 1 and chaos["price"] > 1
+    day = item["last_day"]
+    assert day and day[-1]["hour"] == latest.isoformat() + "Z"
+    assert all(h["chaos_units"] > 0 and h["divine_rate"] is None for h in day)
+    # 24 hours of a 30-hour replay: the move in Chaos is known.
+    assert item["change_24h"] == div["change_24h"] is not None
+
+
 def test_unknown_items_and_leagues_are_404(client, loaded):  # noqa: F811
     assert client.get("/api/price-check/Nowhere").status_code == 404
     assert client.get(f"/api/price-check/Nowhere/{'currency:orb-of-alchemy'}").status_code == 404

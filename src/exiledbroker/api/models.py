@@ -396,7 +396,8 @@ class PriceCheckListItem(BaseModel):
     chaos: float | None  # the price now: median of its traded hours in the latest 6
     volume_h: float | None  # units traded an hour in its Chaos market, latest 3 days
     verdict_24h: Verdict
-    change_24h: float | None  # the latest 24 hours' move, in Divines (−0.08 is −8%)
+    # The latest 24 hours' move, in Divines (−0.08 is −8%); Divine Orb's in Chaos.
+    change_24h: float | None
 
 
 class PriceCheckIndex(BaseModel):
@@ -476,12 +477,15 @@ class PriceCheckItem(BaseModel):
     label: str | None
     latest_hour: datetime | None
     day_offset: float | None
+    # What the item is judged in: Divines, or Chaos for Divine Orb itself (the rate the
+    # rest are quoted at: no Divine price, no outlook, no Divine market, no launch prices).
+    unit: Literal["divine", "chaos"]
     thick: bool  # finding 9's thick market (latest 3 days)
-    change_24h: float | None  # in Divines
+    change_24h: float | None  # in `unit`
     # Traded hours over the hosted window (launch fortnight + latest 14 days): [hour,
     # Chaos, Divines at that hour's rate]; lines break where hours are missing.
     series: list[tuple[datetime, float | None, float | None]]
-    outlook: PriceOutlook
+    outlook: PriceOutlook | None  # null for Divine Orb
     stack: StackMarkets
     launch_prices: LaunchPrices | None
     last_day: list[DayHour]  # the "best time to sell" box: the latest 24 hours' trading

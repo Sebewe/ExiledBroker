@@ -46,6 +46,7 @@ export function Stack({
   note = DEFAULT_NOTE,
   money,
   divineChaos,
+  chaosOnly = false,
 }: {
   item: StackItem & { name: string }
   qty: number
@@ -53,6 +54,8 @@ export function Stack({
   note?: string
   money: Money
   divineChaos: number | null | undefined
+  /** Divine Orb: its one market is the Chaos one, so there is no Divine market card. */
+  chaosOnly?: boolean
 }) {
   const { chaos, divine } = stackInMarkets(item, qty, divineChaos, bands)
   const lead = chaos ?? divine
@@ -72,7 +75,7 @@ export function Stack({
       )}
       <div className="grid gap-3 sm:grid-cols-2">
         <MarketCard name={MARKET_NAME.chaos} stack={chaos} qty={qty} bands={bands} money={money} missing="No recent Chaos trades to judge by." />
-        <MarketCard name={MARKET_NAME.divine} stack={divine} qty={qty} bands={bands} money={money} missing={noDivine} />
+        {!chaosOnly && <MarketCard name={MARKET_NAME.divine} stack={divine} qty={qty} bands={bands} money={money} missing={noDivine} />}
       </div>
       <p className="text-xs text-faint">
         {note} Hours of trading: your stack over the units the market trades in a typical hour, last 3 days. Under {bandEdge(bands[0])} of trading it sells as it
@@ -160,8 +163,19 @@ function MarketCard({
 
 /** The last 24 hours of the item's trading (the user: this league's last day, not past
  *  leagues): how much traded, the busiest hour and the highest-priced one, in local time. */
-export function BestHours({ rows, money, divineChaos }: { rows: DayHour[]; money: Money; divineChaos: number | null | undefined }) {
-  const d = lastDay(rows, divineChaos)
+export function BestHours({
+  rows,
+  money,
+  divineChaos,
+  unit = 'divine',
+}: {
+  rows: DayHour[]
+  money: Money
+  divineChaos: number | null | undefined
+  /** "chaos": Divine Orb's own view, priced in Chaos. */
+  unit?: 'divine' | 'chaos'
+}) {
+  const d = lastDay(rows, divineChaos, unit)
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-4">
       <h3 className="flex items-center gap-2 font-semibold">
@@ -188,7 +202,10 @@ export function BestHours({ rows, money, divineChaos }: { rows: DayHour[]; money
           {d.dearest && (
             <p className="text-sm text-muted">
               Highest price at <span className="num text-text">{localHour(d.dearest.hour)}</span> your time:{' '}
-              <span className="num text-text">{divineChaos ? money(d.dearest.divine * divineChaos) : price(d.dearest.divine, 'divine')}</span> each
+              <span className="num text-text">
+                {d.unit === 'chaos' ? money(d.dearest.price) : divineChaos ? money(d.dearest.price * divineChaos) : price(d.dearest.price, 'divine')}
+              </span>{' '}
+              each
               {d.dearest.over != null && d.dearest.over > 0 && <>, {pct(d.dearest.over, 1)} over the day's typical hour</>}.
             </p>
           )}
