@@ -9,7 +9,7 @@ is wiped. Data: the replay fixture (Mirage's first 30 hours) loaded into DuckDB 
 real pipeline, then copied over."""
 
 import os
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import polars as pl
 import pytest
@@ -30,6 +30,7 @@ from exiledbroker.services import (
     market,
     missed,
     overview,
+    pipeline_health,
     price_check,
     price_paths,
     prices,
@@ -68,6 +69,10 @@ def engines(tmp_path_factory):
     duck = db.connect(s.db_path, read_only=True)
     # The same copy `eb site seed` makes; it also builds the schema on Postgres.
     site.seed(duck, pg, [LEAGUE])
+    # The live updates' log: the hosted pipeline writes it on Postgres itself (no seed).
+    runs = db.rows(duck, "SELECT * FROM ingest_run")
+    marks = ", ".join(["%s"] * len(runs[0]))
+    pg.cursor().executemany(f"INSERT INTO ingest_run VALUES ({marks})", runs)
     yield duck, pg
     duck.close()
     pg.close()
@@ -118,6 +123,7 @@ def _cases(duck) -> dict:
     since = live.latest_hour(duck, LEAGUE) - timedelta(hours=6)
     leagues = [LEAGUE]
     weights = {LEAGUE: 1.0}
+    ran = datetime.now(UTC).replace(tzinfo=None)  # the updates ran just now
     return {
         "live.live_leagues": lambda c: live.live_leagues(c),
         "live.latest_hour": lambda c: live.latest_hour(c, LEAGUE),
@@ -140,6 +146,7 @@ def _cases(duck) -> dict:
         "prices.item_names": lambda c: prices.item_names(c, leagues),
         "prices.item_curve": lambda c: prices.item_curve(c, leagues, names[0]),
         "overview.table_counts": lambda c: overview.table_counts(c),
+        "pipeline_health.summary": lambda c: pipeline_health.summary(c, ran),
         "overview.league_calendar": lambda c: overview.league_calendar(c),
         "overview.leagues_with_prices": lambda c: overview.leagues_with_prices(c),
         "lp.unique_moves": lambda c: lp.unique_moves(c),

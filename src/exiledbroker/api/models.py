@@ -483,3 +483,27 @@ class PriceCheckItem(BaseModel):
     last_day: list[DayHour]  # the "best time to sell" box: the latest 24 hours' trading
     hours: SellHours | None  # the best-hour sentence's inputs (null until built)
     impact: StackImpact | None
+
+
+class PipelineLeague(BaseModel):
+    """One league's live updates (ingest_run). "Day" is the 24 hours before `now`."""
+
+    league: str
+    last_run: datetime
+    last_success: datetime | None
+    last_failure: datetime | None
+    last_state: str  # the latest run's: updated | unchanged | not_running | no_hours | failed
+    last_error: str | None  # the latest run's error, when it failed
+    latest_hour: datetime | None  # newest exchange hour loaded
+    runs_day: int
+    failures_day: int
+    median_seconds_day: float | None
+    requests_day: int
+    bytes_day: int
+    hours_added_day: int
+
+
+class AdminOverview(BaseModel):
+    now: datetime
+    data_version: str | None
+    pipeline: list[PipelineLeague]  # the most recently run league first

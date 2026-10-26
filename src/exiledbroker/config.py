@@ -2,10 +2,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from exiledbroker import __version__
+
+ADMIN_TOKEN_MIN = 32
 
 
 def _repo_root() -> Path | None:
@@ -69,6 +71,9 @@ class Settings(BaseSettings):
     next_league_start: datetime | None = None
     # Origins allowed to call the API from a browser (the future public frontend).
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:5173"]
+    # The admin page's token (/admin, /api/admin/*; docs/admin.md): a long random string,
+    # sent as `Authorization: Bearer <token>`. Unset: the admin API answers 404.
+    admin_token: SecretStr | None = None
 
     # Outbound HTTP. poe.ninja asks for a descriptive User-Agent with a contact.
     user_agent: str = f"ExiledBroker/{__version__} (+https://github.com/Sebewe/ExiledBroker)"
@@ -85,6 +90,19 @@ class Settings(BaseSettings):
     )
     loot_filter_strictness: str = "2-SEMI-STRICT"
     repoe_base_items_url: str = "https://repoe-fork.github.io/base_items.min.json"
+
+    @field_validator("admin_token")
+    @classmethod
+    def _long_admin_token(cls, v: SecretStr | None) -> SecretStr | None:
+        """A short token could be guessed: refuse to start rather than serve with one."""
+        if v is None or not v.get_secret_value():
+            return None  # set but empty: off
+        if len(v.get_secret_value()) < ADMIN_TOKEN_MIN:
+            raise ValueError(
+                f"EB_ADMIN_TOKEN must be at least {ADMIN_TOKEN_MIN} characters "
+                "(e.g. `python -c 'import secrets; print(secrets.token_urlsafe(32))'`)"
+            )
+        return v
 
     @property
     def db_path(self) -> Path:
