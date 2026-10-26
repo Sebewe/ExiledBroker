@@ -53,6 +53,9 @@ def test_each_visitor_gets_a_limited_share(guarded):
     assert r.headers["cache-control"] == "no-store"
     assert r.json()["detail"]
     assert get("2.2.2.2").status_code != 429  # another visitor isn't held up
+    # The Worker's copy of the address is read first.
+    worker = {"x-eb-origin-key": KEY, "x-eb-client-ip": "1.1.1.1", "cf-connecting-ip": "9.9.9.9"}
+    assert guarded.get("/api/launch/picks", headers=worker).status_code == 429
     # The health check and the pages' files aren't counted.
     h = {"x-eb-origin-key": KEY, "cf-connecting-ip": "1.1.1.1"}
     assert guarded.get("/api/health", headers=h).status_code == 200

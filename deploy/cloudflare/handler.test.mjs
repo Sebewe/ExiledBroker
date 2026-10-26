@@ -228,13 +228,14 @@ test("methods the site never uses are refused at the edge", async () => {
 });
 
 test("a POST to /api needs a small, declared body", async () => {
-  const post = (headers) => new Request("https://example.com/api/beacon", { method: "POST", headers });
-  for (const [headers, status] of [
-    [{}, 411],
+  const post = (headers, body) =>
+    new Request("https://example.com/api/beacon", { method: "POST", headers, body });
+  for (const [headers, status, body] of [
+    [{}, 411, "streamed"],
     [{ "content-length": "4097" }, 413],
     [{ "content-length": "1e9" }, 413],
   ]) {
-    const { response, seen } = await run(post(headers), new Response(null, { headers: APP }));
+    const { response, seen } = await run(post(headers, body), new Response(null, { headers: APP }));
     assert.equal(response.status, status);
     assert.equal(seen.length, 0);
   }
@@ -282,4 +283,22 @@ test("a failing limiter lets requests through", async () => {
   const limiter = { limit: async () => { throw new Error("binding down"); } };
   const { response } = await run(api(), new Response("{}", { headers: APP }), { limiter });
   assert.equal(response.status, 200);
+});
+
+test("a POST with no body at all (the usage beacon) passes", async () => {
+  const beacon = new Request("https://example.com/api/hit?e=page:/", { method: "POST" });
+  const { response, seen } = await run(beacon, new Response(null, { status: 204, headers: APP }));
+  assert.equal(response.status, 204);
+  assert.equal(seen.length, 1);
+});
+
+test("the visitor's address reaches the app as X-EB-Client-IP, and only Cloudflare's", async () => {
+  const ok = () => new Response("{}", { headers: APP });
+  let { seen } = await run(
+    visit("/api/status", { "cf-connecting-ip": "203.0.113.7", "x-eb-client-ip": "1.1.1.1" }),
+    ok(),
+  );
+  assert.equal(seen[0].req.headers.get("x-eb-client-ip"), "203.0.113.7");
+  ({ seen } = await run(visit("/api/status", { "x-eb-client-ip": "1.1.1.1" }), ok()));
+  assert.equal(seen[0].req.headers.get("x-eb-client-ip"), null); // forged, dropped
 });
