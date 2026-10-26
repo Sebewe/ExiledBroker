@@ -31,6 +31,10 @@ What visitors get instead (all `Cache-Control: no-store`, `Retry-After: 120`, an
 
 No retries: one failed fetch is enough to show the page, and the page retries by itself.
 
+## Turned away at the edge
+
+Before fetching anything, the Worker answers what the site never sends ([docs/security.md](../../docs/security.md)): any method but GET and HEAD gets 405, except POST under `/api/` (the usage beacon) with a declared body of at most 4 kB (411 without a length, 413 above it). With the `API_LIMITER` rate-limit binding (`wrangler.toml`), an address making more than 60 `/api` requests a minute gets 429 with `Retry-After: 60`. A missing or failing binding lets requests through. None of these reach Railway.
+
 ## Caching at the edge
 
 Reads (GET, HEAD) are fetched with `cf: { cacheEverything: true }`, so Cloudflare's edge keeps whatever the origin's Cache-Control allows: tables 30 s and the status 60 s (table URLs carry the data version, `?v=`, so a new hour never gets an older copy), hashed assets a year, index.html and every `/api` error never (`no-cache` / `no-store` from the app). In a traffic spike each Cloudflare location asks Railway for a URL about twice a minute, however many visitors it serves ([hosting.md](../../docs/hosting.md#a-traffic-spike-a-streamer-or-a-video)). Check it live: the second request for a table shows `cf-cache-status: HIT`.
