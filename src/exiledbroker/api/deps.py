@@ -29,7 +29,7 @@ import polars as pl
 from fastapi import HTTPException, Query, Request, Response
 from pydantic import BaseModel, TypeAdapter
 
-from exiledbroker.api.cache import items, results
+from exiledbroker.api.cache import items, previews, results
 from exiledbroker.config import Settings, get_settings
 from exiledbroker.storage import db
 
@@ -79,6 +79,7 @@ def reset() -> None:
     """Forget everything cached (tests, `eb perf report`)."""
     results.clear()
     items.clear()
+    previews.clear()
     _stamped.clear()
     _ready.clear()
     with _version_lock:
@@ -267,7 +268,16 @@ def respond(request: Request, view: View) -> Response:
     v = request.query_params.get("v")
     current = v is not None and v == public_version()
     p = payload(view)
-    cache_control = VERSIONED_CACHE_CONTROL if current else CACHE_CONTROL
+    return send(request, p, VERSIONED_CACHE_CONTROL if current else CACHE_CONTROL)
+
+
+def etag_of(body: bytes) -> str:
+    """An ETag for bytes that don't depend on the code (stored documents)."""
+    return f'W/"{hashlib.sha1(body).hexdigest()[:20]}"'
+
+
+def send(request: Request, p: Payload, cache_control: str) -> Response:
+    """A cached response's bytes: 304 if the client has them, gzipped if it can."""
     headers = {"ETag": p.etag, "Cache-Control": cache_control, "Vary": "Accept-Encoding"}
     if request.headers.get("if-none-match") == p.etag:
         return Response(status_code=304, headers=headers)

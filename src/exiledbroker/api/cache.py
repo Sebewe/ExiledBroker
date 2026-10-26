@@ -8,9 +8,12 @@ otherwise run the same queries dozens of times at once, against a pool of 5
 connections). The size caps matter because the caches would otherwise grow with use;
 tests/test_api.py checks them.
 
-There are two: `results` for the pages' tables (a few per league), and `items` for
+There are three: `results` for the pages' tables (a few per league), `items` for
 Price check's items, one per item the league's list holds (~900), kept as gzipped bytes
-only (api/deps.py), so caching all of them costs ~25 MB."""
+only (api/deps.py), so caching all of them costs ~25 MB, and `previews` for the
+pre-launch preview's documents (api/routes/preview.py), stored gzipped, keyed on the
+snapshot's version rather than the data's (they don't change with a new hour), and
+mostly answered by Cloudflare's edge, which keeps each for a day."""
 
 import threading
 from collections import OrderedDict
@@ -19,6 +22,7 @@ from typing import Any
 
 MAX_ENTRIES = 256
 MAX_ITEMS = 1024  # a league's Price check list holds ~900 items (Allflame: 876)
+MAX_PREVIEWS = 512  # of ~1,300 documents (4 days × ~300 items, + their series); ~15 kB each
 
 
 class ResultCache:
@@ -79,3 +83,4 @@ class ResultCache:
 
 results = ResultCache()
 items = ResultCache(MAX_ITEMS)
+previews = ResultCache(MAX_PREVIEWS)

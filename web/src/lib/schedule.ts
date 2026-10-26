@@ -22,7 +22,7 @@ function overdueEvery(lateBy: number) {
  *  announced league's first hour. Null when nothing is expected. */
 export function nextExpected(status: Status): number | null {
   const due = status.leagues.filter((l) => l.latest_hour).map((l) => Date.parse(l.latest_hour!) + 2 * HOUR + PUBLISH_DELAY) // next hour's end
-  if (status.upcoming) due.push(Date.parse(status.upcoming.first_data_at))
+  if (status.upcoming?.first_data_at) due.push(Date.parse(status.upcoming.first_data_at)) // null: time not announced
   return due.length ? Math.min(...due) : null
 }
 

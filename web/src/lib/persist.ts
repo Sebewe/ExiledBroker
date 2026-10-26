@@ -2,8 +2,9 @@ import { dehydrate, hydrate, type QueryClient } from '@tanstack/react-query'
 
 // The query cache, saved in this browser between visits: a reload, or coming back
 // later, shows what was loaded without asking the server, until the status check says a
-// new hour is due (lib/schedule). Only the current data version is kept, so it stays
-// small. Storage can be missing or full (private windows, quotas): then it's skipped.
+// new hour is due (lib/schedule). Only the current data version is kept (and the
+// preview's current snapshot), so it stays small. Storage can be missing or full
+// (private windows, quotas): then it's skipped.
 
 const KEY = 'eb-cache'
 const MAX_AGE = 6 * 3_600_000 // older than this, start fresh
@@ -14,8 +15,12 @@ interface Saved {
   state: ReturnType<typeof dehydrate>
 }
 
+function status(client: QueryClient) {
+  return client.getQueryData(['status']) as { data_version?: string | null; preview?: { version: string } | null } | undefined
+}
+
 function version(client: QueryClient): string | undefined {
-  return (client.getQueryData(['status']) as { data_version?: string | null } | undefined)?.data_version ?? undefined
+  return status(client)?.data_version ?? undefined
 }
 
 export function restore(client: QueryClient, build: string, now = Date.now()) {
@@ -36,8 +41,12 @@ export function restore(client: QueryClient, build: string, now = Date.now()) {
 
 export function save(client: QueryClient, build: string, now = Date.now()) {
   const current = version(client)
+  const preview = status(client)?.preview?.version // the preview's documents: its snapshot's
+  const last = (key: readonly unknown[]) => key[key.length - 1]
   const state = dehydrate(client, {
-    shouldDehydrateQuery: (q) => q.state.status === 'success' && (q.queryKey[0] === 'status' || q.queryKey[q.queryKey.length - 1] === (current ?? 'none')),
+    shouldDehydrateQuery: (q) =>
+      q.state.status === 'success' &&
+      (q.queryKey[0] === 'status' || (q.queryKey[0] === 'preview' ? !!preview && last(q.queryKey) === preview : last(q.queryKey) === (current ?? 'none'))),
   })
   try {
     localStorage.setItem(KEY, JSON.stringify({ build, savedAt: now, state } satisfies Saved))

@@ -58,6 +58,8 @@ def test_the_announced_league_counts_down_until_its_first_trades(settings):
     launch = cx.from_ts(LAUNCH)
     assert status["upcoming"] == {
         "name": LEAGUE,
+        "start_date": f"{launch:%Y-%m-%d}",
+        "time_known": True,
         "start_at": f"{launch:%Y-%m-%dT%H:%M:%S}Z",
         # The first hour ends an hour after launch; published and loaded ~10 min later.
         "first_data_at": f"{launch + timedelta(hours=1, minutes=10):%Y-%m-%dT%H:%M:%S}Z",

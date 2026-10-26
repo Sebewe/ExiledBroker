@@ -3,7 +3,7 @@ import { useCallback, useMemo, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { ApiError, type LiveLeague } from '../api/client'
 import type { Horizon, PriceCheckIndex, PriceCheckItem, PriceCheckListItem, Verdict } from '../api/client'
-import { usePriceCheck, usePriceCheckItem, useServerNow, useStatus } from '../api/queries'
+import { useLeagues, usePriceCheck, usePriceCheckItem, useServerNow, useStatus } from '../api/queries'
 import { NumberField, Segmented, Select, Toolbar } from '../components/Controls'
 import { FreshnessBanner } from '../components/Freshness'
 import { ItemSearch } from '../components/ItemSearch'
@@ -50,9 +50,10 @@ const chaosMoney: Money = (chaos) => price(chaos, 'chaos')
 export default function PriceCheck() {
   const status = useStatus()
   const serverNow = useServerNow()
-  const names = status.data?.leagues.map((l) => l.name) ?? []
+  const leagues = useLeagues() // the live leagues, or the preview's on the chosen day
+  const names = leagues.map((l) => l.name)
   const [league, setLeague] = useLeague(names)
-  const info = status.data?.leagues.find((l) => l.name === league)
+  const info = leagues.find((l) => l.name === league)
   const index = usePriceCheck(info ? league : undefined)
   const [itemId, setItem] = useParam<string>('item', '')
 

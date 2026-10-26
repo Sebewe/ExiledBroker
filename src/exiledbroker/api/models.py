@@ -18,11 +18,38 @@ class LiveLeague(BaseModel):
 
 
 class Upcoming(BaseModel):
-    """The announced next league, until its first trades are loaded."""
+    """The announced next league, until its first trades are loaded. GGG may announce
+    the day before the time, and the time before the name."""
 
-    name: str
-    start_at: datetime  # announced launch
-    first_data_at: datetime  # estimate: its first hour published and loaded
+    name: str | None  # null until GGG names it
+    start_date: date  # the announced launch day
+    time_known: bool  # false while only the day is announced: start_at and first_data_at null
+    start_at: datetime | None  # announced launch
+    first_data_at: datetime | None  # estimate: its first hour published and loaded
+
+
+class PreviewDay(BaseModel):
+    """One day the preview can be rewound to: the site as it stood at the end of launch
+    day `day` (1-based), and the league as /api/status listed it then."""
+
+    day: int
+    league: LiveLeague  # latest_hour: the day's last loaded hour; divine_chaos: its rate
+
+
+class PreviewManifest(BaseModel):
+    """The pre-launch preview's snapshot (docs/preview.md, `eb preview build`): a past
+    league's early days, served from /api/preview/{key}. Keys: `manifest` (this),
+    `d{day}/missed`, `d{day}/price-check`, `d{day}/price-check/{item_id}`,
+    `d{day}/launch-picks`, `d{day}/recap-next` and `next/price-check/{item_id}`."""
+
+    league: str
+    launched_at: datetime | None
+    days: list[PreviewDay]  # in order
+    default_day: int  # one of `days`
+    next_until: datetime | None  # the next/price-check series' last hour (day 10's last)
+    built_at: datetime
+    # Changes with every build: the pages send it as `v` and key their caches on it.
+    version: str
 
 
 class Status(BaseModel):
@@ -31,6 +58,9 @@ class Status(BaseModel):
     data_version: str | None
     leagues: list[LiveLeague]  # newest data first
     upcoming: Upcoming | None = None
+    # The pre-launch preview, while it's on (EB_PREVIEW, `live.upcoming_league`): the
+    # pages show the snapshot's league on the chosen day instead of `leagues`.
+    preview: PreviewManifest | None = None
 
 
 class LeagueGrowth(BaseModel):
@@ -551,3 +581,46 @@ class UsageStats(BaseModel):
     periods: list[UsagePeriod]
     days: list[UsageDay]  # the whole site, the last 30 days
     events: list[UsageEvent]
+
+
+# --- The pre-launch preview's reveal (docs/preview.md) ------------------------------
+
+
+class PreviewItemNext(BaseModel):
+    """An item's whole series in the preview's league, from launch to `next_until`
+    (day 10's end), for "what happened next" after the chosen day. Same points as
+    PriceCheckItem.series: [hour, Chaos, Divines at that hour's rate]."""
+
+    item_id: str
+    name: str
+    unit: Literal["divine", "chaos"]  # what its verdict judges in (Chaos for Divine Orb)
+    series: list[tuple[datetime, float | None, float | None]]
+
+
+class PreviewTradeNext(BaseModel):
+    """What one of the recap's trades did in the 24 hours after the chosen day's last
+    hour. "Paid" is the recap's own test, hour by hour: a loop's edge beat the 2% buffer
+    (in `direction`), a card turn-in's margin was positive, a flip's hour traded both at
+    or below its bid and at or above its ask."""
+
+    kind: Literal["loop", "card", "flip"]
+    item_id: str  # with `kind` (and `direction` for loops), matches the recap's row
+    direction: str | None = None  # loops: chaos_first | divine_first
+    # Each known hour after, in order (PreviewRecapNext.hours of them); null: it didn't
+    # trade that hour.
+    paid: list[bool | None]
+    paid_hours: int
+    traded_hours: int
+    next_hour_paid: bool | None  # the very next hour; null: it didn't trade, or unknown
+    # Paid in any of hours 19–24 after: a day later it still worked. Null with fewer
+    # than 24 hours known.
+    still_paid: bool | None
+
+
+class PreviewRecapNext(BaseModel):
+    """`d{day}/recap-next`: every loop, card turn-in and flip in that day's recap
+    (`d{day}/missed`, all look-backs), and whether it kept paying."""
+
+    latest_hour: datetime  # the chosen day's last hour, as in d{day}/missed
+    hours: int  # hours known after it: 24, fewer near the snapshot's end
+    trades: list[PreviewTradeNext]

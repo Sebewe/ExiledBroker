@@ -38,7 +38,7 @@ export function FreshnessBanner({ league, now, upcoming }: { league: LiveLeague;
   if (f.stale && upcoming)
     return (
       <Notice kind="info" title={`${league.name} has ended`}>
-        Its last trades were published for {utcHour(league.latest_hour)}. This is a recap of its final hours until {upcoming.name} launches.
+        Its last trades were published for {utcHour(league.latest_hour)}. This is a recap of its final hours until {upcoming.name ?? 'the next league'} launches.
       </Notice>
     )
   return f.stale ? (

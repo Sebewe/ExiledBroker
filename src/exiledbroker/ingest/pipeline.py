@@ -39,7 +39,7 @@ from exiledbroker.ingest.healthcheck import Healthcheck
 from exiledbroker.ingest.http import PoliteClient
 from exiledbroker.ingest.live import LiveStatus, sync_live
 from exiledbroker.services import launch_picks, price_paths
-from exiledbroker.services.live import live_leagues, upcoming_league
+from exiledbroker.services.live import live_leagues, traded, upcoming_league
 from exiledbroker.storage import backup as backup_mod
 from exiledbroker.storage import db, site
 
@@ -116,11 +116,11 @@ def pick_league(client: PoliteClient, settings: Settings, now: datetime) -> str:
        swapped for whatever poe.ninja lists first in that gap.
     3. Else (a database with no league yet) poe.ninja's first challenge-like league,
        from the copy checked within the hour."""
-    start = settings.next_league_start
-    if settings.next_league and start:
-        start = start if start.tzinfo else start.replace(tzinfo=UTC)
-        if now >= start:
-            return settings.next_league
+    # Only with a name and a time: a date alone (GGG hasn't announced the hour yet) would
+    # start searching for the league's first hour on a guess.
+    start = settings.next_league_start_at
+    if settings.next_league and start and now >= start:
+        return settings.next_league
     with db.site_writer(settings) as con:
         followed = live_leagues(db.pushdown(con))  # its subqueries scan, through DuckDB
         if followed.height:
@@ -138,9 +138,8 @@ def pick_league(client: PoliteClient, settings: Settings, now: datetime) -> str:
 def launch_search_from(settings: Settings, league: str) -> datetime:
     """Where the search for a league's first hour starts: a day before its announced
     start (a dozen pages fewer than searching from 2024), else the exchange's start."""
-    start = settings.next_league_start
+    start = settings.next_league_start_at
     if settings.next_league == league and start:
-        start = start if start.tzinfo else start.replace(tzinfo=UTC)
         return max(start - timedelta(days=1), cx.HISTORY_START)
     return cx.HISTORY_START
 
@@ -160,7 +159,7 @@ def stale_feed(settings: Settings, league: str, now: datetime) -> str | None:
     row = next((r for r in leagues.iter_rows(named=True) if r["name"] == league), None)
     if row is None or row["latest_hour"] is None:
         return None
-    if upcoming_league(settings, set(leagues.filter(leagues["latest_hour"].is_not_null())["name"])):
+    if upcoming_league(settings, traded(leagues)):
         return None
     latest = row["latest_hour"]
     latest = latest if latest.tzinfo else latest.replace(tzinfo=UTC)

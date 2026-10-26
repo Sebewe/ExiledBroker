@@ -6,6 +6,13 @@ export type Schemas = components['schemas']
 export type Status = Schemas['Status']
 export type LiveLeague = Schemas['LiveLeague']
 export type Upcoming = Schemas['Upcoming']
+// The pre-launch preview (docs/preview.md): /api/status's `preview`, and the snapshot's
+// documents from /api/preview/{key} (lib/preview.ts).
+export type PreviewManifest = Schemas['PreviewManifest']
+export type PreviewDay = Schemas['PreviewDay']
+export type PreviewItemNext = Schemas['PreviewItemNext']
+export type PreviewRecapNext = Schemas['PreviewRecapNext']
+export type PreviewTradeNext = Schemas['PreviewTradeNext']
 export type MissedWindow = Schemas['MissedWindow']
 export type Mover = Schemas['Mover']
 export type Volatile = Schemas['Volatile']

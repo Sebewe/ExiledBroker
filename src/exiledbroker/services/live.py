@@ -70,18 +70,52 @@ def live_leagues(con: duckdb.DuckDBPyConnection) -> pl.DataFrame:
 FIRST_DATA_DELAY = timedelta(minutes=10)
 
 
-def upcoming_league(settings: Settings, with_trades: set[str]) -> dict | None:
-    """The announced next league (settings), until it has trades loaded (its name is in
-    `with_trades`): when it starts and roughly when its first hour shows up here (the end
-    of its first clock hour, plus the publishing delay). While it's set, a league that
-    stopped trading has ended rather than stalled: the site says so (Freshness.tsx) and
-    the pipeline's alert stays quiet (ingest/pipeline.py)."""
-    name, start = settings.next_league, settings.next_league_start
-    if not name or not start or name in with_trades:
+def traded(leagues: pl.DataFrame | list) -> dict[str, datetime | None]:
+    """The leagues with trades loaded, by name: when each launched (`live_leagues` rows,
+    as a frame or as the API's models)."""
+    if isinstance(leagues, pl.DataFrame):
+        rows = leagues.to_dicts()
+    else:
+        rows = [lg.model_dump() for lg in leagues]
+    return {r["name"]: r["launched_at"] for r in rows if r["latest_hour"]}
+
+
+def _utc(at: datetime | None) -> datetime | None:
+    if at is None:
         return None
-    start = start.astimezone(UTC) if start.tzinfo else start.replace(tzinfo=UTC)
-    first_hour_end = start.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
-    return {"name": name, "start_at": start, "first_data_at": first_hour_end + FIRST_DATA_DELAY}
+    return at.astimezone(UTC) if at.tzinfo else at.replace(tzinfo=UTC)
+
+
+def upcoming_league(settings: Settings, traded: dict[str, datetime | None]) -> dict | None:
+    """The announced next league (settings), until it has trades loaded: when it starts
+    and roughly when its first hour shows up here (the end of its first clock hour, plus
+    the publishing delay). GGG may announce only the day at first, and the name later:
+    then `time_known` is false and the times are null, and a nameless league counts as
+    arrived once any league that launched from the day before has traded. While it's
+    set, a league that stopped trading has ended rather than stalled: the site says so
+    (Freshness.tsx) and the pipeline's alert stays quiet (ingest/pipeline.py)."""
+    name, day = settings.next_league, settings.next_league_date
+    if day is None:
+        return None
+    if name:
+        if name in traded:
+            return None
+    else:
+        since = datetime(day.year, day.month, day.day, tzinfo=UTC) - timedelta(days=1)
+        if any(at and _utc(at) >= since for at in traded.values()):
+            return None
+    start = settings.next_league_start_at
+    first = None
+    if start:
+        first_hour_end = start.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+        first = first_hour_end + FIRST_DATA_DELAY
+    return {
+        "name": name,
+        "start_date": day,
+        "time_known": start is not None,
+        "start_at": start,
+        "first_data_at": first,
+    }
 
 
 def latest_hour(con: duckdb.DuckDBPyConnection, league: str) -> datetime | None:

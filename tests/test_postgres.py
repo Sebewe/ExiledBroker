@@ -8,8 +8,10 @@ EB_TEST_POSTGRES_URL=postgresql://postgres:eb@localhost:55432/postgres). The dat
 is wiped. Data: the replay fixture (Mirage's first 30 hours) loaded into DuckDB by the
 real pipeline, then copied over."""
 
+import json
 import os
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import polars as pl
 import pytest
@@ -21,6 +23,7 @@ from exiledbroker.analysis import price_outlook as po
 from exiledbroker.config import Settings
 from exiledbroker.ingest import currency_exchange as cx
 from exiledbroker.ingest.live import sync_live
+from exiledbroker.preview import snapshot
 from exiledbroker.services import backtest as services_backtest
 from exiledbroker.services import (
     cross_market,
@@ -41,6 +44,7 @@ from test_currency_exchange import FakeExchange, client_for
 from test_live_pipeline import LAUNCH, PAGES, store_reference_data
 
 PG_URL = os.environ.get("EB_TEST_POSTGRES_URL")
+PREVIEW_SAMPLE = Path(__file__).parent / "fixtures" / "preview_sample.json"
 pytestmark = pytest.mark.skipif(not PG_URL, reason="EB_TEST_POSTGRES_URL is not set")
 LEAGUE = "Mirage"
 ITEM = "currency:orb-of-alchemy"
@@ -62,6 +66,7 @@ def engines(tmp_path_factory):
     with db.session(s.db_path) as con:  # `eb backtest run`, so its report is seeded too
         backtest.store(con, backtest.build(con))
         _price_check_tables(con)
+        snapshot.load_file(con, PREVIEW_SAMPLE)  # `eb preview build`'s table
 
     pg = psycopg.connect(PG_URL, autocommit=True)
     pg.execute("DROP SCHEMA public CASCADE")
@@ -69,6 +74,7 @@ def engines(tmp_path_factory):
     duck = db.connect(s.db_path, read_only=True)
     # The same copy `eb site seed` makes; it also builds the schema on Postgres.
     site.seed(duck, pg, [LEAGUE])
+    snapshot.load_file(pg, PREVIEW_SAMPLE)  # until the seed copies it (preview stream B)
     # The live updates' log: the hosted pipeline writes it on Postgres itself (no seed).
     runs = db.rows(duck, "SELECT * FROM ingest_run")
     marks = ", ".join(["%s"] * len(runs[0]))
@@ -400,7 +406,8 @@ def test_api_answers_the_same_on_postgres(engines, monkeypatch):
         deps.reset()
         client = TestClient(app_module.create_app())
         out = {}
-        for path in endpoints(LEAGUE, ITEM)[1:]:  # status carries timestamps of its own
+        previews = [f"/api/preview/{key}" for key in json.loads(PREVIEW_SAMPLE.read_text())]
+        for path in [*endpoints(LEAGUE, ITEM)[1:], *previews]:  # status: timestamps of its own
             r = client.get(path)
             assert r.status_code == 200, (url, path, r.text)
             out[path] = r.json()
