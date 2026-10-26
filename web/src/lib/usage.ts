@@ -7,6 +7,7 @@ export const PAGES = [
   '/',
   '/launch',
   '/price-check',
+  '/portfolio', // the pre-launch preview's paper portfolio
   '/research',
   '/research/notes', // every note counts here, not one name each
   '/research/method',

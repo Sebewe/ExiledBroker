@@ -25,8 +25,9 @@ visitor adds at most 50 views of one event a day.
 While the pre-launch preview is on ([preview.md](preview.md)) its features are counted
 like the others: `preview-day` (picked another day), `preview-reveal` (opened "what
 happened next"), `preview-cta` (followed its call to action), and for v2's paper
-portfolio `portfolio-add` and `portfolio-step`. Page views are the same pages, so the
-preview's visits count as the site's. Whether to reset the counts at the launch is
+portfolio `portfolio-add` (staked an item) and `portfolio-step` (stepped its clock
+forward). Page views are the same pages, so the preview's visits count as the site's,
+plus the portfolio's own page (`page:/portfolio`). Whether to reset the counts at the launch is
 decided then (2026-10-26, the user: "we can do a reset or we can keep them"); nothing
 needs resetting to read the launch apart, since `usage_daily` is per day. The month of
 the launch (`usage_period` 2026-11) mixes preview and live visitors.

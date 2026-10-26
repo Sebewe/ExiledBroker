@@ -89,6 +89,19 @@ disk stops the build (and the last snapshot stands).
   and the path to `next_until` greyed past the day. Market recap: a tally of the page's
   trades, and on each card its next hours (paid / didn't / didn't trade), the next hour and
   whether it still paid a day later.
+- The paper portfolio (`/portfolio`, `pages/Portfolio.tsx`, `lib/portfolio.ts`; in the menu
+  only while the preview is on): stake Divines (10 each by default, up to 8 items) on items
+  as they stood at the end of the chosen day, step the clock forward an hour or a day (or
+  drag it) to `next_until`, and see the worth against keeping the Divines, or Chaos (the
+  Divine Orb's path). Prices are the reveal's typical ones (median of 6 hours), carried
+  through hours without trades; an item that hadn't traded by the day's end buys nothing.
+  The chart is drawn only up to the clock. It reads only `next/price-check/{item}`
+  documents (one per staked item, plus the Divine Orb's) and keeps its stakes in this
+  browser (`eb-portfolio` in localStorage, in memory where storage is blocked): no
+  accounts, nothing sent. Items are added from its own search (the day's Price check
+  list), the day's Launch picks, or the "Add to paper portfolio" button on Price check
+  and the Launch market (`components/PortfolioAdd.tsx`). The page is a lazy chunk; the
+  first visit carries only the menu entry and the route (~0.4 kB).
 - Usage events for the preview (`api/usage.py` FEATURES, `lib/usage.ts`):
   `trackFeature('preview-day')` when a visitor picks a day, `'preview-reveal'` when they
   open "what happened next", `'preview-cta'` for its call to action, and v2's

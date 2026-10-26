@@ -1,4 +1,4 @@
-import { Book, CandlestickChart, FlaskConical, Hourglass, Moon, Scale, Sun } from 'lucide-react'
+import { Book, BriefcaseBusiness, CandlestickChart, FlaskConical, Hourglass, Moon, Scale, Sun } from 'lucide-react'
 import { useEffect, type ReactNode } from 'react'
 import { Link, NavLink, useLocation } from 'react-router'
 import { useRememberedSettings } from '../lib/rememberSettings'
@@ -7,6 +7,7 @@ import { useTheme } from '../lib/theme'
 import { trackFeature, trackPage } from '../lib/usage'
 import { FreshnessBadge } from './Freshness'
 import { PreviewPill, PreviewStrip } from './Preview'
+import { usePreview } from '../lib/preview'
 import { RESEARCH } from '../lib/research'
 import { SocialLinks } from './Social'
 
@@ -14,11 +15,13 @@ import { SocialLinks } from './Social'
 // the Backtest, how the tools work, About), set apart in blue as the proof behind the tools,
 // not a tool to use.
 // The page you're on is filled solid, so it never reads as just another lit-up page.
-type Nav = { to: string; label: string; icon: typeof Book; end?: boolean; featured?: boolean; proof?: boolean; hint?: string }
+// `preview`: only while the pre-launch preview is on (docs/preview.md).
+type Nav = { to: string; label: string; icon: typeof Book; end?: boolean; featured?: boolean; proof?: boolean; preview?: boolean; hint?: string }
 const NAV: Nav[] = [
   { to: '/', label: 'Market recap', icon: Hourglass, end: true, featured: true },
   { to: '/price-check', label: 'Price check', icon: Scale, featured: true },
   { to: '/launch', label: 'Launch market', icon: CandlestickChart },
+  { to: '/portfolio', label: 'Paper portfolio', icon: BriefcaseBusiness, featured: true, preview: true, hint: 'Stake Divines on a few items, step the clock forward and see what they would be worth' },
   { to: '/research', label: 'Research', icon: FlaskConical, proof: true, hint: 'The proof behind the tools: the journal, the Backtest and how the tools work' },
 ]
 
@@ -37,6 +40,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const linkTo = useRememberedSettings()
   const [theme, toggleTheme] = useTheme()
   const { pathname } = useLocation()
+  const preview = usePreview()
   useScrollOnNavigate()
   useEffect(() => {
     document.title = pageTitle(pathname)
@@ -57,7 +61,7 @@ export function Layout({ children }: { children: ReactNode }) {
           <PreviewPill />
           {/* On a phone the menu wraps rather than scrolls, so every page stays in sight. */}
           <nav aria-label="Main" className="order-3 -mx-1 flex w-full flex-wrap gap-1 md:order-none md:w-auto md:flex-nowrap">
-            {NAV.map(({ to, label, icon: Icon, end, featured, proof, hint }) => (
+            {NAV.filter((n) => !n.preview || preview.on).map(({ to, label, icon: Icon, end, featured, proof, hint }) => (
               <NavLink
                 key={to}
                 to={linkTo(to)}

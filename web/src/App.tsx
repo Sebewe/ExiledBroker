@@ -18,6 +18,7 @@ const Journal = lazy(() => import('./pages/research/Journal'))
 const Launch = lazy(() => import('./pages/Launch'))
 const Method = lazy(() => import('./pages/research/Method'))
 const Note = lazy(() => import('./pages/research/Note'))
+const Portfolio = lazy(() => import('./pages/Portfolio')) // the pre-launch preview's
 const PriceCheck = lazy(() => import('./pages/PriceCheck'))
 
 export default function App() {
@@ -46,6 +47,7 @@ export default function App() {
             <Route path="cards" element={<Navigate to="/#cards" replace />} />
             <Route path="launch" element={<Launch />} />
             <Route path="price-check" element={<PriceCheck />} />
+            <Route path="portfolio" element={<Portfolio />} />
             {/* Retired: its stack seller is on Price check now. */}
             <Route path="farming" element={<Navigate to="/price-check" replace />} />
             <Route path="admin" element={<Admin />} />
