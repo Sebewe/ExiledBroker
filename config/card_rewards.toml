@@ -1,0 +1,51 @@
+# What a divination card's random reward can roll (analysis/card_ev.py, docs/findings.md 12).
+#
+# A random reward ("5x Fossil", "10x Delirium Orb") gives one of several items, with
+# weights GGG doesn't publish. So the research values a set three ways: the floor (the
+# cheapest item it can roll: a set that costs less pays whatever rolls), the median item
+# and a plain average (both assume every item is equally likely, which they aren't: rare
+# outcomes are usually the dear ones, so the average flatters).
+#
+# Each [pool] is keyed by the reward's name as divination_card.reward_name holds it, and
+# lists the items it can roll as SQL LIKE patterns on item.canonical_name. Patterns are
+# deliberately broad: a pool that includes an item the card can't actually give can only
+# lower the floor, never raise it, so the floor stays safe.
+
+[pool."Delirium Orb"]
+like = ["% Delirium Orb", "% Delirium Orb (%)"]
+
+[pool."Shrieking Essence"]
+like = ["Shrieking Essence of %"]
+
+[pool."Deafening Essence"]
+like = ["Deafening Essence of %"]
+
+[pool."Essence"]
+# Any essence. Low tiers drop far more often, so only the floor means anything here.
+like = ["% Essence of %"]
+
+[pool."Fossil"]
+like = ["% Fossil"]
+
+[pool."Oil"]
+like = ["% Oil"]
+
+[pool."Astrolabe"]
+like = ["% Astrolabe"]
+
+[pool."Journey Tattoo"]
+like = ["Journey Tattoo of %"]
+
+[pool."Elderslayer's Exalted Orb"]
+# The four conquerors' orbs (the Elderslayers), not the Shaper's or Elder's.
+like = ["Crusader's Exalted Orb", "Hunter's Exalted Orb", "Redeemer's Exalted Orb", "Warlord's Exalted Orb"]
+
+[pool."Divination Card"]
+# Any card (The Gambler). Common cards dominate, so only the floor means anything here.
+like = ["*cards*"]
+
+# Not priced, and why:
+#   Incursion Vial            vials don't trade on the currency exchange
+#   Quality Currency          which items count isn't defined anywhere we can check
+#   Vendor Refresh Currency   same
+#   Currency                  any currency at all, weighted by drop rate: no meaningful floor

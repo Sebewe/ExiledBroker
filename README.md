@@ -30,7 +30,7 @@ The next league launches in about a month. Before then:
 
 After that:
 - **Phase 2 again on the next league** once its fortnight is complete (~2026-11-27): the first out-of-sample check of [finding 10](docs/findings.md).
-- **Divination card expected value** for random rewards (not unique rewards: uniques are out of scope).
+- **Cards with random rewards on the Market recap?** Researched ([finding 12](docs/findings.md#12-cards-with-random-rewards-two-delirium-orb-cards-beat-their-floor-at-typical-prices-nothing-survives-harsh-prices-in-the-launch-fortnight)): two cards beat their worst roll at typical prices; the user decides whether to show them.
 - **Site split** into live trading and historical sections (being designed).
 
 ## The site

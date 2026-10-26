@@ -40,7 +40,7 @@ Signals then become a ranked list: "farm X", "buy Y on day 2, sell on day 6".
 ## Phase 6: live, still to do
 
 - **Prediction alerts** once there are predictions to drift from.
-- **Divination card expected value** for random rewards ([data.md](data.md#divination-cards)). Unique rewards are out, with uniques (2026-10-25).
+- **Divination card expected value** for random rewards: researched ([finding 12](findings.md#12-cards-with-random-rewards-two-delirium-orb-cards-beat-their-floor-at-typical-prices-nothing-survives-harsh-prices-in-the-launch-fortnight)); whether to show it on the Market recap is the user's call.
 
 ## Planned modules
 

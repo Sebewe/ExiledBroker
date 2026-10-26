@@ -504,10 +504,32 @@ In the first 2 days a falling price says most of what a "dumped" reading would. 
 
 **Decided by the user (2026-10-25): Demand is shelved.** The signals are too sparse and inconsistent to build on: no paper trade of the calm-book lead, no stock fields loaded, no demand descriptions or labels on the site. `analysis/demand.py` stays only so this finding can be reproduced.
 
+## 12. Cards with random rewards: two Delirium Orb cards beat their floor at typical prices, nothing survives harsh prices in the launch fortnight
+
+*`analysis/card_ev.py` (`python -m exiledbroker.analysis.card_ev`), pools in `config/card_rewards.toml`. Daily median Chaos prices from `cross_market_hour`, days 0–13, Settlers, Mercenaries, Keepers, Mirage and Allflame (and Allflame's later days). Built 2026-10-26.*
+
+**The question.** 15 followed cards give a random reward ("5x Fossil", "10x Delirium Orb") rather than one named item, so the turn-in tool couldn't price them. GGG doesn't publish the weights, so a set is valued three ways each day: the **floor** (the cheapest item the reward can roll: a set that costs less pays whatever rolls, with no assumption about the weights), the **median** item and the plain **average** (both assume equal odds; the average flatters, since dear outcomes are usually the rare ones). A day counts only when the card traded and at least 80% of its pool did. Four rewards can't be priced at all: Incursion Vials don't trade on the exchange, and "Quality Currency", "Vendor Refresh Currency" and "Currency" aren't defined pools.
+
+| Card (set → reward) | Floor margin by league (Settlers / Mercenaries / Keepers / Mirage / Allflame) | Days the floor paid | At harsh prices |
+|---|---|---|---|
+| Disdain (5 → 1 Delirium Orb) | −49% / **+46%** / **+32%** / **+28%** / **+45%** (+1.1c to +2.4c a set) | 62–71% in 4 of 5 | floor 0% to −25%, median 0% to +17% |
+| Dementophobia (11 → 10 Delirium Orbs) | +1% / **+9%** / **+8%** / −2% / +2% (median item: +12% to +23%, 5–14c a set) | 36–71% | floor −23% to −48% |
+| The Tinkerer's Table (5 → 5 Fossils) | −17% / **+23%** / −44% / +8% / +9% (median item: +27% to +192%) | 18–79% | floor −24% to −67% |
+| The Long Con (4 → 1 conqueror's Exalted Orb) | −5% to −62%; **median item +20% to +60% in 5 of 5** | 0–43% | median item +1% to +26% in 5 of 5; 7–13 cards traded a day |
+| Three Voices (3 → 3 Essences) | −50% to +58%, but a set costs 0.3–1.5c | 0–64% | – |
+| Harmony of Souls, The Cacophony (Shrieking / Deafening Essences), Imperfect Memories (Astrolabe), The Journey (tattoo), The Tireless Extractor (Oils), The Gambler (any card) | negative at the floor in every league (The Gambler and the Oils by 90%+: their pools include near-worthless items) | – | – |
+
+- **At typical prices two cards beat their floor in most leagues:** Disdain (+28% to +46% in four leagues, a couple of Chaos a set) and, thinly, Dementophobia (+2% to +9%, but 700–2,700 cards traded a day). Those are turn-ins that pay whatever rolls.
+- **At harsh prices nothing pays at the floor in the launch fortnight.** Buying the cards at the hours' highs and selling the reward at the lows erases a margin that size, as finding 4 found for the hourly tools. Only a limit order captures it.
+- **The Long Con pays on the median item in every league,** at harsh prices too (+1% to +26%), but it's a bet on equal odds across four orbs GGG doesn't publish, in a market of about 10 cards a day.
+- **After the fortnight (Allflame only)** Disdain and Dementophobia beat their floor on every day, at harsh prices too (+140% and +25%), but only 12–56 cards trade a day, and it's one league.
+- **Caveats:** daily medians, not hours a trader can act in; the pools are broad on purpose (an item the card can't give can only lower the floor), but if a card's real pool is narrower, its true floor is higher; gold fees and the time to collect a set aren't included, as for fixed turn-ins.
+
+**For the user to decide:** whether the Market recap's card turn-ins should include random-reward cards valued at their floor (Disdain and Dementophobia would appear on good days), with a note that the value is the worst roll. It would need the pools on the server: a small table seeded like the Launch history, or the patterns resolved at load time.
+
 ## Still to do
 
 - **Check in-game whether GGG's hourly lowest and highest ratios are executed trades** (findings 2, 4, 5). It's the one question hourly data can't answer, and it decides whether the loops' limit orders, the card limit orders and the volatile flips are real.
 - **Rerun finding 10 on the next league once its fortnight completes (~2026-11-27).** The sixth league is the first real out-of-sample check of these patterns; the Launch picks and Price check's paths gain it as one more league (rebuild and reseed).
-- **Divination card expected value** for random rewards (not unique ones: uniques are out of scope).
 - **Patch notes (phase 3)** to explain the level shifts that past prices can't (finding 3's group levels, finding 8's Necropolis and Tattoos).
 - **A `days` limit on `cross_market.summarize` and `divination.turn_in_summary`** (and so `turn_ins_across_leagues`): they read every loaded hour, so for Allflame they mix its latest 14 days into launch comparisons. Finding 10 filtered in its own queries.
