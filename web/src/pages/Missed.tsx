@@ -7,6 +7,8 @@ import { Select } from '../components/Controls'
 import { FreshnessBanner } from '../components/Freshness'
 import { Notice } from '../components/Notice'
 import { PageHeader } from '../components/Section'
+import { ItemName } from '../components/ItemLink'
+import { useItemHref, type ItemHref } from '../lib/itemHref'
 import { Empty, Meter, Opportunity, Pill, Route, loopRoute } from '../components/Opportunity'
 import { signedPct, utcHour } from '../lib/format'
 import { makeMoney, type Money } from '../lib/money'
@@ -99,6 +101,7 @@ export default function Missed() {
   const summary = useMissed(info?.latest_hour ? league : undefined)
   const w = summary.data?.find((x) => x.hours === 1)
   const money = makeMoney(info?.divine_chaos)
+  const href = useItemHref(info?.latest_hour ? league : undefined)
 
   const header = (
     <PageHeader title="Market recap">
@@ -141,7 +144,7 @@ export default function Missed() {
 
   return (
     <>
-      {lastHour && <Ticker items={lastHour.ticker} money={money} />}
+      {lastHour && <Ticker items={lastHour.ticker} money={money} href={href} />}
       {header}
       {names.length > 1 && (
         <div>
@@ -160,10 +163,10 @@ export default function Missed() {
           (w ? (
             <>
               <InvestmentOptions w={w} flips={lastHour?.flips ?? []} />
-              <Flips flips={lastHour?.flips ?? []} money={money} />
-              <Loops w={w} money={money} rate={info.divine_chaos} />
-              <Cards w={w} money={money} />
-              <MarketMovers w={w} money={money} />
+              <Flips flips={lastHour?.flips ?? []} money={money} href={href} />
+              <Loops w={w} money={money} rate={info.divine_chaos} href={href} />
+              <Cards w={w} money={money} href={href} />
+              <MarketMovers w={w} money={money} href={href} />
             </>
           ) : (
             <Notice kind="info">Nothing to recap yet.</Notice>
@@ -275,7 +278,7 @@ function Likely({ value }: { value: number | null }) {
 
 /** A news-style strip of the last hour's movers, scrolling right to left. Two copies of
  *  the row make the loop seamless; the second is hidden from screen readers. */
-function Ticker({ items, money }: { items: Mover[]; money: Money }) {
+function Ticker({ items, money, href }: { items: Mover[]; money: Money; href: ItemHref }) {
   if (!items.length) return null
   const row = (copy: boolean) => (
     <ul className="flex shrink-0 items-center gap-8 pr-8" aria-hidden={copy || undefined}>
@@ -283,8 +286,9 @@ function Ticker({ items, money }: { items: Mover[]; money: Money }) {
         const up = m.change > 0
         return (
           <li key={m.item_id} className="flex shrink-0 items-baseline gap-2 text-sm whitespace-nowrap">
-            <span className="text-text">{m.name}</span>
-            <span className="num text-xs text-faint">{money(m.price)}</span>
+            {/* The second copy is hidden from screen readers: keep its links out of the tab order too. */}
+            <ItemName name={m.name} href={copy ? undefined : href(m.item_id)} className="text-text" />
+            <span className="num text-xs text-faint">{moneyFor(m.item_id, money)(m.price)}</span>
             <span className={`num font-medium ${up ? 'text-positive' : 'text-negative'}`}>
               {up ? '▲' : '▼'} {signedPct(m.change, 0)}
             </span>
@@ -308,10 +312,13 @@ function Ticker({ items, money }: { items: Mover[]; money: Money }) {
   )
 }
 
+/** A section: its title, one plain line on what it is (`lead`), the results, and how
+ *  they're picked (`note`) folded away under them for whoever wants the method. */
 function Block({
   id,
   title,
   icon: Icon,
+  lead,
   note,
   children,
   more,
@@ -319,6 +326,7 @@ function Block({
   id?: string
   title: string
   icon: typeof Waves
+  lead?: string
   note?: string
   children: ReactNode
   more?: ReactNode
@@ -332,8 +340,14 @@ function Block({
         </h2>
         {more}
       </div>
-      {note && <p className="-mt-1 max-w-3xl text-sm text-muted">{note}</p>}
+      {lead && <p className="-mt-1 max-w-3xl text-sm text-muted">{lead}</p>}
       {children}
+      {note && (
+        <details className="group max-w-3xl text-xs text-muted">
+          <summary className="w-fit cursor-pointer text-faint hover:text-accent">How these are picked</summary>
+          <p className="mt-1.5 leading-relaxed">{note}</p>
+        </details>
+      )}
     </section>
   )
 }
@@ -347,7 +361,7 @@ function movers(w: MissedWindow, up: boolean) {
     .sort((a, b) => (up ? b.change - a.change : a.change - b.change))
 }
 
-function MarketMovers({ w, money }: { w: MissedWindow; money: Money }) {
+function MarketMovers({ w, money, href }: { w: MissedWindow; money: Money; href: ItemHref }) {
   const [all, setAll] = useState(false)
   const rising = movers(w, true)
   const falling = movers(w, false)
@@ -360,17 +374,17 @@ function MarketMovers({ w, money }: { w: MissedWindow; money: Money }) {
       more={
         more && (
           <button type="button" onClick={() => setAll(!all)} className="cursor-pointer text-sm text-accent hover:text-accent-strong">
-            {all ? 'Show the top 3' : 'Show more'}
+            {all ? 'Show fewer' : 'Show more'}
           </button>
         )
       }
     >
       <div className="grid gap-3 md:grid-cols-2">
         <Column title="Rising" hint={`Price now against ${w.hours}h before`}>
-          {rising.length ? shown(rising).map((m) => <MoverRow key={m.item_id} m={m} money={money} />) : <Empty>Nothing liquid rose.</Empty>}
+          {rising.length ? shown(rising).map((m) => <MoverRow key={m.item_id} m={m} money={money} href={href(m.item_id)} />) : <Empty>Nothing liquid rose.</Empty>}
         </Column>
         <Column title="Falling" hint={`Price now against ${w.hours}h before`}>
-          {falling.length ? shown(falling).map((m) => <MoverRow key={m.item_id} m={m} money={money} />) : <Empty>Nothing liquid fell.</Empty>}
+          {falling.length ? shown(falling).map((m) => <MoverRow key={m.item_id} m={m} money={money} href={href(m.item_id)} />) : <Empty>Nothing liquid fell.</Empty>}
         </Column>
       </div>
     </Block>
@@ -398,7 +412,8 @@ function trendNote(m: Mover) {
   return null
 }
 
-function MoverRow({ m, money }: { m: Mover; money: Money }) {
+function MoverRow({ m, money: anyMoney, href }: { m: Mover; money: Money; href: string | undefined }) {
+  const money = moneyFor(m.item_id, anyMoney)
   const up = m.change > 0
   const Arrow = up ? ArrowUpRight : ArrowDownRight
   const note = trendNote(m)
@@ -409,7 +424,7 @@ function MoverRow({ m, money }: { m: Mover; money: Money }) {
       </span>
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-medium" title={m.name}>
-          {m.name}
+          <ItemName name={m.name} href={href} />
         </div>
         <div className="num truncate text-xs text-muted">
           {money(m.before, Math.max(m.before, m.price))} → {money(m.price, Math.max(m.before, m.price))}
@@ -542,7 +557,7 @@ function ShowAll({ all, total, onToggle }: { all: boolean; total: number; onTogg
   if (total <= TOP) return null
   return (
     <button type="button" onClick={onToggle} className="cursor-pointer text-sm text-accent hover:text-accent-strong">
-      {all ? 'Show the top 3' : `Show all ${total}`}
+      {all ? 'Show fewer' : `Show all ${total}`}
     </button>
   )
 }
@@ -639,11 +654,14 @@ function Chance({
       <span className="text-[11px] text-faint">
         {through} of {tries} tries in the last 3 days, by the optimistic fill rule
       </span>
+      {chance === 0 && (
+        <span className="text-[11px] text-warning">Its orders never went through lately, so the profit above is unlikely to be yours.</span>
+      )}
     </div>
   )
 }
 
-function Loops({ w, money, rate }: { w: MissedWindow; money: Money; rate: number | null | undefined }) {
+function Loops({ w, money, rate, href }: { w: MissedWindow; money: Money; rate: number | null | undefined; href: ItemHref }) {
   const [all, setAll] = useState(false)
   const shown = all ? w.loops : w.loops.slice(0, TOP)
   return (
@@ -651,6 +669,7 @@ function Loops({ w, money, rate }: { w: MissedWindow; money: Money; rate: number
       id="loops"
       title="Loops that paid"
       icon={Repeat}
+      lead="Buy an item with one currency and sell it for the other: these round trips ended with more Chaos than they started with."
       note="Chaos → item → Divine → Chaos (or the other way round), priced at the hour's worst prices, in markets where enough traded to act on. Likeliest to go through first. The orders that did best in the backtest (a bid halfway up the latest hour's range, an ask three quarters up the other currency's) are behind Show rates."
       more={<ShowAll all={all} total={w.loops.length} onToggle={() => setAll(!all)} />}
     >
@@ -664,6 +683,8 @@ function Loops({ w, money, rate }: { w: MissedWindow; money: Money; rate: number
               <Opportunity
                 key={l.item_id}
                 title={l.name}
+                href={href(l.item_id)}
+                muted={l.chance === 0}
                 amount={signedPct(l.best_edge, 0)}
                 label="best edge, worst prices"
                 footer={
@@ -705,7 +726,7 @@ function Loops({ w, money, rate }: { w: MissedWindow; money: Money; rate: number
   )
 }
 
-function Cards({ w, money }: { w: MissedWindow; money: Money }) {
+function Cards({ w, money, href }: { w: MissedWindow; money: Money; href: ItemHref }) {
   const [all, setAll] = useState(false)
   const shown = all ? w.cards : w.cards.slice(0, TOP)
   return (
@@ -713,6 +734,7 @@ function Cards({ w, money }: { w: MissedWindow; money: Money }) {
       id="cards"
       title="Card turn-ins that paid"
       icon={Layers}
+      lead="A full set of these cards cost less than what it turns into."
       note="A full set cost less than its reward at the hour's average prices, with at least a full set traded. Likeliest to go through first. The orders that did best in the backtest (a bid at the card's lowest price from the latest hour, an ask at the reward's average) are behind Show rates."
       more={<ShowAll all={all} total={w.cards.length} onToggle={() => setAll(!all)} />}
     >
@@ -724,6 +746,8 @@ function Cards({ w, money }: { w: MissedWindow; money: Money }) {
             <Opportunity
               key={c.item_id}
               title={c.name}
+              href={href(c.item_id)}
+              muted={c.chance === 0}
               amount={`+${money(c.margin)}`}
               label="a set, average prices"
               footer={
@@ -763,6 +787,9 @@ const cutTotal = (f: MissedFlip, hours: number) => Math.ceil(f.ask_total * (1 - 
 
 /** Always in Chaos (a card's range, next to orders in Chaos). */
 const inChaos = makeMoney(null)
+
+/** A Divine Orb's own price is always in Chaos: in Divines it would read 1.00div. */
+const moneyFor = (itemId: string, money: Money) => (itemId === 'currency:divine-orb' ? inChaos : money)
 
 /** "0.0781c each. In Chaos." from optional parts. */
 const sentence = (...parts: string[]) =>
@@ -853,7 +880,7 @@ function flipSteps(f: MissedFlip): Step[] {
 }
 
 /** The latest hour's flips: the same whatever the look-back (sent with the 1-hour one). */
-function Flips({ flips, money }: { flips: MissedFlip[]; money: Money }) {
+function Flips({ flips, money, href }: { flips: MissedFlip[]; money: Money; href: ItemHref }) {
   const [all, setAll] = useState(false)
   const shown = all ? flips : flips.slice(0, TOP)
   return (
@@ -861,6 +888,7 @@ function Flips({ flips, money }: { flips: MissedFlip[]; money: Money }) {
       id="flips"
       title="Volatile flips"
       icon={Activity}
+      lead="Items whose price swung widely in the last hour: bid low, list high, and wait."
       note="Liquid items whose latest hour traded across a wide range in the Chaos market (at least 10k Chaos traded, a range of 10–50%: wider is usually one odd trade). Likeliest to go through first. The orders, behind Show rates, are the ones the backtest tested, in whole Chaos for whole numbers of items as the exchange takes them: bid low in the hour's range, list high, cut the ask a little each hour until it sells. A bid that doesn't fill costs nothing: cancel it."
       more={<ShowAll all={all} total={flips.length} onToggle={() => setAll(!all)} />}
     >
@@ -872,6 +900,8 @@ function Flips({ flips, money }: { flips: MissedFlip[]; money: Money }) {
             <Opportunity
               key={f.item_id}
               title={f.name}
+              href={href(f.item_id)}
+              muted={f.chance === 0}
               // What the flip makes if both orders fill at their first rates (before any cuts).
               amount={signedPct(f.ask / f.bid - 1, 0)}
               label="per flip, if both orders fill"
