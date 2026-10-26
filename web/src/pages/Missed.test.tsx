@@ -343,4 +343,40 @@ describe('Market recap', () => {
     expect(screen.getByRole('heading', { name: 'The Sephirot' })).toBeInTheDocument()
     expect(screen.queryByText('#1')).not.toBeInTheDocument()
   })
+
+  it("links item names to their Price check when it prices them, and folds the method away", async () => {
+    const index = { league: 'Allflame', latest_hour: '2026-10-22T08:00:00Z', day_offset: 1, movers: [], movers_mode: 'moves', items: [
+      { item_id: 'currency:a', name: 'Domination Scarab', label: 'Scarab', chaos: 60, volume_h: 10, verdict_24h: 'none', change_24h: null },
+      { item_id: 'currency:e', name: 'The Sephirot', label: 'Divination card', chaos: 160, volume_h: 3, verdict_24h: 'none', change_24h: null },
+    ] }
+    serve({ '/api/status': status('2026-10-22T08:00:00Z'), '/api/missed/Allflame': { body: RECAP }, '/api/price-check/Allflame': { body: index } })
+    renderPage()
+    const card = await screen.findByRole('link', { name: 'The Sephirot' })
+    expect(card).toHaveAttribute('href', '/price-check?league=Allflame&item=currency%3Ae')
+    // In the movers, and once in the ticker (its second copy is for the loop, without links).
+    expect(screen.getAllByRole('link', { name: 'Domination Scarab' })).toHaveLength(2)
+    // Not priced there: plain text, not a link to a dead end.
+    expect(screen.getByText('Essence of Horror')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Essence of Horror' })).not.toBeInTheDocument()
+    // Each section says what it is in one line; how it's picked is folded away.
+    expect(screen.getByText('A full set of these cards cost less than what it turns into.')).toBeInTheDocument()
+    expect(screen.getAllByText('How these are picked')[0]!.closest('details')).not.toHaveAttribute('open')
+  })
+
+  it("plays down a profit whose orders never went through", async () => {
+    const w = recap(1, 1)
+    const never = { ...w, cards: [{ ...w.cards[0]!, tries: 6, through: 0, chance: 0 }] }
+    serve({ '/api/status': status('2026-10-22T08:00:00Z'), '/api/missed/Allflame': { body: [never] } })
+    renderPage()
+    expect(await screen.findByText(/Its orders never went through lately/)).toBeInTheDocument()
+    expect(screen.getByText('+2.00div')).toHaveClass('text-muted')
+  })
+
+  it('prices the Divine Orb itself in Chaos', async () => {
+    const w = recap(1, 1)
+    const divine = { item_id: 'currency:divine-orb', name: 'Divine Orb', price: 196, before: 200, change: -0.02, volume: 9000, streak: -1 }
+    serve({ '/api/status': status('2026-10-22T08:00:00Z'), '/api/missed/Allflame': { body: [{ ...w, falling: [divine] }] } })
+    renderPage()
+    expect(await screen.findByText('200.0c → 196.0c')).toBeInTheDocument()
+  })
 })

@@ -34,6 +34,7 @@ import {
 } from '../lib/priceCheck'
 import { queryFallback } from '../lib/queryFallback'
 import { useLeague } from '../lib/useLeague'
+import { trackFeature } from '../lib/usage'
 import { useNumberParam, useParam } from '../lib/useParam'
 
 // The Price check page (docs/price-check.md): one item at a time. Its price this league in
@@ -84,7 +85,15 @@ export default function PriceCheck() {
       {queryFallback(index, 4) ??
         (data && (
           <>
-            <Search data={data} value={itemId || undefined} onChange={setItem} />
+            <Search
+              data={data}
+              value={itemId || undefined}
+              divineChaos={info.divine_chaos}
+              onChange={(id) => {
+                trackFeature('price-check-item')
+                setItem(id)
+              }}
+            />
             {itemId ? (
               <ItemView league={league!} itemId={itemId} entry={data.items.find((x) => x.item_id === itemId)} info={info} money={money} />
             ) : (
@@ -96,7 +105,17 @@ export default function PriceCheck() {
   )
 }
 
-function Search({ data, value, onChange }: { data: PriceCheckIndex; value: string | undefined; onChange: (id: string) => void }) {
+function Search({
+  data,
+  value,
+  onChange,
+  divineChaos,
+}: {
+  data: PriceCheckIndex
+  value: string | undefined
+  onChange: (id: string) => void
+  divineChaos: number | null | undefined
+}) {
   // Before anything is typed, the most traded items come first: what a player most likely holds.
   const options = useMemo(
     () =>
@@ -105,8 +124,23 @@ function Search({ data, value, onChange }: { data: PriceCheckIndex; value: strin
         .map((x) => ({ id: x.item_id, name: x.name, group: x.label ?? undefined })),
     [data.items],
   )
+  // Divine Orb has no item view (its price is the rate everything else is quoted at), so the
+  // search answers it directly.
+  const notes = divineChaos
+    ? [
+        {
+          name: 'Divine Orb',
+          content: (
+            <>
+              <span className="font-semibold">Divine Orb</span> is <span className="num font-semibold text-accent-strong">{price(divineChaos)}</span> in the latest hour.
+              Every price on the site is quoted against it.
+            </>
+          ),
+        },
+      ]
+    : []
   if (data.items.length === 0) return <Empty>No item has traded yet this league. Items appear here as the first hours are published.</Empty>
-  return <ItemSearch size="lg" label="Find an item" options={options} value={value} onChange={onChange} placeholder="Type an item, e.g. Divine Orb or Stacked Deck" />
+  return <ItemSearch size="lg" label="Find an item" options={options} value={value} onChange={onChange} placeholder="Type an item, e.g. Divine Orb or Stacked Deck" notes={notes} />
 }
 
 function Block({ id, title, icon: Icon, note, children }: { id: string; title: string; icon: typeof Coins; note?: ReactNode; children: ReactNode }) {
@@ -320,7 +354,10 @@ function PriceChart({ item, info }: { item: PriceCheckItem; info: LiveLeague }) 
   return (
     <Block id="chart" title="Price this league" icon={LineChart}>
       <div className="flex">
-        <Segmented label="Range" value={range} options={Object.keys(RANGES) as Range[]} onChange={setRange} format={(r) => RANGES[r]} />
+        <Segmented label="Range" value={range} options={Object.keys(RANGES) as Range[]} onChange={(r) => {
+            trackFeature('price-check-range')
+            setRange(r)
+          }} format={(r) => RANGES[r]} />
       </div>
       {!bounds || priced === 0 ? (
         <Empty>{item.name} hasn't traded in this range yet.</Empty>
@@ -350,7 +387,10 @@ function Selling({ item, money, divineChaos }: { item: PriceCheckItem; money: Mo
   return (
     <Block id="sell" title="Selling a stack" icon={Coins} note="How your stack compares with what each market trades in an hour, and whether to list it at once or spread it out.">
       <Toolbar>
-        <NumberField label="How many" value={qty} onChange={setQty} min={1} max={1_000_000} step={1} />
+        <NumberField label="How many" value={qty} onChange={(n) => {
+          trackFeature('price-check-stack')
+          setQty(n)
+        }} min={1} max={1_000_000} step={1} />
       </Toolbar>
       <Stack
         item={{ name: item.name, ...item.stack }}

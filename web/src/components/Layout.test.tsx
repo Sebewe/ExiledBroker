@@ -59,6 +59,15 @@ describe('menu', () => {
     expect(screen.queryByRole('link', { name: /Farming/ })).not.toBeInTheDocument()
   })
 
+  it('fills the page you are on solid, so it never looks like just another lit-up page', () => {
+    renderAt('/price-check')
+    const recap = screen.getByRole('link', { name: /Market recap/ })
+    const here = screen.getByRole('link', { name: /Price check/ })
+    expect(here).toHaveAttribute('aria-current', 'page')
+    expect(here.className).toMatch(/(^| )bg-accent( |$)/)
+    expect(recap.className).not.toMatch(/(^| )bg-accent( |$)/)
+  })
+
   it('sets the Backtest apart in blue, as the proof of concept', () => {
     renderAt('/')
     const backtest = screen.getByRole('link', { name: /Backtest/ })

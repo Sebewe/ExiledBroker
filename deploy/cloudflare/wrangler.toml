@@ -25,3 +25,16 @@ ORIGIN = "https://your-web-service.up.railway.app"
 # The slowest legitimate answer is a cold table in a few seconds; 15 s leaves room
 # without making visitors wait on a dead origin for long (Cloudflare gives up at 100 s).
 TIMEOUT_MS = "15000"
+
+# Per-visitor limit on /api (handler.mjs, `withinLimit`): 60 requests a minute from one
+# address, counted per Cloudflare location. A visitor's tab makes about one an hour, and
+# a busy Price check session a few a minute. Edge cache hits count too, which is the
+# point: it stops one script from spending the Worker's daily quota or the origin's CPU.
+# namespace_id is any number unique to this account's rate limiters.
+[[ratelimits]]
+name = "API_LIMITER"
+namespace_id = "1001"
+
+  [ratelimits.simple]
+  limit = 60
+  period = 60
