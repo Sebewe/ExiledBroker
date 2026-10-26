@@ -343,7 +343,7 @@ function Block({
       {lead && <p className="-mt-1 max-w-3xl text-sm text-muted">{lead}</p>}
       {children}
       {note && (
-        <details className="group max-w-3xl text-xs text-muted">
+        <details className="max-w-3xl text-xs text-muted">
           <summary className="w-fit cursor-pointer text-faint hover:text-accent">How these are picked</summary>
           <p className="mt-1.5 leading-relaxed">{note}</p>
         </details>
