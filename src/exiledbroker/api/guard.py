@@ -6,8 +6,8 @@ edge and rate-limits per visitor. Railway's own *.up.railway.app address is publ
 though, and a script pointed at it would skip both. With `EB_ORIGIN_KEY` set, a
 Cloudflare transform rule adds that key to every request it forwards, and `RequireEdgeKey`
 answers 403 to anything without it (docs/go-live.md). Behind that check the visitor's
-address (Cloudflare's CF-Connecting-IP) can be trusted, so `PerClientLimit` caps each
-one's /api requests a minute. Both are plain ASGI and answer before any route runs: a
+address (Cloudflare's CF-Connecting-IP, passed on by the Worker) can be trusted, so
+`PerClientLimit` caps each one's /api requests a minute. Both are plain ASGI and answer before any route runs: a
 rejected request costs no database query and no thread."""
 
 import hmac
@@ -16,7 +16,10 @@ import threading
 import time
 
 KEY_HEADER = b"x-eb-origin-key"
-CLIENT_HEADER = b"cf-connecting-ip"
+# The visitor's address: the Worker copies Cloudflare's CF-Connecting-IP into its own
+# header (deploy/cloudflare/handler.mjs), since a Worker's request to another host may
+# not carry Cloudflare's. Requests that skip the Worker (assets) still have Cloudflare's.
+CLIENT_HEADERS = (b"x-eb-client-ip", b"cf-connecting-ip")
 # Railway's health check calls the origin directly, without the key.
 OPEN_PATHS = frozenset({"/api/health"})
 WINDOW = 60.0  # seconds
@@ -67,8 +70,8 @@ class RequireEdgeKey:
 
 class PerClientLimit:
     """At most `limit` /api requests a minute per visitor (fixed one-minute windows),
-    then 429 with Retry-After. Keyed on CF-Connecting-IP, so only use it behind
-    `RequireEdgeKey`; a request without the header isn't counted."""
+    then 429 with Retry-After. Keyed on the visitor's address (CLIENT_HEADERS), so only
+    use it behind `RequireEdgeKey`; a request without one isn't counted."""
 
     def __init__(self, app, limit: int):
         self.app = app
@@ -88,7 +91,7 @@ class PerClientLimit:
 
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http" and _is_api(scope["path"]) and scope["path"] not in OPEN_PATHS:
-            client = _header(scope, CLIENT_HEADER)
+            client = next(filter(None, (_header(scope, h) for h in CLIENT_HEADERS)), None)
             if client is not None and not self.allow(client):
                 retry = str(int(WINDOW - time.time() % WINDOW) + 1).encode()
                 return await _reject(

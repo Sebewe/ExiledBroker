@@ -46,7 +46,7 @@ function refuse(status, detail, extra = {}) {
 }
 
 /** A request the site never makes, answered at the edge (null: let it through). GET and
- *  HEAD go anywhere; POST only to /api/ with a declared body of at most MAX_POST_BYTES. */
+ *  HEAD go anywhere; POST only to /api/, with no body or a declared one of at most MAX_POST_BYTES. */
 export function screen(request) {
   const { method } = request;
   if (method === "GET" || method === "HEAD") return null;
@@ -55,7 +55,10 @@ export function screen(request) {
     return refuse(405, "method not allowed", { allow: "GET, HEAD" });
   }
   const length = request.headers.get("content-length");
-  if (length === null) return refuse(411, "a content-length is required");
+  if (length === null) {
+    // No body at all (the usage beacon sends none) is fine; a streamed one isn't.
+    return request.body === null ? null : refuse(411, "a content-length is required");
+  }
   if (!/^\d+$/.test(length) || Number(length) > MAX_POST_BYTES) {
     return refuse(413, "request body too large");
   }
@@ -83,14 +86,22 @@ export function originIsDown(response) {
   return response.status >= 400 && response.headers.get(APP_HEADER) !== "app";
 }
 
-/** The request pointed at the Railway origin (same path, query, method, headers, body). */
+export const CLIENT_IP_HEADER = "x-eb-client-ip";
+
+/** The request pointed at the Railway origin (same path, query, method, headers, body),
+ *  carrying the visitor's address as X-EB-Client-IP, copied from Cloudflare's
+ *  CF-Connecting-IP (a value the visitor sent is dropped): the app's per-visitor limit
+ *  and the usage counts read it (api/guard.py). */
 export function toOrigin(request, origin) {
-  if (!origin) return request;
   const url = new URL(request.url);
-  const target = new URL(origin);
+  const target = origin ? new URL(origin) : url;
   target.pathname = url.pathname;
   target.search = url.search;
-  return new Request(target, request);
+  const upstream = new Request(target, request);
+  const ip = request.headers.get("cf-connecting-ip");
+  if (ip) upstream.headers.set(CLIENT_IP_HEADER, ip);
+  else upstream.headers.delete(CLIENT_IP_HEADER);
+  return upstream;
 }
 
 function isNavigation(request) {

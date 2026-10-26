@@ -77,7 +77,7 @@ class Settings(BaseSettings):
     # it get 403, so nobody can skip Cloudflare's cache and limits by calling the
     # *.up.railway.app address directly (api/guard.py). Unset: no check (local, tests).
     origin_key: str | None = None
-    # Requests a minute one visitor (Cloudflare's CF-Connecting-IP) may make to /api
+    # Requests a minute one visitor (by address, api/guard.py) may make to /api
     # before getting 429. Applied only with `origin_key`, the only case where that
     # header can be trusted. Counts what reaches the origin, so edge cache hits are free.
     api_rate_limit: int = 120

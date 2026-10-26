@@ -33,7 +33,7 @@ No retries: one failed fetch is enough to show the page, and the page retries by
 
 ## Turned away at the edge
 
-Before fetching anything, the Worker answers what the site never sends ([docs/security.md](../../docs/security.md)): any method but GET and HEAD gets 405, except POST under `/api/` (the usage beacon) with a declared body of at most 4 kB (411 without a length, 413 above it). With the `API_LIMITER` rate-limit binding (`wrangler.toml`), an address making more than 60 `/api` requests a minute gets 429 with `Retry-After: 60`. A missing or failing binding lets requests through. None of these reach Railway.
+Before fetching anything, the Worker answers what the site never sends ([docs/security.md](../../docs/security.md)): any method but GET and HEAD gets 405, except POST under `/api/` (the usage beacon) with no body or a declared one of at most 4 kB (411 for a streamed body, 413 above it). Every request it passes on carries the visitor's address as `X-EB-Client-IP` (from Cloudflare's `CF-Connecting-IP`; a value the visitor sent is dropped), for the app's per-visitor limit and the usage counts. With the `API_LIMITER` rate-limit binding (`wrangler.toml`), an address making more than 60 `/api` requests a minute gets 429 with `Retry-After: 60`. A missing or failing binding lets requests through. None of these reach Railway.
 
 ## Caching at the edge
 
