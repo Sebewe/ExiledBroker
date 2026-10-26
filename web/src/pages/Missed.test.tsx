@@ -148,7 +148,7 @@ describe('Market recap', () => {
     expect(within(options).getAllByText('Best odds')).toHaveLength(3)
     expect(screen.queryByText(/Things you could look into/)).not.toBeInTheDocument()
     expect(screen.queryByText(/on the table/)).not.toBeInTheDocument()
-    expect(within(options).getByRole('link', { name: /Backtest/ })).toHaveAttribute('href', '/backtest')
+    expect(within(options).getByRole('link', { name: /Backtest/ })).toHaveAttribute('href', '/research/backtest')
     expect(screen.getByText(/^up 3h running$/)).toBeInTheDocument()
     expect(screen.getByText(/^down 2h running$/)).toBeInTheDocument()
     // Market Movers: no explanation needed; more from the window's ticker list on request.

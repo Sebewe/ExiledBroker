@@ -189,7 +189,7 @@ function InvestmentOptions({ w, flips }: { w: MissedWindow; flips: MissedFlip[] 
     <section aria-label="Investment options" className="flex flex-col gap-3">
       <div className="flex items-baseline justify-between gap-3">
         <h2 className="text-lg font-semibold">Investment options</h2>
-        <Link to="/backtest" className="flex items-center gap-1 text-xs text-faint hover:text-accent">
+        <Link to="/research/backtest" className="flex items-center gap-1 text-xs text-faint hover:text-accent">
           <FlaskConical aria-hidden className="size-3.5 text-accent" /> ranked by the Backtest
         </Link>
       </div>

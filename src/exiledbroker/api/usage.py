@@ -39,7 +39,7 @@ LOAD_RETRY = 60.0  # seconds before trying the database again after it failed
 
 # The pages (the frontend's routes) and the features worth knowing are used. Anything
 # else is ignored, so the tables stay a few rows a day whatever is sent.
-PAGES = ["/", "/launch", "/price-check", "/conversions", "/backtest", "/about", "/not-found"]
+PAGES = ["/", "/launch", "/price-check", "/conversions", "/research/backtest", "/about", "/not-found"]
 FEATURES = [
     "league",  # switched league
     "theme",  # switched Dusk / Parchment
