@@ -24,6 +24,7 @@ from collections import Counter
 from collections.abc import Callable
 from contextlib import AbstractContextManager, contextmanager
 from datetime import UTC, date, datetime, timedelta
+from importlib import resources
 from typing import Literal
 
 from exiledbroker.storage import db
@@ -56,6 +57,16 @@ BOTS = re.compile(
     r"bot|crawl|spider|slurp|preview|headless|lighthouse|python|curl|wget|httpx|go-http|java/",
     re.IGNORECASE,
 )
+
+
+def usage_ddl() -> list[str]:
+    """schema.sql's usage tables only. The web process must not run the whole schema:
+    its ALTER TABLEs take an exclusive lock on the big tables even when there's nothing
+    to add, so they'd wait on a pipeline pass and stall every page's reads behind them."""
+    sql = resources.files("exiledbroker.storage").joinpath("schema.sql").read_text()
+    lines = [line.split("--", 1)[0] for line in sql.splitlines()]
+    statements = [s.strip() for s in "\n".join(lines).split(";")]
+    return [s for s in statements if s.startswith("CREATE TABLE IF NOT EXISTS usage_")]
 
 
 def period_of(day: date, period: Period) -> str:
@@ -184,7 +195,8 @@ class Usage:
 
     def _ensure_schema(self, con) -> None:
         if not self._schema_ready:
-            db.init_schema(con)
+            for statement in usage_ddl():
+                db.execute(con, statement)
             self._schema_ready = True
 
     @staticmethod

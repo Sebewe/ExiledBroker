@@ -170,6 +170,15 @@ def test_a_failed_write_keeps_the_counts(connect):
     assert table(connect, "SELECT views FROM usage_daily WHERE event = 'site'") == [(1,)]
 
 
+def test_the_web_process_creates_only_the_usage_tables():
+    """Never the schema's ALTER TABLEs on the big tables (they'd lock out page reads
+    while a pipeline pass runs)."""
+    statements = usage.usage_ddl()
+    assert len(statements) == len(TABLES)
+    assert all(s.startswith("CREATE TABLE IF NOT EXISTS usage_") for s in statements)
+    assert sorted(s.split()[5] for s in statements) == sorted(TABLES)
+
+
 def test_periods():
     d = date(2026, 10, 26)
     assert usage.period_of(d, "month") == "2026-10"
