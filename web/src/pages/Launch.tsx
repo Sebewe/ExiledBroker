@@ -1,9 +1,11 @@
 import { Crown, Flame, Sprout, TrendingDown } from 'lucide-react'
 import type { LaunchPick, LaunchWindow, LiveLeague } from '../api/client'
 import { useLaunchPicks, useStatus } from '../api/queries'
+import { ItemName } from '../components/ItemLink'
 import { Notice } from '../components/Notice'
 import { PageHeader } from '../components/Section'
 import { count } from '../lib/format'
+import { useItemHref } from '../lib/itemHref'
 import { queryFallback } from '../lib/queryFallback'
 import { trackFeature } from '../lib/usage'
 import { useParam } from '../lib/useParam'
@@ -236,6 +238,7 @@ function LivePrice({ p }: { p: LaunchPick }) {
 }
 
 function PickCard({ p, w, isNow }: { p: LaunchPick; w: LaunchWindow; isNow: boolean }) {
+  const href = useItemHref(w.live_league ?? undefined)
   const medal = ['text-accent-strong', 'text-text', 'text-warning/80'][p.rank - 1] ?? 'text-muted'
   return (
     <article className="flex h-full flex-col gap-3 rounded-lg border border-border bg-surface p-4">
@@ -243,7 +246,7 @@ function PickCard({ p, w, isNow }: { p: LaunchPick; w: LaunchWindow; isNow: bool
         <div className="min-w-0">
           <div className={`text-xs font-semibold ${medal}`}>#{p.rank}</div>
           <h3 className="truncate font-semibold" title={p.name}>
-            {p.name}
+            <ItemName name={p.name} href={href(p.item_id)} />
           </h3>
           <div className="text-xs text-faint capitalize">{p.group_id === 'divination' ? 'Divination card' : p.group_id}</div>
         </div>
@@ -272,11 +275,12 @@ function PickCard({ p, w, isNow }: { p: LaunchPick; w: LaunchWindow; isNow: bool
 }
 
 function PickRow({ p, w, isNow }: { p: LaunchPick; w: LaunchWindow; isNow: boolean }) {
+  const href = useItemHref(w.live_league ?? undefined)
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 text-sm">
       <span className="num w-6 text-faint">#{p.rank}</span>
       <span className="min-w-0 flex-1 truncate font-medium" title={p.name}>
-        {p.name}
+        <ItemName name={p.name} href={href(p.item_id)} />
       </span>
       {/* On a phone the name gets the room; the cards above show the full detail. */}
       <span className="hidden sm:flex">
