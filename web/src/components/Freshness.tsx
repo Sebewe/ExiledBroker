@@ -1,15 +1,17 @@
 import { useServerNow, useStatus } from '../api/queries'
+import { usePreview } from '../lib/preview'
 import type { LiveLeague, Upcoming } from '../api/client'
 import { freshness } from '../lib/freshness'
 import { duration, utcHour } from '../lib/format'
 import { Notice } from './Notice'
 
-/** Header badge: how old the newest data is. */
+/** Header badge: how old the newest data is. The preview's pill takes its place. */
 export function FreshnessBadge() {
   const { data } = useStatus()
   const now = useServerNow()
+  const preview = usePreview()
   const league = data?.leagues[0]
-  if (!data || !league) return null
+  if (!data || !league || preview.on) return null
   const f = freshness(league, now)
   if (!f) return <span className="text-xs text-muted">{league.name}: waiting for trades</span>
   return (
@@ -22,8 +24,11 @@ export function FreshnessBadge() {
 
 /** The landing page's banner: the latest hour, and whether the feed looks stopped. With
  * a next league announced, a league that stopped trading has ended (leagues end days
- * before the next one launches), so it says so instead of warning about the feed. */
+ * before the next one launches), so it says so instead of warning about the feed. In the
+ * preview the data is old on purpose and the strip under the header says what's shown. */
 export function FreshnessBanner({ league, now, upcoming }: { league: LiveLeague; now: number; upcoming?: Upcoming | null }) {
+  const preview = usePreview()
+  if (preview.on) return null
   if (!league.latest_hour) {
     return (
       <Notice kind="waiting" title={league.launched_at ? 'Waiting for the first trades' : 'Waiting for launch'}>

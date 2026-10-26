@@ -6,6 +6,7 @@ import { useScrollOnNavigate } from '../lib/scroll'
 import { useTheme } from '../lib/theme'
 import { trackFeature, trackPage } from '../lib/usage'
 import { FreshnessBadge } from './Freshness'
+import { PreviewPill, PreviewStrip } from './Preview'
 import { RESEARCH } from '../lib/research'
 import { SocialLinks } from './Social'
 
@@ -53,6 +54,7 @@ export function Layout({ children }: { children: ReactNode }) {
           <NavLink to="/" className="text-lg font-semibold tracking-tight" aria-label="ExiledBroker home">
             <span className="text-accent">Exiled</span>Broker
           </NavLink>
+          <PreviewPill />
           {/* On a phone the menu wraps rather than scrolls, so every page stays in sight. */}
           <nav aria-label="Main" className="order-3 -mx-1 flex w-full flex-wrap gap-1 md:order-none md:w-auto md:flex-nowrap">
             {NAV.map(({ to, label, icon: Icon, end, featured, proof, hint }) => (
@@ -100,6 +102,7 @@ export function Layout({ children }: { children: ReactNode }) {
           </div>
         </div>
       </header>
+      <PreviewStrip />
       <main id="main" className="mx-auto flex max-w-7xl min-w-0 flex-col gap-8 px-4 py-6 *:min-w-0">
         {children}
       </main>
