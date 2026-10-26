@@ -20,7 +20,8 @@ transaction on `dst` (always Postgres):
 - the tables built from past leagues (`site.REPLACED_TABLES`), each group replaced when
   its stamp (a few counts and build times, `_stamps`) differs: the Launch tables, the
   backtest report, the sell helper report (the hour-of-day and stack constants) and Price
-  check's paths (once a league: ~25k rows, ~3 MB);
+  check's paths (once a league: ~25k rows, ~3 MB) and the pre-launch preview's snapshot
+  (once a build);
 - the raw pages of the window (from `src`'s `exchange_page`, or from disk for the
   local copy), and none outside it;
 - leagues `dst` has and `src` doesn't: dropped (a league switch).
@@ -233,7 +234,8 @@ def _sync_reference(src, dst) -> bool:
 LAUNCH_TABLES = ["launch_history", "launch_window", "launch_pick", "launch_pick_league"]
 REPORTS = ["backtest_report", "sell_helper_report"]
 PRICE_TABLES = ["price_path_league", "price_path", "price_path_constant"]  # Price check's
-assert {*LAUNCH_TABLES, *REPORTS, *PRICE_TABLES} == set(site.REPLACED_TABLES)
+PREVIEW = "preview_snapshot"  # the pre-launch preview's (preview/build.py): ~1 MB, once a build
+assert {*LAUNCH_TABLES, *REPORTS, *PRICE_TABLES, PREVIEW} == set(site.REPLACED_TABLES)
 
 
 def _stamps(con) -> dict:
@@ -246,7 +248,15 @@ def _stamps(con) -> dict:
     for table in REPORTS:
         out[table] = tuple(db.rows(con, f"SELECT count(*), max(built_at) FROM {table}")[0])
     out["price paths"] = _price_stamp(con)
+    out["preview"] = _preview_stamp(con)
     return out
+
+
+def _preview_stamp(con) -> tuple:
+    """The preview's documents and build time (a local copy may predate the table)."""
+    if not site._has(con, PREVIEW):
+        return (0, None)
+    return tuple(db.rows(con, f"SELECT count(*), max(built_at) FROM {PREVIEW}")[0])
 
 
 def _price_stamp(con) -> tuple:
@@ -285,6 +295,12 @@ def _sync_built(src, dst) -> list[str]:
         for table in PRICE_TABLES:
             _replace(src, dst, table)
         updated.append("price paths")
+    if ours["preview"] != theirs["preview"]:
+        if site._has(src, PREVIEW):
+            _replace(src, dst, PREVIEW)
+        else:
+            db.execute(dst, f"DELETE FROM {PREVIEW}")
+        updated.append("preview")
     return updated
 
 

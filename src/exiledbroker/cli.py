@@ -686,6 +686,42 @@ def backtest_run() -> None:
         )
 
 
+preview_app = typer.Typer(
+    help="The pre-launch preview: a past league's early days (docs/preview.md).",
+    no_args_is_help=True,
+)
+app.add_typer(preview_app, name="preview")
+
+
+@preview_app.command("build")
+def preview_build(
+    league: Annotated[
+        str, typer.Option("--league", "-l", help="The past league to rewind to.")
+    ] = "Allflame",
+    days: Annotated[str, typer.Option(help="Launch days to offer, comma-separated.")] = "1,3,5,7",
+    default_day: Annotated[int, typer.Option(help="The day shown first.")] = 5,
+    next_day: Annotated[int, typer.Option(help="The reveal runs to the end of this day.")] = 10,
+) -> None:
+    """Replay a past league from the pages on disk as the site showed it at the end of
+    each day, and store what every page answered (and what happened next) in
+    preview_snapshot, replacing the last build. Copy it to the site with `eb site seed`.
+    Makes no requests: a page missing from disk stops the build."""
+    from exiledbroker.preview import build as preview
+
+    try:
+        chosen = tuple(int(d) for d in days.split(",") if d.strip())
+    except ValueError as e:
+        raise typer.BadParameter("--days must look like 1,3,5,7") from e
+    try:
+        result = preview.build(
+            get_settings(), league, chosen, default_day, next_day, progress=typer.echo
+        )
+    except (ValueError, LookupError, preview.OfflineError) as e:
+        typer.echo(f"Not built: {e}", err=True)
+        raise typer.Exit(1) from e
+    typer.echo(f"{result} Copy it to the site with `eb site seed`.")
+
+
 perf_app = typer.Typer(help="Local performance measurements (not part of the site).")
 app.add_typer(perf_app, name="perf")
 
