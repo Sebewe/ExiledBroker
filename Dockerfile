@@ -17,7 +17,8 @@ RUN find dist -type f \( -name '*.js' -o -name '*.css' -o -name '*.html' -o -nam
 # --- App ----------------------------------------------------------------------------
 FROM python:3.11-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 \
-    EB_WEB_DIST=/app/web/dist EB_DATA_DIR=/app/data
+    EB_WEB_DIST=/app/web/dist EB_DATA_DIR=/app/data \
+    EB_API_DOCS=false EB_CORS_ORIGINS='[]'
 WORKDIR /app
 RUN useradd --create-home app && mkdir -p /app/data && chown app /app/data
 COPY pyproject.toml README.md LICENSE ./
@@ -30,4 +31,6 @@ USER app
 # time so a container never downloads it at runtime.
 RUN python -c "import duckdb; duckdb.connect().execute('INSTALL postgres')"
 EXPOSE 8000
-CMD ["sh", "-c", "exec uvicorn exiledbroker.api.app:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers"]
+# --limit-concurrency: past 100 open connections uvicorn answers 503 at once instead of
+# queueing (the Worker then shows the fallback page), so a flood can't exhaust memory.
+CMD ["sh", "-c", "exec uvicorn exiledbroker.api.app:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --limit-concurrency 100 --no-server-header"]

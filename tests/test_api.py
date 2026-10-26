@@ -254,6 +254,35 @@ def test_the_version_parameter_only_keys_caches(client, settings):  # noqa: F811
     assert client.get(f"/api/missed/{LEAGUE}", params={"v": "x" * 65}).status_code == 422
 
 
+def test_a_table_asked_for_with_the_current_version_is_kept_for_the_hour(client, settings):  # noqa: F811
+    """A URL with the current `v` names this hour and this deploy, so browsers and the edge
+    keep it without asking again. Any other `v` gets the short max-age: a page a version
+    behind, or one ahead of the server's 15 s view of the version, never pins a URL to
+    data older than the hour it names. A deploy changes `v` too (the code version)."""
+    server = FakeExchange(PAGES, now=LAUNCH)
+    update(settings, server, 3)
+    v = client.get("/api/status").json()["data_version"]
+    assert v.startswith(deps.data_version()) and v.endswith(deps.CODE_VERSION)
+    for path in endpoints(LEAGUE, ITEM)[1:]:
+        r = client.get(path, params={"v": v})
+        assert r.status_code == 200, path
+        assert r.headers["cache-control"] == deps.VERSIONED_CACHE_CONTROL, path
+        again = client.get(path, params={"v": v}, headers={"if-none-match": r.headers["etag"]})
+        assert again.status_code == 304
+        assert again.headers["cache-control"] == deps.VERSIONED_CACHE_CONTROL
+    for other in ("2026-01-01T00:00:00~" + deps.CODE_VERSION, deps.data_version()):
+        r = client.get(f"/api/missed/{LEAGUE}", params={"v": other})
+        assert r.headers["cache-control"] == deps.CACHE_CONTROL
+
+    update(settings, server, 4)  # a new hour: the page's old `v` is now a version behind
+    deps.reset()
+    assert (
+        client.get(f"/api/missed/{LEAGUE}", params={"v": v}).headers["cache-control"]
+        == deps.CACHE_CONTROL
+    )
+    assert client.get("/api/status").json()["data_version"] != v
+
+
 def test_validation(client, settings):  # noqa: F811
     update(settings, FakeExchange(PAGES, now=LAUNCH), 3)
     assert client.get("/api/missed/Nowhere").status_code == 404

@@ -79,6 +79,18 @@ class Settings(BaseSettings):
     # The admin page's token (/admin, /api/admin/*; docs/admin.md): a long random string,
     # sent as `Authorization: Bearer <token>`. Unset: the admin API answers 404.
     admin_token: SecretStr | None = None
+    # The API's docs (/docs, /redoc, /openapi.json). Handy locally; off in the image
+    # (Dockerfile), so the hosted site doesn't hand out a map of itself.
+    api_docs: bool = True
+    # A shared secret Cloudflare adds to every request it sends to the origin, as the
+    # X-EB-Origin-Key header (a transform rule, docs/go-live.md). Set: requests without
+    # it get 403, so nobody can skip Cloudflare's cache and limits by calling the
+    # *.up.railway.app address directly (api/guard.py). Unset: no check (local, tests).
+    origin_key: str | None = None
+    # Requests a minute one visitor (by address, api/guard.py) may make to /api
+    # before getting 429. Applied only with `origin_key`, the only case where that
+    # header can be trusted. Counts what reaches the origin, so edge cache hits are free.
+    api_rate_limit: int = 120
 
     # Outbound HTTP. poe.ninja asks for a descriptive User-Agent with a contact.
     user_agent: str = f"ExiledBroker/{__version__} (+https://github.com/Sebewe/ExiledBroker)"

@@ -12,6 +12,7 @@ os.environ["EB_DATABASE_URL"] = ""
 os.environ["EB_BACKUP_URL"] = ""
 os.environ["EB_HEALTHCHECK_URL"] = ""  # nor a monitoring service
 os.environ["EB_ADMIN_TOKEN"] = ""  # the admin API is off unless a test sets a token
+os.environ["EB_ORIGIN_KEY"] = ""  # nor the hosted origin's Cloudflare-only check
 
 
 import pytest
