@@ -91,6 +91,7 @@ What tens of thousands of visitors at once would do, and the fixes: [hosting.md]
 
 - [x] Finish the cost report in [hosting.md](hosting.md#the-railway-bill) (the real 24 h run was dropped, 2026-10-23).
 - [ ] Rebuild and check every page on the Railway URL: no data, catching up, live, and stale.
+- [ ] **Smoke-test every deploy** (built 2026-10-26): `.venv/bin/eb site smoke https://exiledbroker.trade --edge --origin https://<service>.up.railway.app` fetches every page, the built files index.html names, `og.png`, `robots.txt` and every endpoint the pages call for the newest league (≈30 requests to our site, nothing upstream), and checks the answers: 200s with ETags and 304s, edge cache hits, unknown routes and a previous deploy's chunk 404, `/api/stats` and `/api/admin` closed, the origin refusing requests without the key. It exits 1 on a failure; a late feed is only a warning. Before DNS points at Railway, run it without `--edge` against the Railway address (with the origin key not yet set).
 
 ### 8. Abuse protection (Cloudflare and Railway settings)
 
@@ -104,6 +105,26 @@ The code side is done (2026-10-26, [security.md](security.md)): the Worker refus
 - [ ] **Emergency lever, know where it is:** Security > Settings > Security level "I'm under attack" puts a browser check in front of every visitor. Turn it on only during an attack: it also stops the uptime monitor.
 - [ ] **GitHub:** Settings > Code security, turn on Dependabot alerts (free), so a vulnerable dependency is reported. Run `pip-audit` and `npm audit` once more before flipping DNS.
 - [ ] **Admin panel** (when it ships): `EB_ADMIN_TOKEN` on the web service, 32+ random bytes, sealed. Optionally Cloudflare Access (Zero Trust, free up to 50 users) on `/admin*` and `/api/admin*`.
+
+### 9. Launch day (the next league)
+
+The site matters most in a league's first hours, when traffic peaks and the data is thinnest. Times in UTC; GGG announces the launch time about a week ahead.
+
+- **When the launch time is announced:** set `EB_NEXT_LEAGUE` (the league's exact name) and `EB_NEXT_LEAGUE_START` (e.g. `2026-11-13T20:00:00Z`) on **both** services and redeploy them. The web service shows the countdown; the pipeline keeps the old league until the new one's first published hour, then switches (section 2). No command is run by hand: the hosted pipeline finds the launch hour itself, from a day before `_START`. (Locally, `eb live sync -l <Name>` does the same for the research copy.) A wrong name or time only delays the switch: the pipeline searches from a day before `_START` and never picks Standard or an event league. Fix the variable and the next pass catches up.
+- **The day before:** run `eb site smoke` (section 6); check healthchecks.io is green and the uptime monitor is up; look at Railway's usage against the limits (section 5) and consider Workers Paid if a streamer is expected (section 7). Don't merge anything risky in the 24 hours around the launch.
+- **Hour zero** (the league opens at `:00`): the site shows the countdown, then "waiting for the first trades". GGG publishes the first hour a few minutes after it ends; the pass at the next `:06` loads it (≤ 8 requests to find it, then one an hour). Each page's empty and one-hour states are tested (`tests/test_league_switch.py`, the frontend's no-data tests). If the first hour hasn't loaded by `:30` after it ended, look at the pipeline's log in Railway (each pass prints one line saying what it loaded); a pass that found nothing new is retried by the next one, and the healthchecks.io email comes after 3 hours without data.
+- **The first day:** new currency (the league's own items) shows in Price check only once poe.ninja lists the new league (its lists decide the core pool) and RePoE names it (rechecked daily while the exchange trades unnamed items, then the league rebuilds from stored pages with no requests). Both lag by hours to a day; nothing to do but check it happened.
+- **If something breaks:** the fallback page covers the web service being down; the healthchecks.io email covers the pipeline. Roll back (section 10) rather than fixing forward under load, unless the fix is one line.
+
+### 10. Rolling back
+
+- **Code (either service):** Railway, the service, Deployments: pick the last good deployment and *Redeploy* (Railway calls it Rollback). It's the same image, so it takes about a minute. Then `eb site smoke`. Roll back the web and the pipeline separately: they share the database, not the code.
+- **The database survives a rollback.** `schema.sql` only ever adds (`CREATE … IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`), so older code runs on a newer schema. The one cost: a rollback across a `LOADER_VERSION` bump makes the pipeline rebuild the league from its stored pages (no requests to GGG, a minute or two of CPU), and rolling forward again rebuilds once more.
+- **Browsers and the edge:** the frontend's tables carry the code version in `?v=` and the saved cache is dropped on a new build, so nobody keeps the bad build's data. An open tab on the bad build reloads itself the first time it opens a page whose code is gone (`web/src/lib/chunkReload.ts`).
+- **Data:** a bad load or a corrupted database is fixed by re-seeding from the local copy (`eb site seed --hosted`, free) or, without it, restoring from the off-site backup (`eb site restore`, ~300 MB of Supabase egress, behind `--yes`). Both need the pipeline's cron paused first so a pass doesn't run mid-way.
+- **DNS or Cloudflare:** the Worker's previous version is one click away (Workers, the Worker, Deployments, *Rollback*). To take the Worker out entirely, delete its route: the proxied DNS record then goes straight to Railway.
+
+If Railway's signups are still closed when it's time to deploy, [hosting.md](hosting.md#if-railway-stays-closed-flyio-or-render) compares Fly.io and Render and lists what changes in this checklist.
 
 ## Settled questions
 

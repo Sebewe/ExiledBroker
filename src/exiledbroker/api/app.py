@@ -209,6 +209,13 @@ def create_app(web_dist: Path | None = None) -> FastAPI:
                 raise HTTPException(404, "not found")
             file = (web_dist / path).resolve()
             if not (path and file.is_file() and file.is_relative_to(web_dist.resolve())):
+                # A built file that isn't there (an open tab asking for the previous
+                # deploy's chunk) is a 404, not index.html: the page sees a failed load
+                # and reloads itself (web/src/lib/chunkReload.ts) instead of choking on
+                # HTML as JavaScript. Never cached: mid-deploy, the old process may be
+                # asked for the new build's file, and the edge mustn't keep that 404.
+                if path.startswith("assets/"):
+                    raise HTTPException(404, "not found", {"Cache-Control": "no-store"})
                 file = web_dist / "index.html"
             immutable = file.parent.name == "assets" and file.parent.parent == web_dist.resolve()
             headers = {

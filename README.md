@@ -25,7 +25,7 @@ Legend: ⬜ not started · 🟨 in progress · ✅ done. Phases 1–2 alone are 
 
 The next league launches in about a month. Before then:
 
-- **Go live on Railway** (waiting on Railway reopening signups): the checklist is [go-live.md](docs/go-live.md). The code side is done (Postgres-only server, rehearsed league switch, fallback Worker, failure alert); what's left is account setup: the Railway project, the healthchecks.io check, an uptime monitor, Cloudflare in front, then the seed and catch-up test.
+- **Go live on Railway** (waiting on Railway reopening signups): the checklist is [go-live.md](docs/go-live.md). The code side is done (Postgres-only server, rehearsed league switch, fallback Worker, failure alert); what's left is account setup: the Railway project, the healthchecks.io check, an uptime monitor, Cloudflare in front, then the seed and catch-up test. Each deploy is checked with `eb site smoke <url>`; launch day and rollback are sections 9 and 10, and Fly.io / Render are compared in [hosting.md](docs/hosting.md#if-railway-stays-closed-flyio-or-render) in case Railway stays closed.
 - **Register the new league** once its name and date are announced (`eb exchange sync -l "<Name>" --start <date>`), so the site shows "waiting for the first trades" from launch.
 
 After that:
@@ -109,7 +109,7 @@ RePoE, loot filter ──────┘                  │
 ```
 ExiledBroker/
 ├── src/exiledbroker/
-│   ├── cli.py              # eb dumps | exchange | live | site seed | perf report | serve | init-db
+│   ├── cli.py              # eb dumps | exchange | live | site seed/smoke | perf report | serve | init-db
 │   ├── config.py           # settings (EB_* env vars / .env)
 │   ├── ingest/             # fetching: http client, atomic files, poe.ninja dumps, GGG exchange,
 │   │                       #   live updates, RePoE names, core pool, loot filter, reference data

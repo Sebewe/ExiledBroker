@@ -3,6 +3,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router'
 import App from './App'
+import { installChunkReload } from './lib/chunkReload'
 import './index.css'
 import { persist, restore } from './lib/persist'
 
@@ -15,6 +16,7 @@ const queryClient = new QueryClient({
   },
 })
 // Kept in this browser between visits too (lib/persist).
+installChunkReload()
 restore(queryClient, __BUILD_ID__)
 persist(queryClient, __BUILD_ID__)
 
