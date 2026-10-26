@@ -314,7 +314,11 @@ function PositionRow({ r, at }: { r: Row; at: number }) {
             step={1}
             key={p.stake}
             defaultValue={p.stake}
-            onBlur={(e) => portfolio.setStake(p.item_id, Number(e.target.value))}
+            onBlur={(e) => {
+              const stake = Number(e.target.value)
+              if (stake > 0 && stake <= MAX_STAKE) portfolio.setStake(p.item_id, stake)
+              else e.target.value = String(p.stake) // not a stake: put it back
+            }}
             onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
             className="num w-16 rounded border border-border bg-bg px-1.5 py-0.5 text-right"
           />
