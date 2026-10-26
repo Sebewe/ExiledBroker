@@ -197,6 +197,18 @@ describe('Price check', () => {
     expect(await screen.findByRole('list', { name: 'Movers' })).toBeInTheDocument()
   })
 
+  it('answers a search for Divine Orb with its price, though it has no page of its own', async () => {
+    serve(live())
+    renderPage('/price-check?league=Allflame')
+    const box = await screen.findByRole('combobox', { name: 'Find an item' })
+    fireEvent.focus(box)
+    fireEvent.change(box, { target: { value: 'divine' } })
+    expect(screen.getByRole('listbox')).toHaveTextContent('Divine Orb is 200.0c in the latest hour.')
+    expect(screen.queryByText(/No item matches/)).not.toBeInTheDocument()
+    fireEvent.change(box, { target: { value: 'divinee' } })
+    expect(screen.getByText('No item matches "divinee".')).toBeInTheDocument()
+  })
+
   it('asks for each table at the data version it has, so no cache can hand it an older hour', async () => {
     const fetch = serve(live())
     renderPage(`/price-check?league=Allflame&item=${encodeURIComponent(SPLINTER)}`)

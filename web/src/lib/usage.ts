@@ -1,0 +1,54 @@
+// Cookie-free usage counts (the API's api/usage.py, docs/usage.md). The page tells the
+// server which page was viewed or which feature was used, nothing else: no cookie, no
+// id, nothing stored in this browser. Visitors with Do-Not-Track or Global Privacy
+// Control on send nothing. The names must be in the server's list (usage.EVENTS).
+
+export const PAGES = ['/', '/launch', '/price-check', '/conversions', '/backtest', '/about'] as const
+export type Feature =
+  | 'league'
+  | 'theme'
+  | 'recap-show-all'
+  | 'recap-pin'
+  | 'launch-pick'
+  | 'price-check-item'
+  | 'price-check-range'
+  | 'price-check-stack'
+
+/** The page's name for a path: one of PAGES, or "/not-found". */
+export function pageOf(pathname: string): string {
+  const path = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname
+  return (PAGES as readonly string[]).includes(path) ? path : '/not-found'
+}
+
+function optedOut(): boolean {
+  const nav = navigator as Navigator & { globalPrivacyControl?: boolean }
+  return nav.doNotTrack === '1' || nav.globalPrivacyControl === true
+}
+
+function send(event: string) {
+  if (typeof navigator === 'undefined' || optedOut() || typeof navigator.sendBeacon !== 'function') return
+  try {
+    navigator.sendBeacon(`/api/hit?e=${encodeURIComponent(event)}`)
+  } catch {
+    // counting must never get in the way
+  }
+}
+
+// Each feature counts once per page view, so typing in a field or flipping a toggle
+// back and forth is one use.
+let used = new Set<Feature>()
+
+/** A page view (Layout calls this once the visitor has stayed on a path for a moment,
+ *  so redirects aren't counted). */
+export function trackPage(pathname: string) {
+  used = new Set()
+  if (pathname.startsWith('/admin')) return // the owner reading the counts isn't a visit
+  send(`page:${pageOf(pathname)}`)
+}
+
+/** A feature was used. */
+export function trackFeature(feature: Feature) {
+  if (used.has(feature)) return
+  used.add(feature)
+  send(`feature:${feature}`)
+}

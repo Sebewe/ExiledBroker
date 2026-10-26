@@ -381,3 +381,37 @@ def test_price_check_stamp_reads_under_150_bytes_for_five_leagues(dbs, monkeypat
         stamp = backup._price_stamp(con)
     assert len(stamp[0]) == 5 and stamp[1] == 1
     assert 0 < reads.bytes < 150, reads.bytes
+
+
+def test_usage_totals_are_backed_up_but_never_the_visitor_ids(local, dbs):  # noqa: F811
+    """The counts survive a lost database (and come back on a restore); the period's
+    salt and visitor ids stay on the site, deleted when the period ends."""
+    from contextlib import contextmanager
+
+    from exiledbroker.api import usage
+
+    s, server = local
+    _seed(s, dbs["eb_site"])
+
+    @contextmanager
+    def site_db():
+        with psycopg.connect(dbs["eb_site"], autocommit=True) as con:
+            yield con
+
+    counter = usage.Usage(site_db)
+    counter.record("page:/", "203.0.113.7", "Mozilla/5.0 Firefox/140.0")
+    counter.flush()
+    run(hosted(s, dbs), server, 9)
+    with psycopg.connect(dbs["eb_backup"], autocommit=True) as con:
+        assert db.rows(con, "SELECT event, views FROM usage_daily ORDER BY event") == [
+            ("page:/", 1),
+            ("site", 1),
+        ]
+        for private in ("usage_salt", "usage_visitor", "usage_seen"):
+            assert db.scalar(con, f"SELECT count(*) FROM {private}") == 0
+    with (
+        psycopg.connect(dbs["eb_ref"], autocommit=True) as lost,
+        psycopg.connect(dbs["eb_backup"], autocommit=True) as src,
+    ):
+        backup.sync(src, lost, hosted(s, dbs, exchange_pages="database"))
+        assert db.scalar(lost, "SELECT sum(views) FROM usage_daily") == 2

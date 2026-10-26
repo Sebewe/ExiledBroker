@@ -1,5 +1,6 @@
 import { ArrowRight } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { ItemName } from './ItemLink'
 
 // The trading cards on the Market recap: the key
 // item top left, one headline amount top right, a route, and a few facts below.
@@ -35,6 +36,7 @@ export const loopRoute = (name: string, direction: string) =>
 
 export function Opportunity({
   title,
+  href,
   amount,
   label,
   muted = false,
@@ -42,9 +44,10 @@ export function Opportunity({
   footer,
 }: {
   title: string
+  href?: string // the item's Price check
   amount: string
   label: string
-  muted?: boolean // nothing to gain at the viewer's settings
+  muted?: boolean // nothing to gain at the viewer's settings, or its orders never went through
   children: ReactNode
   footer: ReactNode
 }) {
@@ -52,7 +55,7 @@ export function Opportunity({
     <li className="flex min-w-0 flex-col gap-3 rounded-lg border border-border bg-surface p-4">
       <div className="flex items-start justify-between gap-3">
         <h3 className="min-w-0 truncate pt-1 font-semibold" title={title}>
-          {title}
+          <ItemName name={title} href={href} />
         </h3>
         <div className="shrink-0 text-right">
           <div className={`num text-2xl font-semibold ${muted ? 'text-muted' : 'text-positive'}`}>{amount}</div>

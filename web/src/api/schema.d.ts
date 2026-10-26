@@ -4,6 +4,27 @@
  */
 
 export interface paths {
+    "/api/admin/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Overview
+         * @description The pipeline's health per league. Read from the database on every request: only
+         *     the admin calls it, and it's a few small aggregates.
+         */
+        get: operations["overview_api_admin_overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/backtest": {
         parameters: {
             query?: never;
@@ -36,6 +57,27 @@ export interface paths {
         get: operations["health_api_health_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/hit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Hit
+         * @description Count a page view or a feature's use. No cookies, nothing stored in the browser;
+         *     Do-Not-Track and Global Privacy Control are honoured. Always 204.
+         */
+        post: operations["hit_api_hit_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -129,6 +171,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stats
+         * @description Visitors, returning visitors and each page's and feature's use, for the site's
+         *     owner (`Authorization: Bearer <EB_ADMIN_TOKEN>`: without the setting 404, without
+         *     the right token 401). Never cached.
+         */
+        get: operations["stats_api_stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/status": {
         parameters: {
             query?: never;
@@ -155,6 +219,18 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AdminOverview */
+        AdminOverview: {
+            /** Data Version */
+            data_version: string | null;
+            /**
+             * Now
+             * Format: date-time
+             */
+            now: string;
+            /** Pipeline */
+            pipeline: components["schemas"]["PipelineLeague"][];
+        };
         /** BacktestAssumptions */
         BacktestAssumptions: {
             /** Bank Divines */
@@ -724,6 +800,41 @@ export interface components {
             volume: number;
         };
         /**
+         * PipelineLeague
+         * @description One league's live updates (ingest_run). "Day" is the 24 hours before `now`.
+         */
+        PipelineLeague: {
+            /** Bytes Day */
+            bytes_day: number;
+            /** Failures Day */
+            failures_day: number;
+            /** Hours Added Day */
+            hours_added_day: number;
+            /** Last Error */
+            last_error: string | null;
+            /** Last Failure */
+            last_failure: string | null;
+            /**
+             * Last Run
+             * Format: date-time
+             */
+            last_run: string;
+            /** Last State */
+            last_state: string;
+            /** Last Success */
+            last_success: string | null;
+            /** Latest Hour */
+            latest_hour: string | null;
+            /** League */
+            league: string;
+            /** Median Seconds Day */
+            median_seconds_day: number | null;
+            /** Requests Day */
+            requests_day: number;
+            /** Runs Day */
+            runs_day: number;
+        };
+        /**
          * PriceCheckIndex
          * @description The search list and the movers, one per data version.
          */
@@ -942,6 +1053,69 @@ export interface components {
              */
             start_at: string;
         };
+        /** UsageDay */
+        UsageDay: {
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /** Views */
+            views: number;
+            /** Visitors */
+            visitors: number;
+        };
+        /** UsageEvent */
+        UsageEvent: {
+            /** Event */
+            event: string;
+            /** Views */
+            views: number;
+            /**
+             * Views Recent
+             * @default 0
+             */
+            views_recent: number;
+            /** Visitors */
+            visitors: number;
+            /**
+             * Visitors Recent
+             * @default 0
+             */
+            visitors_recent: number;
+        };
+        /** UsagePeriod */
+        UsagePeriod: {
+            /** Finished */
+            finished: boolean;
+            /** Period */
+            period: string;
+            /** Returning */
+            returning: number;
+            /** Visitors */
+            visitors: number;
+        };
+        /** UsageStats */
+        UsageStats: {
+            /** Days */
+            days: components["schemas"]["UsageDay"][];
+            /** Events */
+            events: components["schemas"]["UsageEvent"][];
+            /** Periods */
+            periods: components["schemas"]["UsagePeriod"][];
+            /** Stored */
+            stored: boolean;
+            total: components["schemas"]["UsageTotal"];
+        };
+        /** UsageTotal */
+        UsageTotal: {
+            /** Since */
+            since?: string | null;
+            /** Views */
+            views: number;
+            /** Visitor Days */
+            visitor_days: number;
+        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -981,6 +1155,37 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    overview_api_admin_overview_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminOverview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     backtest_report_api_backtest_get: {
         parameters: {
             query?: {
@@ -1031,6 +1236,36 @@ export interface operations {
                     "application/json": {
                         [key: string]: string;
                     };
+                };
+            };
+        };
+    };
+    hit_api_hit_post: {
+        parameters: {
+            query: {
+                /** @description A page (`page:/launch`) or feature. */
+                e: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -1157,6 +1392,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PriceCheckItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stats_api_stats_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UsageStats"];
                 };
             };
             /** @description Validation Error */

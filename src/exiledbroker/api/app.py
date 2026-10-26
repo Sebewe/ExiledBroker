@@ -17,8 +17,12 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse
 
 from exiledbroker import __version__
-from exiledbroker.api.routes import live, market, price_check
+from exiledbroker.api import usage
+from exiledbroker.api.guard import PerClientLimit, RequireEdgeKey
+from exiledbroker.api.routes import admin, live, market, price_check
+from exiledbroker.api.routes import usage as usage_routes
 from exiledbroker.config import get_settings
+from exiledbroker.storage import db
 
 ORIGIN_HEADER = b"x-eb-origin"
 
@@ -139,10 +143,33 @@ def create_app(web_dist: Path | None = None) -> FastAPI:
             from exiledbroker.api import warm
 
             threading.Thread(target=warm.run_forever, args=(stop,), daemon=True).start()
+        flusher = None
+        if counter is not None and counter.connect is not None:
+            flusher = threading.Thread(target=counter.run_forever, args=(stop,), daemon=True)
+            flusher.start()
         yield
         stop.set()
+        if flusher is not None:
+            flusher.join(timeout=10)  # the last counts are written on the way out
 
-    app = FastAPI(title="ExiledBroker", version=__version__, lifespan=lifespan)
+    # The docs are off when hosted (EB_API_DOCS=false in the image): the schema is still
+    # built from code for the frontend's types (api/schema.py), just not served.
+    docs = settings.api_docs
+    app = FastAPI(
+        title="ExiledBroker",
+        version=__version__,
+        lifespan=lifespan,
+        docs_url="/docs" if docs else None,
+        redoc_url="/redoc" if docs else None,
+        openapi_url="/openapi.json" if docs else None,
+    )
+    # Usage counts (api/usage.py): written to the site's Postgres; with the local DuckDB
+    # (opened read-only) they're kept in memory.
+    counter = None
+    if settings.usage:
+        connect = (lambda: db.site_session(settings)) if settings.database_url else None
+        counter = usage.Usage(connect, settings.usage_period)
+    app.state.usage = counter
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
@@ -152,6 +179,10 @@ def create_app(web_dist: Path | None = None) -> FastAPI:
     # Tables arrive pre-gzipped from the cache (api/deps.py); this covers the rest.
     app.add_middleware(GZipMiddleware, minimum_size=1000)
     app.add_middleware(ApiNoStoreByDefault)
+    # Only Cloudflare reaches the origin, and each visitor gets a fair share (api/guard.py).
+    if settings.origin_key:
+        app.add_middleware(PerClientLimit, limit=settings.api_rate_limit)
+        app.add_middleware(RequireEdgeKey, key=settings.origin_key)
     app.add_middleware(SecurityHeaders)
     app.add_middleware(MarkOrigin)  # outermost, so it covers every response
     api = APIRouter(prefix="/api")
@@ -160,7 +191,7 @@ def create_app(web_dist: Path | None = None) -> FastAPI:
     def health() -> dict[str, str]:
         return {"status": "ok", "version": __version__, "game": settings.default_game}
 
-    for routes in (live, market, price_check):
+    for routes in (live, market, price_check, usage_routes, admin):
         api.include_router(routes.router)
     app.include_router(api)
 
