@@ -96,7 +96,7 @@ RePoE, loot filter ──────┘                  │
 | [docs/findings.md](docs/findings.md) | Phase-2 findings from past launches |
 | [docs/farming.md](docs/farming.md) | The retired Farming page: how it was built (superseded by price-check.md) |
 | [docs/price-check.md](docs/price-check.md) | The Price check page (replacing Farming): its plan, response contract and status |
-| [docs/demand.md](docs/demand.md) | The Demand feature (planned): volume, price and possibly stock, on Price check and the Market recap |
+| [docs/demand.md](docs/demand.md) | The Demand feature: planned, researched (finding 11) and shelved |
 | [docs/decisions.md](docs/decisions.md) | Decision log by topic, dated |
 | [docs/roadmap.md](docs/roadmap.md) | The prediction design (patch notes, models, backtest), planned modules, add-ons, risks |
 | [CLAUDE.md](CLAUDE.md) | Commands, architecture and coding rules for working on the code |

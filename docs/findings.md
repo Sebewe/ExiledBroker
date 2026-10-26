@@ -502,16 +502,12 @@ In the first 2 days a falling price says most of what a "dumped" reading would. 
 - **No "Demand rising", "Busier" or mechanic "farm this" label**: none beats the item's own 3-day move held out, and none pays as a buy at realistic spreads.
 - **No label after day 13**: every reading reverses there.
 
-**For the user to decide:**
-- **Whether to pursue the lead.** "Rising on a calm book, entered on days 1–4, held 3–5 days" is the only buy rule that beat random in every league and stayed positive at a 5–10% round trip, but it's small, concentrated on launch weekends, and fading in the newest leagues. The cheap test is a local paper trade on the next league (~2026-11-13) with `analysis/demand.py`, no loading or building; load the item-side stock fields (about 14 MB for Allflame's window) only if it holds.
-- **Whether to show plain descriptions.** "Trading 3× its usual, price −12% in Divines" is accurate, but as a decision aid it mostly repeats finding 9's verdict. A days 1–6 "Being dumped" mark is honest as a description; in money it's about −3.6% against the market, so it shouldn't read as advice to sell.
-- **Whether 3-day relative momentum goes into Price check** (a "falling behind the market" list): the strongest reading here, but it overlaps the item-path verdict.
+**Decided by the user (2026-10-25): Demand is shelved.** The signals are too sparse and inconsistent to build on: no paper trade of the calm-book lead, no stock fields loaded, no demand descriptions or labels on the site. `analysis/demand.py` stays only so this finding can be reproduced.
 
 ## Still to do
 
 - **Check in-game whether GGG's hourly lowest and highest ratios are executed trades** (findings 2, 4, 5). It's the one question hourly data can't answer, and it decides whether the loops' limit orders, the card limit orders and the volatile flips are real.
 - **Rerun finding 10 on the next league once its fortnight completes (~2026-11-27).** The sixth league is the first real out-of-sample check of these patterns; the Launch picks and Price check's paths gain it as one more league (rebuild and reseed).
-- **Paper-trade finding 11's lead on the next league** (rising on a calm book, entered on days 1–4, held 3–5 days), from the pages as they arrive, before loading any stock field.
 - **Divination card expected value** for random rewards (not unique ones: uniques are out of scope).
 - **Patch notes (phase 3)** to explain the level shifts that past prices can't (finding 3's group levels, finding 8's Necropolis and Tattoos).
 - **A `days` limit on `cross_market.summarize` and `divination.turn_in_summary`** (and so `turn_ins_across_leagues`): they read every loaded hour, so for Allflame they mix its latest 14 days into launch comparisons. Finding 10 filtered in its own queries.
