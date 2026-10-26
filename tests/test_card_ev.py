@@ -90,3 +90,20 @@ def test_the_summary_and_the_committed_pools(con):
     assert s["days"] == 2 and s["floor_pays"] == 1.0
     pools = card_ev.load_pools(Path(__file__).resolve().parents[1] / "config/card_rewards.toml")
     assert "Delirium Orb" in pools and all(pools.values())
+
+
+def test_the_pools_resolve_to_items_like_sql_does():
+    from exiledbroker.normalize import card_rewards
+
+    items = [
+        ("currency:fine-delirium-orb", "Fine Delirium Orb"),
+        ("currency:delirium-orb-x", "Fine Delirium Orb (Legacy)"),
+        ("currency:simulacrum", "Simulacrum"),
+        ("ninja:1", "Some Delirium Orb"),  # not currency-like: never in a pool
+        ("currency:the-wolf", "The Wolf"),
+    ]
+    pools = {**POOLS, "Delirium Orb": ["% Delirium Orb", "% Delirium Orb (%)"], "Any": ["*cards*"]}
+    assert card_rewards.pool_rows(pools, items) == [
+        ("Delirium Orb", "currency:delirium-orb-x"),
+        ("Delirium Orb", "currency:fine-delirium-orb"),
+    ]

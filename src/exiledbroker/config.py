@@ -36,6 +36,11 @@ def _default_mechanics() -> Path:
     return root / "config" / "mechanics.toml" if root else Path("config/mechanics.toml")
 
 
+def _default_card_rewards() -> Path:
+    root = _repo_root()
+    return root / "config" / "card_rewards.toml" if root else Path("config/card_rewards.toml")
+
+
 class Settings(BaseSettings):
     """Runtime settings, overridable via EB_* environment variables or a .env file."""
 
@@ -46,6 +51,8 @@ class Settings(BaseSettings):
     core_pool_file: Path = Field(default_factory=_default_core_pool)
     # What each league mechanic drops: core-pool lists, labels (committed, edit by hand).
     mechanics_file: Path = Field(default_factory=_default_mechanics)
+    # What random divination card rewards can roll (committed, edit by hand).
+    card_rewards_file: Path = Field(default_factory=_default_card_rewards)
     db_filename: str = "exiledbroker.duckdb"
     # The site's database (Railway's Postgres when hosted, the compose `db` service
     # locally). Unset: the site reads the local DuckDB file instead.

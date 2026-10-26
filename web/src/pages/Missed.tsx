@@ -748,7 +748,7 @@ function Cards({ w, money, href }: { w: MissedWindow; money: Money; href: ItemHr
       title="Card turn-ins that paid"
       icon={Layers}
       lead="A full set of these cards cost less than what it turns into."
-      note="A full set cost less than its reward at the hour's average prices, with at least a full set traded. Likeliest to go through first. The orders that did best in the backtest (a bid at the card's lowest price from the latest hour, an ask at the reward's average) are behind Show rates."
+      note="A full set cost less than its reward at the hour's average prices, with at least a full set traded. A reward that rolls one of several items (10× Delirium Orb) is valued at the cheapest it can roll, so it pays whatever rolls. Likeliest to go through first. The orders that did best in the backtest (a bid at the card's lowest price from the latest hour, an ask at the reward's average) are behind Show rates."
       more={<ShowAll all={all} total={w.cards.length} onToggle={() => setAll(!all)} />}
     >
       {w.cards.length === 0 ? (
@@ -762,7 +762,7 @@ function Cards({ w, money, href }: { w: MissedWindow; money: Money; href: ItemHr
               href={href(c.item_id)}
               muted={c.chance === 0}
               amount={`+${money(c.margin)}`}
-              label="a set, average prices"
+              label={c.worst_roll ? 'a set, worst roll' : 'a set, average prices'}
               footer={
                 <>
                   <span>set costs {money(c.set_cost)}</span>
@@ -775,6 +775,7 @@ function Cards({ w, money, href }: { w: MissedWindow; money: Money; href: ItemHr
             >
               <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted">
                 a full set turns into <Pill accent>{c.reward}</Pill>
+                {c.worst_roll && <span>random: valued at the cheapest roll</span>}
               </div>
               <Chance tries={c.tries} through={c.through} chance={c.chance} />
               <Rates label={`Rates for ${c.name}`} title={c.name}>
@@ -866,7 +867,9 @@ function cardSteps(c: MissedCard): Step[] {
     {
       verb: 'Sell',
       value: lotText(sell, 'chaos'),
-      note: sentence(eachText(sell, 'chaos'), `Ask the latest hour's average for each ${reward}`),
+      note: c.worst_roll
+        ? sentence(eachText(sell, 'chaos'), `The latest hour's average for the cheapest ${reward} it can roll: a dearer roll sells for more`)
+        : sentence(eachText(sell, 'chaos'), `Ask the latest hour's average for each ${reward}`),
     },
   ]
 }

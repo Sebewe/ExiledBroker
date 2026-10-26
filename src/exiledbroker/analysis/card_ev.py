@@ -19,22 +19,13 @@ game never count against the coverage.
 Research tooling, read-only and local (`python -m exiledbroker.analysis.card_ev`).
 """
 
-import tomllib
-from pathlib import Path
-
 import duckdb
 import polars as pl
 
+from exiledbroker.normalize.card_rewards import ALL_CARDS, load_pools
 from exiledbroker.storage import db
 
 MIN_COVERAGE = 0.8  # share of a pool's items that must have a price that day
-ALL_CARDS = "*cards*"  # the pool token for "any divination card"
-
-
-def load_pools(path: Path) -> dict[str, list[str]]:
-    """{reward name: [LIKE patterns on item.canonical_name]} from config/card_rewards.toml."""
-    with path.open("rb") as f:
-        return {name: list(spec["like"]) for name, spec in tomllib.load(f)["pool"].items()}
 
 
 def pool_items(con: duckdb.DuckDBPyConnection, pools: dict[str, list[str]]) -> pl.DataFrame:
@@ -189,7 +180,7 @@ def main() -> None:  # pragma: no cover - research entry point
     from exiledbroker.config import get_settings
 
     settings = get_settings()
-    pools = load_pools(Path(settings.mechanics_file).parent / "card_rewards.toml")
+    pools = load_pools(settings.card_rewards_file)
     with db.session(settings.db_path, read_only=True) as con:
         leagues = [
             r[0]

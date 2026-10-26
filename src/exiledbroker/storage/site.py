@@ -34,6 +34,7 @@ SHARED_TABLES = {
     "item": ["id"],
     "tracked_item": ["item_id", "group_id"],
     "divination_card": ["item_id"],
+    "card_reward_pool": ["reward_name", "item_id"],
     "reference_data": ["key"],
 }
 # Derived from the research database's history and replaced whole (services/launch_picks,
@@ -59,6 +60,14 @@ class SeedResult:
 
 def _columns(duck: duckdb.DuckDBPyConnection, table: str) -> list[str]:
     return [r[0] for r in db.rows(duck, f"DESCRIBE {table}")]
+
+
+def _has(con, table: str) -> bool:
+    return bool(
+        db.scalar(
+            con, "SELECT count(*) FROM information_schema.tables WHERE table_name = ?", [table]
+        )
+    )
 
 
 def _copy(pg, table: str, cols: list[str], rows: list[tuple]) -> None:
@@ -111,6 +120,7 @@ def seed(
         "item": (f"WHERE id IN ({used})", [*ids, HOURLY, *ids]),
         "tracked_item": (f"WHERE item_id IN ({used})", [*ids, HOURLY, *ids]),
         "divination_card": ("", []),
+        "card_reward_pool": ("", []),
         "reference_data": ("", []),
         "price_observation": (f"WHERE league_id IN ({marks}) AND source = ?", [*ids, HOURLY]),
         "cross_market_hour": (f"WHERE league_id IN ({marks})", ids),
@@ -123,6 +133,8 @@ def seed(
         for table in LEAGUE_TABLES:
             pg.execute(f"DELETE FROM {table} WHERE league_id = ANY(%s)", [ids])
         for table in [*SHARED_TABLES, *reversed(LEAGUE_TABLES)]:
+            if not _has(duck, table):
+                continue  # an older local copy: a table added since its last load
             cols = _columns(duck, table)
             where, params = selects[table]
             data = db.rows(duck, f"SELECT {', '.join(cols)} FROM {table} {where}", params)
@@ -133,11 +145,7 @@ def seed(
             counts[table] = len(data)
         for table in REPLACED_TABLES:
             pg.execute(f"DELETE FROM {table}")
-            if not db.scalar(
-                duck,
-                "SELECT count(*) FROM information_schema.tables WHERE table_name = ?",
-                [table],
-            ):
+            if not _has(duck, table):
                 continue  # an older local copy: `eb launch picks` / `eb sell-helper build` not run
             cols = _columns(duck, table)
             data = db.rows(duck, f"SELECT {', '.join(cols)} FROM {table}")

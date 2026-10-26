@@ -1,5 +1,5 @@
-"""Rebuild the curated mapping tables: tracked_item (price-mapping groups) and
-divination_card. Both loaders call refresh_mappings at the end of a load, and
+"""Rebuild the curated mapping tables: tracked_item (price-mapping groups),
+divination_card and card_reward_pool (what random card rewards can roll). Both loaders call refresh_mappings at the end of a load, and
 `eb exchange sync` calls it after refreshing the core pool."""
 
 import duckdb
@@ -8,6 +8,7 @@ from exiledbroker.config import Settings
 from exiledbroker.ingest.core_pool import CorePool, load_pool
 from exiledbroker.ingest.item_names import base_items_raw
 from exiledbroker.ingest.loot_filter import load_card_tiers
+from exiledbroker.normalize import card_rewards
 from exiledbroker.normalize.divination import cards_from_base_items
 from exiledbroker.normalize.tracked import GROUPS
 from exiledbroker.storage import db
@@ -95,8 +96,18 @@ def refresh_cards(con: duckdb.DuckDBPyConnection, settings: Settings, pool: Core
     return len(rows)
 
 
+def refresh_reward_pools(con: duckdb.DuckDBPyConnection, settings: Settings) -> int:
+    """Update card_reward_pool from config/card_rewards.toml against the known items'
+    names, changing only rows that differ. Returns the number of pool rows."""
+    items = db.rows(con, "SELECT id, canonical_name FROM item WHERE id LIKE 'currency:%'")
+    rows = card_rewards.pool_rows(card_rewards.load_pools(settings.card_rewards_file), items)
+    _sync_rows(con, "card_reward_pool", card_rewards.COLUMNS, 2, rows)
+    return len(rows)
+
+
 def refresh_mappings(con: duckdb.DuckDBPyConnection, settings: Settings) -> CorePool:
     pool = load_pool(con, settings)
     refresh_tracked(con, pool)
     refresh_cards(con, settings, pool)
+    refresh_reward_pools(con, settings)
     return pool
