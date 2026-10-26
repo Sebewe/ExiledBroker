@@ -33,6 +33,30 @@ few items; in web/ because the image's frontend build sees only web/), is what t
 tests use, backend and frontend (`web/src/test/preview.ts`). Regenerate it with
 `.venv/bin/python tests/fixtures/make_preview_sample.py` (no network).
 
+## Building it
+
+`eb preview build` (`src/exiledbroker/preview/build.py`; defaults: `-l Allflame --days
+1,3,5,7 --default-day 5 --next-day 10`) runs locally, where `data/` has the league's
+pages, and makes **no requests**: its client refuses every one, so a page missing from
+disk stops the build (and the last snapshot stands).
+
+- It replays the league into a throwaway DuckDB beside the research one
+  (`data/preview-build.duckdb`, deleted afterwards) with the live loader, as the worker
+  would have run at the end of each day (`sync_live(now = launch + day × 24 h)`), and
+  stores what the services answered then. A last load to `--next-day` gives the
+  reveal's documents (`next/…`, `d{day}/recap-next`).
+- What the services read besides the league's hours is copied from the research
+  database, **rewound**: the Launch history and Price check's per-league paths without
+  the replayed league or any later one, then the picks and the medians rebuilt from the
+  rest, so the preview never knows what happened next. The reference data (names, core
+  pool, card tiers) is today's, and the fitted constants (Price check's bands, the sell
+  helper's) stay as fitted: a few numbers across every league.
+- The snapshot replaces `preview_snapshot` in the research database in one
+  transaction; `version` is the build time plus a hash of the documents.
+- `eb site seed` copies the table to the site (it's one of `site.REPLACED_TABLES`,
+  replaced whole), and the pipeline's backup copies it to Supabase once per build
+  (its stamp: the document count and build time).
+
 ## Serving
 
 - `GET /api/preview/{key}` (`api/routes/preview.py`) sends a stored document as it is:

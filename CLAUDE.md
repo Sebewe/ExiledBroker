@@ -69,6 +69,7 @@ docker compose --profile worker up -d        # also the live worker (makes reque
 .venv/bin/eb mechanics check                          # check config/mechanics.toml (mechanic item lists: core pool, search labels) against the local database
 .venv/bin/eb sell-helper build                       # the stack seller's hour-of-day and stack constants (then `eb site seed`)
 .venv/bin/eb backtest run                             # replay the site's tools at fair and harsh prices for the Backtest page (then `eb site seed`)
+.venv/bin/eb preview build [-l Allflame]               # the pre-launch preview's snapshot, replayed from pages on disk, no requests (then `eb site seed`)
 scripts/ingest.sh [exchange|dumps|all|live]          # unattended runner, logs to data/logs/latest.log
 .venv/bin/eb site smoke https://exiledbroker.trade [--edge] [--origin <railway url>]   # after a deploy: every page and endpoint (~30 requests to our site)
 EB_BACKUP_URL=… .venv/bin/eb site backup [-l Allflame]   # sync the site's database (or the local copy's league) to the off-site backup

@@ -74,7 +74,6 @@ def engines(tmp_path_factory):
     duck = db.connect(s.db_path, read_only=True)
     # The same copy `eb site seed` makes; it also builds the schema on Postgres.
     site.seed(duck, pg, [LEAGUE])
-    snapshot.load_file(pg, PREVIEW_SAMPLE)  # until the seed copies it (preview stream B)
     # The live updates' log: the hosted pipeline writes it on Postgres itself (no seed).
     runs = db.rows(duck, "SELECT * FROM ingest_run")
     marks = ", ".join(["%s"] * len(runs[0]))

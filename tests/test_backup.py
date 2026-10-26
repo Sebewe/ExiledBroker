@@ -8,16 +8,19 @@ and a reference seeded from the local copy."""
 
 import os
 from datetime import datetime
+from pathlib import Path
 
 import pytest
 
 psycopg = pytest.importorskip("psycopg")  # the Postgres extra; CI's main job runs without it
 
+from exiledbroker.preview import snapshot
 from exiledbroker.storage import backup, db
 from test_pipeline import LEAGUE, _dump, _seed, local, needs_pg, run  # noqa: F401
 
 pytestmark = needs_pg
 NAMES = ("eb_site", "eb_backup", "eb_ref")
+PREVIEW_SAMPLE = Path(__file__).parents[1] / "web" / "src" / "test" / "preview_sample.json"
 
 
 @pytest.fixture
@@ -415,3 +418,26 @@ def test_usage_totals_are_backed_up_but_never_the_visitor_ids(local, dbs):  # no
     ):
         backup.sync(src, lost, hosted(s, dbs, exchange_pages="database"))
         assert db.scalar(lost, "SELECT sum(views) FROM usage_daily") == 2
+
+
+def test_the_preview_snapshot_is_backed_up_once_a_build(local, dbs, monkeypatch):  # noqa: F811
+    """`eb preview build`, seeded: copied to the backup once, then only its stamp is read
+    until the next build."""
+    s, server = local
+    with db.session(s.db_path) as con:
+        snapshot.load_file(con, PREVIEW_SAMPLE)
+    _seed(s, dbs["eb_site"])
+    reads = BackupReads(monkeypatch)
+    first, _ = run(hosted(s, dbs), server, 9)
+    assert "preview" in first.backup.tables
+    assert_same(dbs["eb_site"], dbs["eb_backup"])
+
+    before = reads.bytes
+    second, _ = run(hosted(s, dbs), server, 10)
+    assert "preview" not in second.backup.tables
+    assert reads.bytes - before < 2_000, reads.bytes - before
+
+    with psycopg.connect(dbs["eb_site"], autocommit=True) as con:  # a new build, seeded
+        snapshot.load_file(con, PREVIEW_SAMPLE)
+    assert backup.back_up(hosted(s, dbs)).tables == ["preview"]
+    assert_same(dbs["eb_site"], dbs["eb_backup"])
