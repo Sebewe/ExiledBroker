@@ -92,26 +92,27 @@ export function usePriceCheckItem(league: string | undefined, itemId: string | u
 }
 
 /** The preview's reveal: the item's series past the chosen day, to day 10. Only in the
- *  preview (disabled otherwise). */
-export function usePreviewItemNext(itemId: string | undefined) {
+ *  preview (disabled otherwise); `enabled` false holds it until the reveal is opened. */
+export function usePreviewItemNext(itemId: string | undefined, enabled = true) {
   const preview = usePreview()
   const key = itemId ? previewKey.itemNext(itemId) : ''
   return useQuery({
     queryKey: ['preview', key, preview.version],
     queryFn: () => fetchPreview<PreviewItemNext>(key, preview.version),
-    enabled: preview.on && !!itemId,
+    enabled: enabled && preview.on && !!itemId,
   })
 }
 
 /** The preview's reveal on the recap: whether the chosen day's trades kept paying over
- *  the next 24 hours. Only in the preview (disabled otherwise). */
-export function usePreviewRecapNext() {
+ *  the next 24 hours. Only in the preview (disabled otherwise); `enabled` false holds it
+ *  until the reveal is opened. */
+export function usePreviewRecapNext(enabled = true) {
   const preview = usePreview()
   const key = previewKey.recapNext(preview.day)
   return useQuery({
     queryKey: ['preview', key, preview.version],
     queryFn: () => fetchPreview<PreviewRecapNext>(key, preview.version),
-    enabled: preview.on,
+    enabled: enabled && preview.on,
   })
 }
 

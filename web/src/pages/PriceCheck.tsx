@@ -11,6 +11,7 @@ import { LazyChart } from '../components/LazyChart'
 import { Notice } from '../components/Notice'
 import { Empty } from '../components/Opportunity'
 import { Skeleton } from '../components/QueryState'
+import { ItemReveal } from '../components/RevealItem'
 import { PageHeader } from '../components/Section'
 import { BestHours, Stack } from '../components/StackSeller'
 import { bandsOf } from '../lib/impact'
@@ -32,6 +33,7 @@ import {
   VERDICT_WORD,
   type Range,
 } from '../lib/priceCheck'
+import { usePreview } from '../lib/preview'
 import { queryFallback } from '../lib/queryFallback'
 import { useLeague } from '../lib/useLeague'
 import { trackFeature } from '../lib/usage'
@@ -227,6 +229,7 @@ function ItemView({
   money: Money
 }) {
   const q = usePriceCheckItem(league, itemId)
+  const preview = usePreview()
   const [params] = useSearchParams()
   const movers = new URLSearchParams(params)
   for (const k of ['item', 'range', 'qty']) movers.delete(k)
@@ -265,6 +268,8 @@ function ItemView({
         {item.label && <span className="text-sm text-faint">{item.label}</span>}
       </header>
       <VerdictCard item={item} />
+      {/* The preview's reveal, closed again for another item or day. */}
+      {preview.on && <ItemReveal key={`${item.item_id}@${preview.day}`} item={item} />}
       <PriceChart item={item} info={info} />
       <Selling item={item} money={shown} divineChaos={info.divine_chaos} />
       {!chaosOnly && <LaunchPrices item={item} money={money} divineChaos={info.divine_chaos} />}
