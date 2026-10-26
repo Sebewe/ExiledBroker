@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes } from 'react-router'
 import { Layout } from './components/Layout'
+import { Research } from './components/Research'
 import { Skeleton } from './components/QueryState'
 import Missed from './pages/Missed'
 import NotFound from './pages/NotFound'
@@ -21,7 +22,18 @@ export default function App() {
       <Suspense fallback={<Skeleton />}>
         <Routes>
           <Route index element={<Missed />} />
-          <Route path="backtest" element={<Backtest />} />
+          {/* Research: the proof and the notes behind the tools, apart from the pages a
+              player trades from. The Backtest moved here on 2026-10-26. */}
+          <Route path="research" element={<Navigate to="/research/backtest" replace />} />
+          <Route
+            path="research/backtest"
+            element={
+              <Research>
+                <Backtest />
+              </Research>
+            }
+          />
+          <Route path="backtest" element={<Navigate to="/research/backtest" replace />} />
           {/* Retired: their loops and cards are on the Market recap now. */}
           <Route path="arbitrage" element={<Navigate to="/#loops" replace />} />
           <Route path="cards" element={<Navigate to="/#cards" replace />} />

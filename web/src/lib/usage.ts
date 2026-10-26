@@ -3,7 +3,7 @@
 // id, nothing stored in this browser. Visitors with Do-Not-Track or Global Privacy
 // Control on send nothing. The names must be in the server's list (usage.EVENTS).
 
-export const PAGES = ['/', '/launch', '/price-check', '/conversions', '/backtest', '/about'] as const
+export const PAGES = ['/', '/launch', '/price-check', '/conversions', '/research/backtest', '/about'] as const
 export type Feature =
   | 'league'
   | 'theme'

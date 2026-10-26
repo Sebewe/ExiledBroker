@@ -36,8 +36,8 @@ afterEach(() => {
 describe('remembered settings', () => {
   it('keeps each page’s settings when switching pages from the menu', () => {
     renderAt('/launch?window=days2_4')
-    fireEvent.click(screen.getByRole('link', { name: /Backtest/ }))
-    expect(screen.getByTestId('where').textContent).toBe('/backtest')
+    fireEvent.click(screen.getByRole('link', { name: /About/ }))
+    expect(screen.getByTestId('where').textContent).toBe('/about')
     fireEvent.click(screen.getByRole('link', { name: /Launch market/ }))
     expect(screen.getByTestId('where').textContent).toBe('/launch?window=days2_4')
   })
@@ -68,12 +68,19 @@ describe('menu', () => {
     expect(recap.className).not.toMatch(/(^| )bg-accent( |$)/)
   })
 
-  it('sets the Backtest apart in blue, as the proof of concept', () => {
+  it('keeps the Backtest out of the trading menu, behind Research, set apart in blue', () => {
     renderAt('/')
-    const backtest = screen.getByRole('link', { name: /Backtest/ })
-    expect(backtest.className).toMatch(/border-info/)
-    expect(backtest.className).not.toMatch(/accent/)
-    expect(backtest).toHaveAttribute('title', expect.stringMatching(/^Proof of concept/))
+    expect(screen.queryByRole('link', { name: /Backtest/ })).not.toBeInTheDocument()
+    const research = screen.getByRole('link', { name: /Research/ })
+    expect(research).toHaveAttribute('href', '/research')
+    expect(research.className).toMatch(/border-info/)
+    expect(research.className).not.toMatch(/accent/)
+    expect(research).toHaveAttribute('title', expect.stringMatching(/^The proof behind the tools/))
+  })
+
+  it('lights Research on every page under it', () => {
+    renderAt('/research/backtest')
+    expect(screen.getByRole('link', { name: /Research/ })).toHaveAttribute('aria-current', 'page')
   })
 })
 
