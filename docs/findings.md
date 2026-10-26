@@ -1,6 +1,6 @@
 # Findings (phase 2)
 
-Patterns from past leagues' launch fortnights. Each is reproducible locally from the functions named under it (`analysis/launch_patterns.py`, `services/`), with the leagues it rests on. The analysis tools aren't on the site.
+Patterns from past leagues' launch fortnights. Each is reproducible locally from the functions named under it (`analysis/launch_patterns.py`, `services/`), with the leagues it rests on. The analysis tools aren't on the site, but these notes are: the Research journal (`/research`) renders each numbered finding as a note (its italic first line is "How it was computed", the first date in it is the note's date, "finding N" and links to other findings become note links). After editing this file, run `cd web && npm run gen:notes`; a test fails until you do.
 
 Recent leagues are the best reference: the economy changes every league, and the currency exchange (Settlers, 2024-07) was a structural break. Summaries are recency-weighted (half-life 2 leagues by default).
 

@@ -68,7 +68,7 @@ Prediction(run_id, league_id, item_id, horizon_day, p10, p50, p90, rationale)
 
 ## Planned site structure
 
-The site is splitting into a **Trade** section and a **Research** section with preloaded data and graphs. The first step is done: the Backtest lives under Research at `/research/backtest` (2026-10-26). The rest follows the plan doc; build it step by step as the user approves.
+The site is splitting into a **Trade** section and a **Research** section with preloaded data and graphs. Research is built (2026-10-26): `/research` is a journal of the findings, with How the tools work, the Backtest, Multi-layered conversions and About under it. Still to come, as the user approves: simplifying the Trade pages (a summary line, hiding empty sections, the header search) and the History graphs, which need their own precomputed views.
 
 ## Add-ons
 

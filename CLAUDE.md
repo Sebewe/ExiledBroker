@@ -54,7 +54,8 @@ EB_DATABASE_URL=postgresql://eb:eb@localhost:55432/exiledbroker .venv/bin/eb ser
 cd web && npm install
 npm run dev          # http://localhost:5173, proxies /api to `eb serve` on :8000
 npm run gen:api      # after changing API models: regenerate openapi.json + src/api/schema.d.ts
-npm run typecheck && npm run lint && npm test && npm run build
+npm run gen:notes    # after editing docs/findings.md: regenerate the Research journal (src/research/notes.json)
+npm run typecheck && npm run lint && npm test && npm run build && npm run check:bundle   # first-visit and chart-chunk size budgets
 
 # The image Railway runs (web: API + built frontend; pipeline: eb pipeline run, hourly)
 docker compose up -d --build api             # the site as hosted, on http://localhost:8000
@@ -122,7 +123,7 @@ Target: everything on Railway Hobby ($5 a month including $5 of usage): web, Pos
 - **What to fetch is decided by the database, not the disk** (`exchange_loader.needs_rebuild` / `loaded_hours`), not by which pages are stored. Reference data (RePoE names, core-pool snapshots, loot-filter tiers) lives in `reference_data` (`ingest/reference.py`). **Never download data we already have:** market hours are immutable and fetched once; reference sources go through `reference.fetch_if_changed`, which checks at most every `max_age` (RePoE weekly, pool and tiers daily; `eb exchange sync --refresh` checks now) using conditional requests (stored ETag / Last-Modified), so an unchanged source answers 304 and nothing is downloaded.
 - **The full list** of known cost issues and performance findings, with their status, is in `docs/hosting.md`.
 - **Performance is measured, not guessed.** CI (`.github/workflows/ci.yml`) runs lint, all tests and a Postgres 17 job. `tests/test_performance.py` budgets each page's reads, checks that live pages don't read more as history accumulates, and checks each live update's requests and writes (via `ingest_run`). When a change legitimately needs more, raise the budget in the same change and say why. Perf tooling stays local or in CI; nothing goes on the public site (a server-side dev panel later, if needed).
-- **Trade / Research split (in progress):** the site is splitting into a **Trade** section and a **Research** section with preloaded data and graphs. The Backtest has moved to Research (`/research/*`, `components/Research.tsx`, its pages listed in `lib/research.ts`); build further steps only as the user approves them.
+- **Trade / Research split (in progress):** the main menu is the Trade pages plus **Research** (`/research/*`: `components/Research.tsx` lays it out, `lib/research.ts` lists its pages, `pages/research/`). Its journal is `docs/findings.md` rendered at build time into `web/src/research/notes.json` (`npm run gen:notes`; `research/notes.test.ts` fails if it drifts), a lazy chunk, so it costs the server nothing. Trading pages link their method to `/research/method#<anchor>` instead of carrying it inline. Build further steps (Trade simplification, History graphs) only as the user approves them.
 
 ## Scope rules (decided by the user)
 

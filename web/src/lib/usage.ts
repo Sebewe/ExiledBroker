@@ -3,7 +3,17 @@
 // id, nothing stored in this browser. Visitors with Do-Not-Track or Global Privacy
 // Control on send nothing. The names must be in the server's list (usage.EVENTS).
 
-export const PAGES = ['/', '/launch', '/price-check', '/conversions', '/research/backtest', '/about'] as const
+export const PAGES = [
+  '/',
+  '/launch',
+  '/price-check',
+  '/research',
+  '/research/notes', // every note counts here, not one name each
+  '/research/method',
+  '/research/backtest',
+  '/research/conversions',
+  '/research/about',
+] as const
 export type Feature =
   | 'league'
   | 'theme'
@@ -17,6 +27,7 @@ export type Feature =
 /** The page's name for a path: one of PAGES, or "/not-found". */
 export function pageOf(pathname: string): string {
   const path = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname
+  if (/^\/research\/notes\/\d+$/.test(path)) return '/research/notes'
   return (PAGES as readonly string[]).includes(path) ? path : '/not-found'
 }
 

@@ -1,4 +1,5 @@
 import { Crown, Flame, Sprout, TrendingDown } from 'lucide-react'
+import { Link } from 'react-router'
 import type { LaunchPick, LaunchWindow, LiveLeague } from '../api/client'
 import { useLaunchPicks, useStatus } from '../api/queries'
 import { ItemName } from '../components/ItemLink'
@@ -299,22 +300,14 @@ function PickRow({ p, w, isNow }: { p: LaunchPick; w: LaunchWindow; isNow: boole
   )
 }
 
+/** Where the picks come from, in one line; the method is on Research's How the tools work. */
 function HowRanked({ w }: { w: LaunchWindow }) {
   return (
-    <details className="rounded-lg border border-border bg-surface px-4 py-3 text-sm text-muted">
-      <summary className="cursor-pointer font-medium text-text">How these are picked</summary>
-      <ul className="mt-2 flex list-disc flex-col gap-1.5 pl-5 leading-relaxed">
-        <li>
-          From {w.leagues.join(', ')} (newest first; each league back counts a bit less). For each item: its median price in {days(w).toLowerCase()} against its
-          median price on days {w.sell_first}–{w.sell_last}, in Divines, so a pick has to beat simply holding Divines.
-        </li>
-        <li>
-          Only items costing at most {BUDGET} div each, with at least 20 div traded a day, that traded in at least 3 of the leagues. That leaves out each
-          league's own currency (like Dead Man's Sulphur), which doesn't carry over. {w.candidates} items qualified.
-        </li>
-        <li>Ranked on the typical gain, the worst league's result and how much trades, so a reliable riser beats a one-off spike.</li>
-        <li>Past leagues aren't a promise: buy and sell prices move within the hour, and a league's mechanics can change what's in demand.</li>
-      </ul>
-    </details>
+    <p className="text-xs text-faint">
+      Ranked from {w.leagues.join(', ')}, among {w.candidates} items at most {BUDGET} div each.{' '}
+      <Link to="/research/method#launch-picks" className="hover:text-info">
+        How these are picked →
+      </Link>
+    </p>
   )
 }

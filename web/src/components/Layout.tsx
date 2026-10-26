@@ -1,30 +1,32 @@
-import { Book, BookOpen, CandlestickChart, FlaskConical, Hourglass, Moon, Network, Scale, Sun } from 'lucide-react'
+import { Book, CandlestickChart, FlaskConical, Hourglass, Moon, Scale, Sun } from 'lucide-react'
 import { useEffect, type ReactNode } from 'react'
-import { NavLink, useLocation } from 'react-router'
+import { Link, NavLink, useLocation } from 'react-router'
 import { useRememberedSettings } from '../lib/rememberSettings'
+import { useScrollOnNavigate } from '../lib/scroll'
 import { useTheme } from '../lib/theme'
 import { trackFeature, trackPage } from '../lib/usage'
 import { FreshnessBadge } from './Freshness'
 import { RESEARCH } from '../lib/research'
 import { SocialLinks } from './Social'
 
-// `featured`: the pages to start from, lit up in the bar. `proof`: Research (the Backtest
-// and, later, the notes), set apart in blue as the proof behind the tools, not a tool to use.
+// `featured`: the pages to start from, lit up in the bar. `proof`: Research (the journal,
+// the Backtest, how the tools work, About), set apart in blue as the proof behind the tools,
+// not a tool to use.
 // The page you're on is filled solid, so it never reads as just another lit-up page.
 type Nav = { to: string; label: string; icon: typeof Book; end?: boolean; featured?: boolean; proof?: boolean; hint?: string }
 const NAV: Nav[] = [
   { to: '/', label: 'Market recap', icon: Hourglass, end: true, featured: true },
   { to: '/price-check', label: 'Price check', icon: Scale, featured: true },
   { to: '/launch', label: 'Launch market', icon: CandlestickChart },
-  { to: '/conversions', label: 'Multi-layered conversions', icon: Network },
-  { to: '/research', label: 'Research', icon: FlaskConical, proof: true, hint: 'The proof behind the tools: how they did on past leagues' },
-  { to: '/about', label: 'About', icon: BookOpen },
+  { to: '/research', label: 'Research', icon: FlaskConical, proof: true, hint: 'The proof behind the tools: the journal, the Backtest and how the tools work' },
 ]
 
 /** The tab's title for a path: the page's name first, so tabs and bookmarks tell pages apart. */
 export function pageTitle(pathname: string): string {
+  const note = /^\/research\/notes\/(\d+)$/.exec(pathname)
+  if (note) return `Note ${note[1]} · Research · ExiledBroker`
   const research = RESEARCH.find(({ to }) => pathname === to)
-  if (research) return `${research.label} · Research · ExiledBroker`
+  if (research) return pathname === '/research' ? 'Research · ExiledBroker' : `${research.label} · Research · ExiledBroker`
   const page = NAV.find(({ to }) => to !== '/' && (pathname === to || pathname.startsWith(`${to}/`)))
   if (page) return `${page.label} · ExiledBroker`
   return pathname === '/' ? 'Market recap · ExiledBroker' : 'ExiledBroker'
@@ -34,6 +36,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const linkTo = useRememberedSettings()
   const [theme, toggleTheme] = useTheme()
   const { pathname } = useLocation()
+  useScrollOnNavigate()
   useEffect(() => {
     document.title = pageTitle(pathname)
     // Counted once the visitor has stayed a moment, so a redirect isn't a page view.
@@ -102,7 +105,10 @@ export function Layout({ children }: { children: ReactNode }) {
       </main>
       <footer className="mx-auto max-w-7xl px-4 pt-4 pb-8 text-xs text-faint">
         Hourly prices from Grinding Gear Games' public currency exchange history. Not affiliated with or endorsed
-        by Grinding Gear Games or poe.ninja.
+        by Grinding Gear Games or poe.ninja.{' '}
+        <Link to="/research/about" className="underline-offset-2 hover:text-text hover:underline">
+          About and data sources
+        </Link>
       </footer>
     </div>
   )

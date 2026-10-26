@@ -43,9 +43,12 @@ PAGES = [
     "/",
     "/launch",
     "/price-check",
-    "/conversions",
+    "/research",
+    "/research/notes",
+    "/research/method",
     "/research/backtest",
-    "/about",
+    "/research/conversions",
+    "/research/about",
     "/not-found",
 ]
 FEATURES = [
