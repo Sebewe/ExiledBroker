@@ -69,6 +69,18 @@ class Settings(BaseSettings):
     next_league_start: datetime | None = None
     # Origins allowed to call the API from a browser (the future public frontend).
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:5173"]
+    # The API's docs (/docs, /redoc, /openapi.json). Handy locally; off in the image
+    # (Dockerfile), so the hosted site doesn't hand out a map of itself.
+    api_docs: bool = True
+    # A shared secret Cloudflare adds to every request it sends to the origin, as the
+    # X-EB-Origin-Key header (a transform rule, docs/go-live.md). Set: requests without
+    # it get 403, so nobody can skip Cloudflare's cache and limits by calling the
+    # *.up.railway.app address directly (api/guard.py). Unset: no check (local, tests).
+    origin_key: str | None = None
+    # Requests a minute one visitor (by address, api/guard.py) may make to /api
+    # before getting 429. Applied only with `origin_key`, the only case where that
+    # header can be trusted. Counts what reaches the origin, so edge cache hits are free.
+    api_rate_limit: int = 120
 
     # Outbound HTTP. poe.ninja asks for a descriptive User-Agent with a contact.
     user_agent: str = f"ExiledBroker/{__version__} (+https://github.com/Sebewe/ExiledBroker)"

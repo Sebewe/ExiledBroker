@@ -40,7 +40,7 @@ def status(response: Response) -> dict:
     response.headers["Cache-Control"] = STATUS_CACHE
     return {
         "now": deps.now_utc(),
-        "data_version": deps.data_version(),
+        "data_version": deps.public_version(),
         "leagues": leagues,
         "upcoming": upcoming(leagues),
     }

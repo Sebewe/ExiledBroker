@@ -224,3 +224,34 @@ def test_the_seed_makes_up_the_pool_lists_the_copy_lacks():
     listed = {n for t in made for n in reference[core_pool.snapshot_key(t)]["names"]}
     outputs = {n for m in mechanics.load_mechanics(Settings()) for n in m.outputs}
     assert listed == outputs
+
+
+def test_the_synthetic_copy_trades_every_market_and_loads(tmp_path, monkeypatch):
+    """synthetic.py stands in for the local copy where there is no real data: every
+    market of the template trades each made-up hour, and both leagues load as `eb live
+    sync` loads them, from pages served in-process (nothing reaches GGG)."""
+    import duckdb
+    import synthetic
+
+    with gzip.open(synthetic.FIXTURE, "rt") as f:
+        fixture = json.load(f)
+    template = fixture["pages"][max(fixture["pages"])]["markets"]
+    hours = synthetic.made_up_hours(template, 0, 3)
+    assert len(hours) == 3
+    for markets in hours.values():
+        assert len(markets) == len(template)
+        assert all(v > 0 for m in markets for v in m["volume_traded"].values())
+    assert synthetic.made_up_hours(template, 0, 3) == hours  # the same every run
+
+    monkeypatch.setattr(sys, "argv", ["synthetic.py", str(tmp_path), "--hours", "6"])
+    monkeypatch.setattr(synthetic, "PAST_HOURS", 6)  # this checks the load, not the size
+    synthetic.main()
+    con = duckdb.connect(str(tmp_path / "exiledbroker.duckdb"), read_only=True)
+    loaded = dict(
+        con.execute(
+            "SELECT l.name, count(*) FROM exchange_hour_loaded h "
+            "JOIN league l ON l.id = h.league_id GROUP BY l.name"
+        ).fetchall()
+    )
+    con.close()
+    assert loaded == {"Allflame": 6, "Mirage": 6}

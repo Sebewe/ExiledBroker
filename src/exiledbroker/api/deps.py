@@ -48,6 +48,12 @@ Version = Annotated[
 ]
 
 CACHE_CONTROL = "public, max-age=30"  # browsers revalidate with the ETag after this
+# A table asked for with the current `v` (its URL names this hour and this deploy) never
+# changes under that URL: browsers and Cloudflare's edge keep it for the hour without
+# asking again. Any other `v` (none, a page behind, or one ahead of this server's 15 s
+# view of the version) gets the short CACHE_CONTROL, so a URL is never pinned to data
+# older than the hour it names. 6 hours matches the page's saved cache (lib/persist.ts).
+VERSIONED_CACHE_CONTROL = "public, max-age=21600, immutable"
 
 
 def _code_version() -> str:
@@ -140,6 +146,15 @@ def data_version(force: bool = False) -> str | None:
         results.keep_only(lambda key: key[-1] == value)
         items.keep_only(lambda key: key[-1] == value)
     return value
+
+
+def public_version() -> str | None:
+    """The data version as `/api/status` sends it and pages send back as `v`: when the
+    latest load finished, plus the code version. A deploy then gives every table a new
+    URL too, so no browser or edge copy cached from the old code (which may differ in
+    shape) is reused by the new frontend."""
+    version = data_version()
+    return f"{version}~{CODE_VERSION}" if version else None
 
 
 # --- Rows -----------------------------------------------------------------------
@@ -249,8 +264,11 @@ _stamped: dict[tuple, tuple[Any, Payload]] = {}
 
 def respond(request: Request, view: View) -> Response:
     """Send the view's cached bytes: 304 if the client has them, gzipped if it can."""
+    v = request.query_params.get("v")
+    current = v is not None and v == public_version()
     p = payload(view)
-    headers = {"ETag": p.etag, "Cache-Control": CACHE_CONTROL, "Vary": "Accept-Encoding"}
+    cache_control = VERSIONED_CACHE_CONTROL if current else CACHE_CONTROL
+    headers = {"ETag": p.etag, "Cache-Control": cache_control, "Vary": "Accept-Encoding"}
     if request.headers.get("if-none-match") == p.etag:
         return Response(status_code=304, headers=headers)
     if "gzip" in request.headers.get("accept-encoding", ""):
