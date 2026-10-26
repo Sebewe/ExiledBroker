@@ -1,6 +1,33 @@
 # Roadmap
 
-The longer-term design: what the tool is meant to predict, and the phases not yet built. Current progress is in the [README's Status table](../README.md#status).
+The longer-term design: what the tool is meant to predict, and the phases not yet built. Current progress and the next steps are below; how the system is built is in [architecture.md](architecture.md).
+
+## Status
+
+| Phase | Goal | State |
+|---|---|---|
+| 0 | Scaffolding: package, CLI, schema, config, service layer | ✅ Done |
+| 1 | Historical ingest: daily poe.ninja dumps + hourly GGG exchange, league calendar, price mappings, core pool, divination cards | ✅ All 32 challenge leagues daily; hourly for the four exchange-era leagues and the current league (Allflame) |
+| 2 | Exploration: recurring launch-week patterns (`analysis/`), loops and card turn-ins (now on the Market recap) | ✅ Run across all five exchange-era leagues: what repeats is [finding 10](findings.md#10-what-repeats-across-the-five-exchange-era-leagues) |
+| 3 | Patch corpus: scraper, extractor, review tool | ⬜ |
+| 4 | Baseline + backtest: first honest accuracy numbers | 🟨 The site's tools backtested at fair and harsh prices: Launch picks pay, hourly tools at best break even ([finding 4](findings.md#4-backtest-the-launch-picks-pay-the-hourly-tools-at-best-break-even), the Backtest page) |
+| 5 | Signals: "farm X", "buy Y on day 2, sell day 6" | 🟨 The Farming page's mechanic ranking is retired (2026-10-25); the Price check page replaces it: one item's price in Chaos and Divines, a sell-or-hold verdict if one beats "no change", the stack seller and the best hour to sell ([findings 6–8](findings.md), [price-check.md](price-check.md)). Built end to end (data, API, page, seed, backup, the pipeline adds each finished league's paths); the 375 px check is left |
+| 6 | Live mode: hourly ingest of the running league, live arbitrage view, later drift alerts | 🟨 Live feed and Market recap page built; alerts not started (the poe.ninja poller is dropped with uniques, 2026-10-25) |
+| 7 | Hosted site: React on the JSON API, all on Railway (web, Postgres, hourly pipeline), with an off-site backup on Supabase | 🟨 Built and simulated locally with Railway's billing ($2.7–3.7 a month of usage at 10–100 daily visitors, ~$4.9 estimated at 1000, inside the $5 Hobby fee); the backup is seeded; the Cloudflare fallback Worker (`deploy/cloudflare/`) and the pipeline's failure alert (`EB_HEALTHCHECK_URL`) are built; not deployed |
+
+Legend: ⬜ not started · 🟨 in progress · ✅ done. Phases 1–2 alone are useful: knowing which categories reliably spike in the first week is already an edge.
+
+## Next steps
+
+The next league launches in about a month. Before then:
+
+- **Go live on Railway** (waiting on Railway reopening signups): the checklist is [go-live.md](go-live.md). The code side is done (Postgres-only server, rehearsed league switch, fallback Worker, failure alert); what's left is account setup: the Railway project, the healthchecks.io check, an uptime monitor, Cloudflare in front, then the seed and catch-up test. Each deploy is checked with `eb site smoke <url>`; launch day and rollback are sections 9 and 10, and Fly.io / Render are compared in [hosting.md](hosting.md#if-railway-stays-closed-flyio-or-render) in case Railway stays closed.
+- **Register the new league** once its name and date are announced (`eb exchange sync -l "<Name>" --start <date>`), so the site shows "waiting for the first trades" from launch.
+
+After that:
+- **Phase 2 again on the next league** once its fortnight is complete (~2026-11-27): the first out-of-sample check of [finding 10](findings.md).
+- **Site split** into Trade and Research sections: Research is built (journal, How the tools work, Backtest, Multi-layered conversions, About); next are the Trade pages' simplification and the History graphs (plan under [Planned site structure](#planned-site-structure)).
+
 
 ## The goal
 
