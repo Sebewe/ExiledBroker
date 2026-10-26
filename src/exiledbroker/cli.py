@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from datetime import UTC, date, datetime, timedelta
 from typing import Annotated
 
+import duckdb
 import httpx
 import typer
 import uvicorn
@@ -54,7 +55,23 @@ def serve(
     reload: bool = typer.Option(False, help="Auto-reload on code changes (dev only)."),
 ) -> None:
     """Run the API locally."""
+    _upgrade_local_copy(get_settings())
     uvicorn.run("exiledbroker.api.app:app", host=host, port=port, reload=reload)
+
+
+def _upgrade_local_copy(settings) -> None:
+    """Bring an older local copy up to the current schema before the API reads it: the
+    API opens DuckDB read-only, so a table added since the last load (card_reward_pool)
+    would otherwise be missing until the next load. Skipped when serving Postgres, and
+    when another process holds the file (its next load does the same)."""
+    if settings.database_url or not settings.db_path.exists():
+        return
+    try:
+        with db.session(settings.db_path) as con:
+            db.init_schema(con)
+            mappings.refresh_reward_pools(con, settings)
+    except duckdb.IOException as e:
+        typer.echo(f"Serving the local copy as it is (it's in use: {e})", err=True)
 
 
 def _local_state(settings, dump) -> str:
