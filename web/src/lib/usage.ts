@@ -23,6 +23,12 @@ export type Feature =
   | 'price-check-item'
   | 'price-check-range'
   | 'price-check-stack'
+  // The pre-launch preview (docs/preview.md)
+  | 'preview-day' // picked another day of the rewound league
+  | 'preview-reveal' // opened "what happened next"
+  | 'preview-cta' // followed the preview's call to action
+  | 'portfolio-add' // paper portfolio (v2): staked an item
+  | 'portfolio-step' // paper portfolio (v2): stepped forward a day
 
 /** The page's name for a path: one of PAGES, or "/not-found". */
 export function pageOf(pathname: string): string {

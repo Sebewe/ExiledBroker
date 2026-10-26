@@ -6,6 +6,7 @@ import type { Upcoming } from '../api/client'
 import { clock, launchDay } from '../lib/countdown'
 import { utcHour } from '../lib/format'
 import { usePreview } from '../lib/preview'
+import { trackFeature } from '../lib/usage'
 
 // The pre-launch preview's shell (docs/preview.md): the header's "Preview" pill, the strip
 // under the header saying what's shown and when the next league launches, and the day
@@ -83,7 +84,10 @@ export function DayPicker() {
             role="radio"
             aria-checked={active}
             aria-label={`Day ${d}`}
-            onClick={() => preview.setDay(d)}
+            onClick={() => {
+              if (!active) trackFeature('preview-day')
+              preview.setDay(d)
+            }}
             className={`num min-h-8 min-w-8 cursor-pointer rounded-md px-2 text-sm transition-colors duration-150 ${
               active ? 'bg-accent font-semibold text-bg' : 'text-muted hover:bg-accent/10 hover:text-text'
             }`}

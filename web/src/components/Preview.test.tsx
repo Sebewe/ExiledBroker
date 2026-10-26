@@ -7,6 +7,7 @@ import { PREVIEW_MANIFEST, previewStatus } from '../test/preview'
 import { FreshnessBanner } from './Freshness'
 import { Layout } from './Layout'
 import { clock } from '../lib/countdown'
+import { trackPage } from '../lib/usage'
 
 function Where() {
   const l = useLocation()
@@ -86,6 +87,19 @@ describe('preview shell', () => {
     fireEvent.click(screen.getByRole('link', { name: /Research/ }))
     expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Preview' })).toBeInTheDocument()
+  })
+
+  it('counts picking another day as a preview-day use', async () => {
+    const beacon = vi.fn((_url: string) => true)
+    Object.defineProperty(navigator, 'sendBeacon', { value: beacon, configurable: true })
+    trackPage('/') // a new page view: features count afresh
+    renderAt('/', previewStatus())
+    const days = () => beacon.mock.calls.filter(([url]) => url.includes('preview-day'))
+    fireEvent.click(await screen.findByRole('radio', { name: 'Day 2' })) // already shown
+    expect(days()).toHaveLength(0)
+    fireEvent.click(screen.getByRole('radio', { name: 'Day 3' }))
+    expect(days()).toEqual([['/api/hit?e=feature%3Apreview-day']])
+    Object.defineProperty(navigator, 'sendBeacon', { value: undefined, configurable: true })
   })
 
   it('ignores a day the snapshot does not have', async () => {

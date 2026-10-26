@@ -50,12 +50,12 @@ What the last four switches on disk show (Settlers → Mercenaries → Keepers �
 - [ ] Variables:
   - web: `EB_DATABASE_URL`, and `EB_ADMIN_TOKEN` (32+ random characters, sealed) for the admin page ([admin.md](admin.md));
   - pipeline: `EB_DATABASE_URL` (both set to Postgres's private URL), `EB_BACKUP_URL` = Supabase's session-pooler URL, sealed ([supabase.md](supabase.md#the-connection-string)), and `EB_HEALTHCHECK_URL` = the healthchecks.io ping URL, sealed (item 5);
-  - **both** services: `EB_NEXT_LEAGUE` / `EB_NEXT_LEAGUE_START` before a launch (the web service shows the countdown, the pipeline switches leagues).
+  - **both** services: `EB_NEXT_LEAGUE_START=2026-11-13` now (the date is all GGG has announced: it turns the pre-launch preview on, section 11, and the pipeline ignores a date alone), then `EB_NEXT_LEAGUE` and the full time once they're announced (the web service shows the countdown, the pipeline switches leagues).
 - [x] **Domain on Cloudflare (2026-10-25).** `exiledbroker.trade` and `www` are proxied `AAAA 100::` placeholder records (Cloudflare's "no origin" address, until launch: then the root record points at Railway, section 7). SSL/TLS is Full (strict), Always Use HTTPS is on, and a redirect rule sends `www` to the root domain (301, path and query kept). HSTS is off until the site is live. Until the Worker is deployed the domain answers 522 (no origin).
 - [ ] Deploy the Worker once the web service is up: `ORIGIN` in `deploy/cloudflare/wrangler.toml` (the route is already `exiledbroker.trade/*`), `npx wrangler login` (interactive, the user) and `npx wrangler deploy`.
 - [ ] Optional: Cloudflare Access (free) on `/admin*` and `/api/admin*` in front of the admin token ([admin.md](admin.md#once-deployed)).
 - [ ] Railway waits for CI before deploying a push to `main` (decided 2026-10-23: turn on "Wait for CI" on both app services).
-- Go live first on the current league (Allflame) as a demo people can try; the next league launches around 2026-11-13, not announced in detail yet. Set `EB_NEXT_LEAGUE` / `_START` on both services once its name and start time are out.
+- ~~Go live first on the current league (Allflame) as a demo people can try.~~ Replaced 2026-10-26: go live with the **pre-launch preview** (section 11), Allflame rewound to its first week. The next league launches 2026-11-13 (PST); its name and time aren't announced yet. Set `EB_NEXT_LEAGUE` and the full `EB_NEXT_LEAGUE_START` on both services once they're out.
 
 ### 4. Seed, then catch up (first run)
 
@@ -110,6 +110,7 @@ The code side is done (2026-10-26, [security.md](security.md)): the Worker refus
 
 The site matters most in a league's first hours, when traffic peaks and the data is thinnest. Times in UTC; GGG announces the launch time about a week ahead.
 
+- **Until then** only `EB_NEXT_LEAGUE_START=2026-11-13` is set (section 11): the site shows the preview and the launch date, and the pipeline keeps following Allflame.
 - **When the launch time is announced:** set `EB_NEXT_LEAGUE` (the league's exact name) and `EB_NEXT_LEAGUE_START` (e.g. `2026-11-13T20:00:00Z`) on **both** services and redeploy them. The web service shows the countdown; the pipeline keeps the old league until the new one's first published hour, then switches (section 2). No command is run by hand: the hosted pipeline finds the launch hour itself, from a day before `_START`. (Locally, `eb live sync -l <Name>` does the same for the research copy.) A wrong name or time only delays the switch: the pipeline searches from a day before `_START` and never picks Standard or an event league. Fix the variable and the next pass catches up.
 - **The day before:** run `eb site smoke` (section 6); check healthchecks.io is green and the uptime monitor is up; look at Railway's usage against the limits (section 5) and consider Workers Paid if a streamer is expected (section 7). Don't merge anything risky in the 24 hours around the launch.
 - **Hour zero** (the league opens at `:00`): the site shows the countdown, then "waiting for the first trades". GGG publishes the first hour a few minutes after it ends; the pass at the next `:06` loads it (≤ 8 requests to find it, then one an hour). Each page's empty and one-hour states are tested (`tests/test_league_switch.py`, the frontend's no-data tests). If the first hour hasn't loaded by `:30` after it ended, look at the pipeline's log in Railway (each pass prints one line saying what it loaded); a pass that found nothing new is retried by the next one, and the healthchecks.io email comes after 3 hours without data.
@@ -125,6 +126,35 @@ The site matters most in a league's first hours, when traffic peaks and the data
 - **DNS or Cloudflare:** the Worker's previous version is one click away (Workers, the Worker, Deployments, *Rollback*). To take the Worker out entirely, delete its route: the proxied DNS record then goes straight to Railway.
 
 If Railway's signups are still closed when it's time to deploy, [hosting.md](hosting.md#if-railway-stays-closed-flyio-or-render) compares Fly.io and Render and lists what changes in this checklist.
+
+### 11. The preview and the Reddit announcement
+
+Before the launch the site is a **preview** ([preview.md](preview.md)): Allflame rewound to its first week, with a day picker and a "what happened next" reveal. It's how the site is first announced (Reddit, [announcement.md](announcement.md)) and how the first usage numbers come in. It turns itself off when the announced league's first trades load: nothing to deploy on launch day.
+
+**Switching it on** (once Railway is up, sections 3 and 4):
+
+- [ ] Build the snapshot on the laptop, where `data/` has Allflame's pages: `eb preview build --league Allflame --days 1,3,5,7` (no requests to GGG; run it detached if it says it'll take more than a few minutes). It writes `preview_snapshot` in the local DuckDB.
+- [ ] Copy it to the server with the rest: `eb site seed --hosted` (a first seed), or `eb site seed` afterwards. A rebuild gets a new `version`, so browsers and Cloudflare pick it up within the hour.
+- [ ] Set `EB_NEXT_LEAGUE_START=2026-11-13` on **both** services, and nothing else about the next league yet. With only a date, `/api/status` has `upcoming` (`name` null, `time_known` false), so `EB_PREVIEW=auto` (the default) shows the preview, and the strip shows the date with no countdown. The pipeline ignores a date alone: `pipeline.pick_league` switches leagues only once both `EB_NEXT_LEAGUE` and a full time are set, so it keeps following Allflame (one request an hour, as before).
+- [ ] `eb site smoke https://exiledbroker.trade --edge` checks the preview too: the manifest under its version (and that it's `/api/status`'s), the default day's recap, Launch market, Price check and one item, the item's "what happened next" series, all cached a day at the edge, and a missing key is 404. A league announced with no preview showing is a warning (`preview`): the snapshot isn't seeded or `EB_PREVIEW=off`.
+- [ ] Open the site at phone width and on a desktop: the Preview label, the day picker on the recap, Price check and Launch market, the reveal, no stale-feed banner.
+
+**When the name and time are announced** (about a week before): set `EB_NEXT_LEAGUE` and the full `EB_NEXT_LEAGUE_START` (e.g. `2026-11-13T20:00:00Z`) on both services (section 9). The strip gains the countdown. The preview stays on until the new league's first hour is loaded, then `/api/status` drops it and every open page shows the live league on its next status check. If the name is never set, the preview stays on and the pipeline never switches: setting both is what ends it.
+
+**Turning it off by hand** (a broken snapshot, or to stop it early): `EB_PREVIEW=off` on the web service and redeploy. The pages fall back to the live league (Allflame, shown as ended, with the next league's date).
+
+**Usage counts.** The preview's own events (`feature:preview-day`, `feature:preview-reveal`, `feature:preview-cta`, and v2's `portfolio-add` / `portfolio-step`) show on `/admin` with the rest ([usage.md](usage.md#the-preview)). Whether to reset the counts at launch is left for then; `usage_daily` is per day, so the launch's numbers can be read from Nov 13 on either way.
+
+**Spike readiness before posting** (an earlier screenshot post got ~6k views; a link brings visitors in a burst over a few hours, all on the same few URLs):
+
+- [ ] Sections 7 and 8 are done: assets bypass the Worker, the route fails open, the origin key and rate limits are set, Web Analytics is on.
+- [ ] **The Worker's daily 100k requests is the first limit.** Assets bypass it, but every `/api` request and every beacon (`/api/hit`, one per page view and per feature used) counts. A preview visitor who picks a couple of days and opens a few items makes ~20–30 Worker requests, so 100k a day is ~3,000–5,000 visitors. Turn on **Workers Paid ($5, 10M requests) the day of the post**, and back off it after the spike if Workers analytics shows it isn't needed.
+- [ ] **The origin barely notices.** Every preview document is one stored blob served from memory, with `public, max-age=86400` under the snapshot's version, so Cloudflare answers repeats from the edge; `/api/status` is the only uncached request a visitor repeats (about once an hour). Check `cf-cache-status: HIT` on `/api/preview/manifest?v=<version>` (the smoke check does) before posting.
+- [ ] **Rate limits fit a curious visitor:** the Worker allows 60 `/api` requests a minute per address and the WAF rule 50 in 10 seconds. Clicking through all four days of the recap and Price check stays well under, but a few people behind one address (a university, a café) can hit it: if Reddit comments mention 429s, raise the Worker's limit (`wrangler.toml`) rather than turning it off.
+- [ ] Railway's usage alert and hard limit (section 5) are set, and the fallback page works: a spike that hits the limit shows "we're investigating", not an error.
+- [ ] Post when you can watch it for the first couple of hours: Workers analytics, Railway's Metrics, `/admin`. Post on r/pathofexile first, r/pathofexiledev a day or so later, so the two bursts don't stack.
+
+**After the launch:** put `web/index.html`'s durable `og:description` back (the preview's line names Allflame; the old one is in the comment beside it) and redeploy any time after the switch, and decide about resetting the usage counts.
 
 ## Settled questions
 
