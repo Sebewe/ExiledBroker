@@ -1,6 +1,14 @@
+import pytest
+
 from exiledbroker import cli
 from exiledbroker.config import get_settings
 from exiledbroker.storage import db
+
+
+@pytest.fixture(autouse=True)
+def _own_data_dir(tmp_path, monkeypatch):
+    """A database of this test's own, not the session's shared fallback directory."""
+    monkeypatch.setenv("EB_DATA_DIR", str(tmp_path))
 
 
 def _tables(path) -> set[str]:
