@@ -319,6 +319,34 @@ def test_serves_the_frontend(tmp_path, settings):  # noqa: F811
     assert c.get("/api/nope").status_code == 404  # API paths never fall through
 
 
+def test_security_headers(tmp_path, settings):  # noqa: F811
+    """Every response: no sniffing, no full Referer to other sites, no framing. The page
+    also carries a CSP that allows its own inline theme script by hash, and nothing
+    inline it doesn't know about."""
+    import base64
+    import hashlib
+
+    theme = "document.documentElement.dataset.theme = 'dark'"
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text(
+        f'<script>{theme}</script><script type="module" src="/assets/a.js"></script>'
+    )
+    (dist / "assets" / "a.js").write_text("1")
+    c = TestClient(app_module.create_app(web_dist=dist))
+    for path in ["/", "/price-check", "/assets/a.js", "/api/health"]:
+        h = c.get(path).headers
+        assert h["x-content-type-options"] == "nosniff", path
+        assert h["referrer-policy"] == "strict-origin-when-cross-origin", path
+        assert h["x-frame-options"] == "DENY", path
+    csp = c.get("/").headers["content-security-policy"]
+    digest = base64.b64encode(hashlib.sha256(theme.encode()).digest()).decode()
+    assert f"'sha256-{digest}'" in csp and "frame-ancestors 'none'" in csp
+    assert "'unsafe-inline'" not in csp.split("script-src")[1].split(";")[0]
+    assert "content-security-policy" not in c.get("/assets/a.js").headers
+    assert "content-security-policy" not in c.get("/docs").headers  # Swagger loads a CDN
+
+
 def test_frontend_caching(tmp_path, settings):  # noqa: F811
     """Hashed assets are kept for a year, index.html revalidated every visit, and the
     build's pre-gzipped copy is sent as is to browsers that take gzip."""

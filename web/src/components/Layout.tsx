@@ -1,6 +1,6 @@
 import { Book, BookOpen, CandlestickChart, Hourglass, Moon, Network, Scale, Sun } from 'lucide-react'
-import type { ReactNode } from 'react'
-import { NavLink } from 'react-router'
+import { useEffect, type ReactNode } from 'react'
+import { NavLink, useLocation } from 'react-router'
 import { useRememberedSettings } from '../lib/rememberSettings'
 import { useTheme } from '../lib/theme'
 import { FreshnessBadge } from './Freshness'
@@ -18,9 +18,20 @@ const NAV: Nav[] = [
   { to: '/about', label: 'About', icon: BookOpen },
 ]
 
+/** The tab's title for a path: the page's name first, so tabs and bookmarks tell pages apart. */
+export function pageTitle(pathname: string): string {
+  const page = NAV.find(({ to }) => to !== '/' && (pathname === to || pathname.startsWith(`${to}/`)))
+  if (page) return `${page.label} · ExiledBroker`
+  return pathname === '/' ? 'Market recap · ExiledBroker' : 'ExiledBroker'
+}
+
 export function Layout({ children }: { children: ReactNode }) {
   const linkTo = useRememberedSettings()
   const [theme, toggleTheme] = useTheme()
+  const { pathname } = useLocation()
+  useEffect(() => {
+    document.title = pageTitle(pathname)
+  }, [pathname])
   return (
     <div className="min-h-dvh">
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:rounded focus:bg-surface focus:px-3 focus:py-2">

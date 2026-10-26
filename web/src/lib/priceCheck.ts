@@ -131,7 +131,16 @@ export function priceChartOption(
     ...baseOptions(t),
     legend: { ...(baseOptions(t).legend as object), data: band ? ['Chaos', 'Divine', 'Outlook range'] : ['Chaos', 'Divine'] },
     grid: { left: 8, right: 8, top: 40, bottom: 8, containLabel: true },
-    xAxis: { type: 'time', min: bounds[0], max: band ? band[band.length - 1]!.at : bounds[1], ...axis, splitLine: { show: false } },
+    xAxis: {
+      type: 'time',
+      min: bounds[0],
+      max: band ? band[band.length - 1]!.at : bounds[1],
+      ...axis,
+      // Hour labels carry their date: at phone width the axis hides overlapping labels and
+      // the day labels go first, which left a row of bare "06:00"s.
+      axisLabel: { ...axis.axisLabel, formatter: { day: '{d} {MMM}', hour: '{HH}:{mm}\n{d} {MMM}', minute: '{HH}:{mm}\n{d} {MMM}' } },
+      splitLine: { show: false },
+    },
     yAxis: [
       { type: 'value', name: 'Chaos', position: 'left', scale: true, ...axis, axisLabel: { ...axis.axisLabel, formatter: (v: number) => price(v, 'chaos') } },
       { type: 'value', name: 'Divine', position: 'right', scale: true, ...axis, splitLine: { show: false }, axisLabel: { ...axis.axisLabel, formatter: (v: number) => price(v, 'divine') } },

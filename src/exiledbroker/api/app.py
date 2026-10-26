@@ -3,7 +3,10 @@
 data version and served as cached bytes (api/deps.py), the defaults precomputed in the
 background (api/warm.py). The built frontend (web/dist), when present, is served too."""
 
+import base64
+import hashlib
 import mimetypes
+import re
 import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -67,6 +70,63 @@ class ApiNoStoreByDefault:
         await self.app(scope, receive, send_defaulted)
 
 
+class SecurityHeaders:
+    """Headers every response carries: no MIME sniffing, no full URLs in the Referer sent
+    to other sites, and no framing by another site (the page's CSP says so too)."""
+
+    HEADERS = (
+        (b"x-content-type-options", b"nosniff"),
+        (b"referrer-policy", b"strict-origin-when-cross-origin"),
+        (b"x-frame-options", b"DENY"),
+    )
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+
+        async def send_secured(message):
+            if message["type"] == "http.response.start":
+                message["headers"] = [*message.get("headers", []), *self.HEADERS]
+            await send(message)
+
+        await self.app(scope, receive, send_secured)
+
+
+# Cloudflare Web Analytics (cookie-free visitor counts, switched on in the dashboard at
+# launch) loads its beacon from here and reports there.
+ANALYTICS_SCRIPT = "https://static.cloudflareinsights.com"
+ANALYTICS_REPORT = "https://cloudflareinsights.com"
+
+
+def content_security_policy(index_html: str) -> str:
+    """The page's Content-Security-Policy: scripts only from the site, plus index.html's
+    own inline script (the theme, applied before the first paint) by its hash, plus the
+    analytics beacon. Styles allow inline (React and ECharts set style attributes). The
+    API docs (/docs) load Swagger from a CDN, so this goes on the app's page only."""
+    inline = re.findall(r"<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>", index_html, re.DOTALL)
+    hashes = " ".join(
+        "'sha256-" + base64.b64encode(hashlib.sha256(body.encode()).digest()).decode() + "'"
+        for body in inline
+    )
+    return "; ".join(
+        [
+            "default-src 'self'",
+            f"script-src 'self' {hashes} {ANALYTICS_SCRIPT}".replace("  ", " "),
+            "style-src 'self' 'unsafe-inline'",
+            "img-src 'self' data:",
+            "font-src 'self'",
+            f"connect-src 'self' {ANALYTICS_REPORT}",
+            "object-src 'none'",
+            "base-uri 'self'",
+            "form-action 'self'",
+            "frame-ancestors 'none'",
+        ]
+    )
+
+
 def create_app(web_dist: Path | None = None) -> FastAPI:
     settings = get_settings()
     web_dist = web_dist or settings.web_dist
@@ -92,6 +152,7 @@ def create_app(web_dist: Path | None = None) -> FastAPI:
     # Tables arrive pre-gzipped from the cache (api/deps.py); this covers the rest.
     app.add_middleware(GZipMiddleware, minimum_size=1000)
     app.add_middleware(ApiNoStoreByDefault)
+    app.add_middleware(SecurityHeaders)
     app.add_middleware(MarkOrigin)  # outermost, so it covers every response
     api = APIRouter(prefix="/api")
 
@@ -104,6 +165,8 @@ def create_app(web_dist: Path | None = None) -> FastAPI:
     app.include_router(api)
 
     if (web_dist / "index.html").exists():
+        csp = content_security_policy((web_dist / "index.html").read_text())
+
         # The single-page app: real files as they are, any other path gets index.html
         # (client-side routes). /api/* never falls through to it.
         # Built files under assets/ have a content hash in their name, so browsers keep
@@ -120,6 +183,8 @@ def create_app(web_dist: Path | None = None) -> FastAPI:
             headers = {
                 "Cache-Control": "public, max-age=31536000, immutable" if immutable else "no-cache"
             }
+            if file.name == "index.html":
+                headers["Content-Security-Policy"] = csp
             gz = file.with_name(file.name + ".gz")
             if "gzip" in request.headers.get("accept-encoding", "") and gz.is_file():
                 media_type = mimetypes.guess_type(file.name)[0] or "application/octet-stream"
