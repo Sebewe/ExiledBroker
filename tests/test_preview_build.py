@@ -74,6 +74,10 @@ def test_build_writes_every_key_offline(research):
     assert recaps
     for key in recaps:
         assert docs[key]["hours"] <= pb.NEXT_HOURS
+        for t in docs[key]["trades"]:  # the Backtest's fills, one per known hour
+            assert len(t["paid"]) == len(t["filled"]) == len(t["pnl"]) == docs[key]["hours"]
+            assert t["paid_hours"] <= t["traded_hours"] <= t["orders"]
+            assert t["fills"] <= t["orders"]
     # The reveal's series run to the last loaded hour.
     series = docs[snapshot.next_key("currency:divine-orb")]["series"]
     assert series[-1][0] == manifest["next_until"]

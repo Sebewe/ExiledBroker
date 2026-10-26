@@ -939,13 +939,25 @@ export interface components {
         /**
          * PreviewTradeNext
          * @description What one of the recap's trades did in the 24 hours after the chosen day's last
-         *     hour. "Paid" is the recap's own test, hour by hour: a loop's edge beat the 2% buffer
-         *     (in `direction`), a card turn-in's margin was positive, a flip's hour traded both at
-         *     or below its bid and at or above its ask.
+         *     hour, if a player had followed it: each hour, the recap's own order for it, priced
+         *     from the hour before (the first is the very order the recap showed), and filled by
+         *     the Backtest's rules (analysis/backtest.py, preview/build.recap_next). A fill counts
+         *     when some trade that hour went past the order (the optimistic way, as the recap's
+         *     chances count it), at most a tenth of what traded and 10 Divines an order.
          */
         PreviewTradeNext: {
             /** Direction */
             direction?: string | null;
+            /**
+             * Filled
+             * @default []
+             */
+            filled: (boolean | null)[];
+            /**
+             * Fills
+             * @default 0
+             */
+            fills: number;
             /** Item Id */
             item_id: string;
             /**
@@ -955,10 +967,25 @@ export interface components {
             kind: "loop" | "card" | "flip";
             /** Next Hour Paid */
             next_hour_paid: boolean | null;
+            /**
+             * Orders
+             * @default 0
+             */
+            orders: number;
             /** Paid */
             paid: (boolean | null)[];
             /** Paid Hours */
             paid_hours: number;
+            /**
+             * Pnl
+             * @default []
+             */
+            pnl: (number | null)[];
+            /**
+             * Profit
+             * @default 0
+             */
+            profit: number;
             /** Still Paid */
             still_paid: boolean | null;
             /** Traded Hours */

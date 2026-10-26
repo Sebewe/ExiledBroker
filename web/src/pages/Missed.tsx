@@ -195,6 +195,7 @@ export default function Missed() {
                   trades={next ? shownTrades(w, next) : []}
                   hours={recapNext.data?.hours}
                   loading={revealed && !recapNext.data && !recapNext.error}
+                  money={money}
                 />
               )}
               <Flips flips={lastHour?.flips ?? []} money={money} href={href} next={next} />
@@ -757,7 +758,7 @@ function Loops({ w, money, rate, href, next }: { w: MissedWindow; money: Money; 
               >
                 <Route steps={loopRoute(l.name, l.direction)} item={l.name} />
                 <Chance tries={l.tries} through={l.through} chance={l.chance} />
-                {next && <TradeNext t={next.byKey.get(tradeKey('loop', l.item_id, l.direction))} hours={next.hours} />}
+                {next && <TradeNext t={next.byKey.get(tradeKey('loop', l.item_id, l.direction))} hours={next.hours} money={money} />}
                 <Rates label={`Rates for ${l.name}`} title={l.name}>
                   <Orders
                     missing={l.bid == null}
@@ -824,7 +825,7 @@ function Cards({ w, money, href, next }: { w: MissedWindow; money: Money; href: 
                 {c.worst_roll && <span>random: valued at the cheapest roll</span>}
               </div>
               <Chance tries={c.tries} through={c.through} chance={c.chance} />
-              {next && <TradeNext t={next.byKey.get(tradeKey('card', c.item_id))} hours={next.hours} />}
+              {next && <TradeNext t={next.byKey.get(tradeKey('card', c.item_id))} hours={next.hours} money={money} />}
               <Rates label={`Rates for ${c.name}`} title={c.name}>
                 <Orders
                   missing={c.bid == null}
@@ -980,7 +981,7 @@ function Flips({ flips, money, href, next }: { flips: MissedFlip[]; money: Money
               }
             >
               <Chance tries={f.tries} through={f.through} chance={f.chance} sell="sold within 6 hours at the ask" />
-              {next && <TradeNext t={next.byKey.get(tradeKey('flip', f.item_id))} hours={next.hours} />}
+              {next && <TradeNext t={next.byKey.get(tradeKey('flip', f.item_id))} hours={next.hours} money={money} />}
               <Rates label={`Rates for ${f.name}`} title={f.name}>
                 <Orders
                   missing={false}

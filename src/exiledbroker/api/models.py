@@ -599,22 +599,32 @@ class PreviewItemNext(BaseModel):
 
 class PreviewTradeNext(BaseModel):
     """What one of the recap's trades did in the 24 hours after the chosen day's last
-    hour. "Paid" is the recap's own test, hour by hour: a loop's edge beat the 2% buffer
-    (in `direction`), a card turn-in's margin was positive, a flip's hour traded both at
-    or below its bid and at or above its ask."""
+    hour, if a player had followed it: each hour, the recap's own order for it, priced
+    from the hour before (the first is the very order the recap showed), and filled by
+    the Backtest's rules (analysis/backtest.py, preview/build.recap_next). A fill counts
+    when some trade that hour went past the order (the optimistic way, as the recap's
+    chances count it), at most a tenth of what traded and 10 Divines an order."""
 
     kind: Literal["loop", "card", "flip"]
     item_id: str  # with `kind` (and `direction` for loops), matches the recap's row
     direction: str | None = None  # loops: chaos_first | divine_first
-    # Each known hour after, in order (PreviewRecapNext.hours of them); null: it didn't
-    # trade that hour.
+    # Each known hour after, in order (PreviewRecapNext.hours of them): true, the order
+    # filled and made money once sold; false, it didn't fill or lost; null, no order that
+    # hour (the trade didn't pay, or didn't from the bid), or the sale isn't known yet.
     paid: list[bool | None]
     paid_hours: int
-    traded_hours: int
-    next_hour_paid: bool | None  # the very next hour; null: it didn't trade, or unknown
+    traded_hours: int  # hours an order was placed, with its outcome known
+    next_hour_paid: bool | None  # the recap's own order; null: it wasn't placed, or unknown
     # Paid in any of hours 19–24 after: a day later it still worked. Null with fewer
     # than 24 hours known.
     still_paid: bool | None
+    # Per hour, as `paid`: did the order fill (null: none placed), and what it made in
+    # Chaos once sold (null: no fill, or the sale isn't known).
+    filled: list[bool | None] = []
+    pnl: list[float | None] = []
+    orders: int = 0  # hours an order was placed
+    fills: int = 0  # of them, filled
+    profit: float = 0.0  # Chaos, summed over the known fills
 
 
 class PreviewRecapNext(BaseModel):

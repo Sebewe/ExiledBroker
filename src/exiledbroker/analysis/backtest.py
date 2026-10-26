@@ -311,16 +311,28 @@ def card_limit_trades(
     cancelled), so `filled` over signals is the share of orders that filled.
     `bid_at` / `ask_at` move the orders within the recap hour's range (0 its lowest
     trade, 1 its highest; `ask_at` None asks the average)."""
-    cards = db.frame(
+    sig = _signals(paying_card_hours(con, prices), ["item_id"], 1, "item_id")
+    t = card_order_fills(con, prices, rate, sig, method, fill, bid_at, ask_at, whole_lots)
+    return t.select("observed_at", "item_id", "filled", "pnl")
+
+
+def _fixed_cards(con) -> pl.DataFrame:
+    return db.frame(
         con,
         """
         SELECT item_id, reward_item_id AS reward_id, stack_size AS n, reward_quantity AS q
         FROM divination_card WHERE followed AND reward_item_id IS NOT NULL
         """,
     )
+
+
+def paying_card_hours(con, prices: pl.DataFrame) -> pl.DataFrame:
+    """The hours a followed card's turn-in paid (fixed rewards), with enough sets traded
+    to act on, and the Chaos it could have made (`missed`): the recap's test."""
+    cards = _fixed_cards(con)
     c = prices.join(cards, on="item_id")
-    r = prices.select("observed_at", reward_id="item_id", rp="p", rlo="lo", rhi="hi")
-    paid = (
+    r = prices.select("observed_at", reward_id="item_id", rp="p")
+    return (
         c.join(r, on=["observed_at", "reward_id"])
         .with_columns(
             margin=pl.col("q") * pl.col("rp") - pl.col("n") * pl.col("p"),
@@ -329,9 +341,29 @@ def card_limit_trades(
         .filter(pl.col("margin") > 0, pl.col("sets") >= missed.MIN_CARD_SETS)
         .with_columns(missed=pl.col("margin") * pl.col("sets"))
     )
+
+
+def card_order_fills(
+    con,
+    prices: pl.DataFrame,
+    rate: pl.DataFrame,
+    sig: pl.DataFrame,
+    method: str,
+    fill: str,
+    bid_at: float = 0.0,
+    ask_at: float | None = None,
+    whole_lots: bool = False,
+) -> pl.DataFrame:
+    """`card_limit_trades`' orders for the signals `sig` (observed_at, item_id: the hours
+    the orders are priced from), one row per order placed: `filled`, `pnl` (Divines),
+    `rate` (the buy hour's Divine price in Chaos) and `sell_at` (the hour the reward
+    sold in; null if it didn't trade within SELL_WITHIN)."""
+    cards = _fixed_cards(con)
+    c = prices.join(cards, on="item_id")
+    r = prices.select("observed_at", reward_id="item_id", rp="p", rlo="lo", rhi="hi")
     # The recap hour's own prices, which the orders are priced from.
     sig = (
-        _signals(paid, ["item_id"], 1, "item_id")
+        sig.select("observed_at", "item_id")
         .join(cards, on="item_id")
         .join(
             c.select("observed_at", "item_id", card_lo="lo", card_hi="hi"),
@@ -407,8 +439,9 @@ def card_limit_trades(
     cost = pl.col("k") * pl.col("n") * pl.col("buy")
     value = (pl.col("k") * pl.col("q") * pl.col("sell")).fill_null(0)  # never sold: lost
     return t.with_columns(
-        pnl=pl.when(pl.col("k") >= 1).then((value - cost) / pl.col("rate")).otherwise(0.0)
-    ).select("observed_at", "item_id", filled=pl.col("k") >= 1, pnl="pnl")
+        filled=pl.col("k") >= 1,
+        pnl=pl.when(pl.col("k") >= 1).then((value - cost) / pl.col("rate")).otherwise(0.0),
+    )
 
 
 def _cross_hours(con, league: str, item_ids: list[str] | None = None, since=None) -> pl.DataFrame:
@@ -451,10 +484,26 @@ def loop_limit_trades(
       other currency, sold at the lowest instead if it doesn't fill.
     Chaos first buys with Chaos and sells for Divines; Divines first the other way.
     `bid_at` / `ask_at` move the orders within the recap hour's range, as for cards."""
-    sig = (
-        _signals(missed.paying_loops(loops), ["item_id", "direction"], 1, "item_id")
-        .select("observed_at", "item_id", "direction")
-        .join(cross, on=["observed_at", "item_id"])
+    sig = _signals(missed.paying_loops(loops), ["item_id", "direction"], 1, "item_id")
+    t = loop_order_fills(cross, rate, sig, method, fill, bid_at, ask_at, whole_lots)
+    return t.select("observed_at", "item_id", "filled", "pnl")
+
+
+def loop_order_fills(
+    cross: pl.DataFrame,
+    rate: pl.DataFrame,
+    sig: pl.DataFrame,
+    method: str,
+    fill: str,
+    bid_at: float = 0.0,
+    ask_at: float | None = None,
+    whole_lots: bool = False,
+) -> pl.DataFrame:
+    """`loop_limit_trades`' orders for the signals `sig` (observed_at, item_id,
+    direction: the hours the orders are priced from), one row per order placed, with
+    `direction`, `filled`, `pnl` (Divines), `rate` and `sell_at`, as for cards."""
+    sig = sig.select("observed_at", "item_id", "direction").join(
+        cross, on=["observed_at", "item_id"]
     )
     chaos_first = pl.col("direction") == "chaos_first"
     # Per direction: the buy leg's (avg, low, high, units) and the sell leg's.
@@ -554,10 +603,11 @@ def loop_limit_trades(
     # The item sells in whole lots (1 Divine for 1926 Orbs of Alteration): only whole lots.
     t = t.with_columns(k=(pl.col("k") / pl.col("sell_lot")).floor() * pl.col("sell_lot"))
     return t.with_columns(
+        filled=pl.col("k") >= 1,
         pnl=pl.when(pl.col("k") >= 1)
         .then(pl.col("k") * (pl.col("value") - pl.col("cost").fill_null(0)) / pl.col("rate"))
-        .otherwise(0.0)
-    ).select("observed_at", "item_id", filled=pl.col("k") >= 1, pnl="pnl")
+        .otherwise(0.0),
+    )
 
 
 # --- Rising -------------------------------------------------------------------------

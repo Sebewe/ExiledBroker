@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { PreviewItemNext, PreviewTradeNext } from '../api/client'
 import type { ChartTokens } from './chartOptions'
-import { recapTally, tradeKey, tradesByKey } from './reveal'
+import { hourFills, recapTally, tradeKey, tradesByKey } from './reveal'
 import { outcome, revealChartOption, typicalAt } from './revealItem'
 
 const HOUR = 3_600_000
@@ -87,6 +87,11 @@ describe('recap trades', () => {
     traded_hours: 1,
     next_hour_paid: true,
     still_paid: null,
+    filled: [true],
+    pnl: [12],
+    orders: 1,
+    fills: 1,
+    profit: 12,
     ...x,
   })
 
@@ -103,6 +108,19 @@ describe('recap trades', () => {
 
   it('tallies over the trades with an answer', () => {
     const t = recapTally([trade({}), trade({ next_hour_paid: false, still_paid: true }), trade({ next_hour_paid: null, still_paid: false })])
-    expect(t).toEqual({ shown: 3, nextHour: 1, nextKnown: 2, dayLater: 1, dayKnown: 2 })
+    expect(t).toEqual({ shown: 3, nextHour: 1, nextKnown: 2, dayLater: 1, dayKnown: 2, orders: 3, fills: 3, profit: 36 })
+  })
+
+  it("reads each hour's order: none, unfilled, open, paid or lost", () => {
+    const t = trade({ paid: [null, false, null, true, false], filled: [null, false, true, true, true] })
+    expect(hourFills(t)).toEqual(['none', 'unfilled', 'open', 'paid', 'lost'])
+  })
+
+  it('reads a snapshot from before fills were stored by `paid` alone', () => {
+    const old = trade({ paid: [true, false, null] }) as Partial<PreviewTradeNext>
+    delete old.filled
+    delete old.orders
+    expect(hourFills(old as PreviewTradeNext)).toEqual(['paid', 'lost', 'none'])
+    expect(recapTally([old as PreviewTradeNext]).orders).toBe(0)
   })
 })
