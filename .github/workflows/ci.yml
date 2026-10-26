@@ -105,3 +105,5 @@ jobs:
           docker run -d --name eb -p 8000:8000 exiledbroker:ci
           for i in $(seq 1 30); do curl -sf localhost:8000/api/health && break; sleep 1; done
           curl -sf localhost:8000/ | grep -q '<div id="root">'
+          # The API docs are off in the image (EB_API_DOCS=false).
+          ! curl -s localhost:8000/openapi.json | grep -q '"openapi"'

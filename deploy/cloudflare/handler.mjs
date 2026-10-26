@@ -14,6 +14,12 @@
 // `no-cache` / `no-store`). In a traffic spike each Cloudflare location then asks
 // Railway for a URL at most about twice a minute, however many visitors it serves.
 
+//
+// Before any of that, it turns away what the site never asks for, without a request to
+// Railway: methods other than GET and HEAD (POST only under /api/, with a small body,
+// for the usage beacon), and, with a rate-limit binding (`API_LIMITER`, wrangler.toml),
+// more /api requests a minute from one address than a visitor ever makes.
+
 export const APP_HEADER = "x-eb-origin";
 export const FALLBACK_HEADER = "x-eb-fallback";
 export const DEFAULT_TIMEOUT_MS = 15_000;
@@ -25,6 +31,48 @@ export function upstreamInit(request, signal) {
   const init = { signal, redirect: "manual" };
   if (request.method === "GET" || request.method === "HEAD") init.cf = { cacheEverything: true };
   return init;
+}
+
+export const MAX_POST_BYTES = 4096;
+export const LIMITED_RETRY_SECONDS = 60;
+
+const isApi = (pathname) => pathname === "/api" || pathname.startsWith("/api/");
+
+function refuse(status, detail, extra = {}) {
+  return new Response(JSON.stringify({ detail }), {
+    status,
+    headers: { "content-type": "application/json", "cache-control": "no-store", ...extra },
+  });
+}
+
+/** A request the site never makes, answered at the edge (null: let it through). GET and
+ *  HEAD go anywhere; POST only to /api/ with a declared body of at most MAX_POST_BYTES. */
+export function screen(request) {
+  const { method } = request;
+  if (method === "GET" || method === "HEAD") return null;
+  const { pathname } = new URL(request.url);
+  if (method !== "POST" || !isApi(pathname)) {
+    return refuse(405, "method not allowed", { allow: "GET, HEAD" });
+  }
+  const length = request.headers.get("content-length");
+  if (length === null) return refuse(411, "a content-length is required");
+  if (!/^\d+$/.test(length) || Number(length) > MAX_POST_BYTES) {
+    return refuse(413, "request body too large");
+  }
+  return null;
+}
+
+/** False when the visitor's address is over the rate limit for /api. A missing or
+ *  failing limiter lets the request through: the limit is a guard, not a dependency. */
+export async function withinLimit(request, limiter) {
+  if (!limiter || !isApi(new URL(request.url).pathname)) return true;
+  const key = request.headers.get("cf-connecting-ip") ?? "unknown";
+  try {
+    const { success } = await limiter.limit({ key });
+    return success;
+  } catch {
+    return true;
+  }
 }
 
 const API_MESSAGE =
@@ -91,8 +139,15 @@ function keepVisitorOnTheirHost(response, request, origin) {
 
 export async function handle(
   request,
-  { origin, page, fetchImpl = fetch, timeoutMs = DEFAULT_TIMEOUT_MS },
+  { origin, page, fetchImpl = fetch, timeoutMs = DEFAULT_TIMEOUT_MS, limiter },
 ) {
+  const refused = screen(request);
+  if (refused) return refused;
+  if (!(await withinLimit(request, limiter))) {
+    return refuse(429, "too many requests, slow down", {
+      "retry-after": String(LIMITED_RETRY_SECONDS),
+    });
+  }
   const upstream = toOrigin(request, origin);
   const controller = new AbortController();
   // The timer covers the wait for the response's headers only. It is cleared before the

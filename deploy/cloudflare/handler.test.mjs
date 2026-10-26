@@ -68,7 +68,11 @@ test("a 304 passes through, and so do the conditional headers", async () => {
 });
 
 test("methods and the body are passed on unchanged", async () => {
-  const request = new Request("https://example.com/api/x", { method: "POST", body: "hi" });
+  const request = new Request("https://example.com/api/x", {
+    method: "POST",
+    body: "hi",
+    headers: { "content-length": "2" },
+  });
   const { response, seen } = await run(request, new Response("no", { status: 405, headers: APP }));
   assert.equal(response.status, 405);
   assert.equal(seen[0].req.method, "POST");
@@ -185,7 +189,11 @@ test("reads go through Cloudflare's cache, kept as the origin's Cache-Control al
 
 test("anything else is never cached", async () => {
   const { seen } = await run(
-    new Request("https://example.com/api/x", { method: "POST", body: "{}" }),
+    new Request("https://example.com/api/x", {
+      method: "POST",
+      body: "{}",
+      headers: { "content-length": "2" },
+    }),
     new Response(null, { headers: APP }),
   );
   assert.equal(seen[0].init.cf, undefined);
@@ -200,4 +208,78 @@ test("the fallback page is self-contained", () => {
   assert.doesNotMatch(PAGE, /https?:\/\//i); // no external requests
   assert.doesNotMatch(PAGE, /<script|<link|<img|@import|url\(/i);
   assert.match(PAGE, /<title>[^<]+<\/title>/);
+});
+
+test("methods the site never uses are refused at the edge", async () => {
+  for (const [method, path] of [
+    ["PUT", "/api/status"],
+    ["DELETE", "/api/status"],
+    ["OPTIONS", "/api/status"],
+    ["PATCH", "/"],
+    ["POST", "/"],
+    ["POST", "/apix"],
+  ]) {
+    const { response, seen } = await run(visit(path, {}, method), new Response("{}", { headers: APP }));
+    assert.equal(response.status, 405, `${method} ${path}`);
+    assert.equal(response.headers.get("allow"), "GET, HEAD");
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    assert.equal(seen.length, 0); // Railway never saw it
+  }
+});
+
+test("a POST to /api needs a small, declared body", async () => {
+  const post = (headers) => new Request("https://example.com/api/beacon", { method: "POST", headers });
+  for (const [headers, status] of [
+    [{}, 411],
+    [{ "content-length": "4097" }, 413],
+    [{ "content-length": "1e9" }, 413],
+  ]) {
+    const { response, seen } = await run(post(headers), new Response(null, { headers: APP }));
+    assert.equal(response.status, status);
+    assert.equal(seen.length, 0);
+  }
+  const { response, seen } = await run(
+    post({ "content-length": "4096" }),
+    new Response(null, { status: 204, headers: APP }),
+  );
+  assert.equal(response.status, 204);
+  assert.equal(seen.length, 1);
+});
+
+/** A stand-in for Cloudflare's rate-limit binding: `limit` allowed calls per key. */
+function fakeLimiter(limit) {
+  const counts = new Map();
+  const keys = [];
+  return {
+    keys,
+    async limit({ key }) {
+      keys.push(key);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+      return { success: counts.get(key) <= limit };
+    },
+  };
+}
+
+test("one address over the /api limit gets 429 without reaching Railway", async () => {
+  const limiter = fakeLimiter(2);
+  const from = (ip, path = "/api/status") => visit(path, { "cf-connecting-ip": ip });
+  const ok = () => new Response("{}", { headers: APP });
+  for (let i = 0; i < 2; i++) {
+    assert.equal((await run(from("9.9.9.9"), ok(), { limiter })).response.status, 200);
+  }
+  const { response, seen } = await run(from("9.9.9.9"), ok(), { limiter });
+  assert.equal(response.status, 429);
+  assert.equal(response.headers.get("retry-after"), "60");
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.equal(seen.length, 0);
+  // Someone else, and pages outside /api, aren't affected.
+  assert.equal((await run(from("8.8.8.8"), ok(), { limiter })).response.status, 200);
+  assert.equal((await run(from("9.9.9.9", "/price-check"), ok(), { limiter })).response.status, 200);
+  assert.deepEqual(limiter.keys, ["9.9.9.9", "9.9.9.9", "9.9.9.9", "8.8.8.8"]);
+});
+
+test("a failing limiter lets requests through", async () => {
+  const limiter = { limit: async () => { throw new Error("binding down"); } };
+  const { response } = await run(api(), new Response("{}", { headers: APP }), { limiter });
+  assert.equal(response.status, 200);
 });

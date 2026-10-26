@@ -11,6 +11,7 @@ os.environ["EB_DATA_DIR"] = tempfile.mkdtemp(prefix="eb-test-data-")
 os.environ["EB_DATABASE_URL"] = ""
 os.environ["EB_BACKUP_URL"] = ""
 os.environ["EB_HEALTHCHECK_URL"] = ""  # nor a monitoring service
+os.environ["EB_ORIGIN_KEY"] = ""  # nor the hosted origin's Cloudflare-only check
 
 
 import pytest
