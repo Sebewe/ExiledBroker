@@ -36,8 +36,8 @@ afterEach(() => {
 describe('remembered settings', () => {
   it('keeps each page’s settings when switching pages from the menu', () => {
     renderAt('/launch?window=days2_4')
-    fireEvent.click(screen.getByRole('link', { name: /About/ }))
-    expect(screen.getByTestId('where').textContent).toBe('/about')
+    fireEvent.click(screen.getByRole('link', { name: /Price check/ }))
+    expect(screen.getByTestId('where').textContent).toBe('/price-check')
     fireEvent.click(screen.getByRole('link', { name: /Launch market/ }))
     expect(screen.getByTestId('where').textContent).toBe('/launch?window=days2_4')
   })

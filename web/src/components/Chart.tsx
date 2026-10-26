@@ -1,11 +1,13 @@
 import { LineChart } from 'echarts/charts'
-import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
+import { GridComponent, LegendPlainComponent, MarkAreaComponent, TooltipComponent } from 'echarts/components'
 import * as echarts from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { useEffect, useRef, useState } from 'react'
 import { readTokens, type ChartTokens } from '../lib/chartOptions'
 
-echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
+// Only what the charts use: the plain legend (not the scrolling one), and the mark area that
+// shades Price check's "Not traded yet" stretch. A part that isn't registered is silently ignored.
+echarts.use([LineChart, GridComponent, TooltipComponent, LegendPlainComponent, MarkAreaComponent, CanvasRenderer])
 
 /** The theme's colours, re-read when the header switches the theme (`data-theme`). */
 function useTokens(): ChartTokens {

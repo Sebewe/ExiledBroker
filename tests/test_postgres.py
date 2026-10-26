@@ -131,6 +131,9 @@ def _cases(duck) -> dict:
         "live.live_card_flips": lambda c: live.live_card_flips(c, LEAGUE),
         "divination.followed_cards": lambda c: divination.followed_cards(c),
         "divination.hourly_turn_ins": lambda c: divination.hourly_turn_ins(c, LEAGUE),
+        "divination.hourly_floor_turn_ins": lambda c: divination.hourly_floor_turn_ins(
+            c, LEAGUE, since
+        ),
         "divination.hourly_turn_ins(since)": lambda c: divination.hourly_turn_ins(
             c, LEAGUE, since=since
         ),
@@ -242,6 +245,7 @@ LIVE_QUERIES = [
     "live.live_loops",
     "live.live_card_flips",
     "divination.hourly_turn_ins(since)",
+    "divination.hourly_floor_turn_ins",
     "cross_market.hourly(since)",
     "missed.missed",
     "price_check.features",

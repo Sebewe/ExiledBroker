@@ -81,6 +81,7 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+      - run: npm run check:bundle
 
   # The Cloudflare fallback Worker (deploy/cloudflare/): node:test with a stubbed fetch.
   worker:

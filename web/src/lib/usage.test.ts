@@ -16,6 +16,9 @@ describe('usage beacons', () => {
     expect(pageOf('/')).toBe('/')
     expect(pageOf('/price-check/')).toBe('/price-check')
     expect(pageOf('/some/thing')).toBe('/not-found')
+    // Every journal note is one page in the counts.
+    expect(pageOf('/research/notes/14')).toBe('/research/notes')
+    expect(pageOf('/research/notes/x')).toBe('/not-found')
   })
 
   it('sends the page and counts a feature once per page view', () => {

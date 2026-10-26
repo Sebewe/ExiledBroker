@@ -122,6 +122,9 @@ class MissedCard(BaseModel):
     item_id: str
     name: str
     reward: str
+    # The reward is random ("10× Delirium Orb"): valued at the cheapest item it can roll,
+    # so the margin and the ask are the worst roll's.
+    worst_roll: bool = False
     missed: float  # Chaos: margin × sets traded, paying hours
     margin: float  # per set, latest paying hour
     set_cost: float

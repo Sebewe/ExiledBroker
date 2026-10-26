@@ -147,6 +147,15 @@ CREATE TABLE IF NOT EXISTS divination_card (
 -- Only decided for currency and card rewards for now; null for uniques, gems, etc.
 ALTER TABLE divination_card ADD COLUMN IF NOT EXISTS reward_fixed BOOLEAN;
 
+-- What a random card reward can roll ("10x Delirium Orb"): config/card_rewards.toml's
+-- pools, resolved against item names on each load (normalize/card_rewards.py). The
+-- Market recap prices these cards at the cheapest item the reward can roll.
+CREATE TABLE IF NOT EXISTS card_reward_pool (
+    reward_name VARCHAR NOT NULL,            -- divination_card.reward_name
+    item_id     VARCHAR NOT NULL,            -- an item it can roll
+    PRIMARY KEY (reward_name, item_id)
+);
+
 -- Cross-market: every item-hour that traded against Chaos, with the Divine leg and the
 -- hour's Divine rate when it also traded against Divine (else null; loops need both). Each leg has its volume-weighted price, units traded, and the
 -- lowest/highest traded price that hour, all in the leg's reference currency.

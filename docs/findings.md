@@ -1,6 +1,6 @@
 # Findings (phase 2)
 
-Patterns from past leagues' launch fortnights. Each is reproducible locally from the functions named under it (`analysis/launch_patterns.py`, `services/`), with the leagues it rests on. The analysis tools aren't on the site.
+Patterns from past leagues' launch fortnights. Each is reproducible locally from the functions named under it (`analysis/launch_patterns.py`, `services/`), with the leagues it rests on. The analysis tools aren't on the site, but these notes are: the Research journal (`/research`) renders each numbered finding as a note (its italic first line is "How it was computed", the first date in it is the note's date, "finding N" and links to other findings become note links). After editing this file, run `cd web && npm run gen:notes`; a test fails until you do.
 
 Recent leagues are the best reference: the economy changes every league, and the currency exchange (Settlers, 2024-07) was a structural break. Summaries are recency-weighted (half-life 2 leagues by default).
 
@@ -525,7 +525,7 @@ In the first 2 days a falling price says most of what a "dumped" reading would. 
 - **After the fortnight (Allflame only)** Disdain and Dementophobia beat their floor on every day, at harsh prices too (+140% and +25%), but only 12–56 cards trade a day, and it's one league.
 - **Caveats:** daily medians, not hours a trader can act in; the pools are broad on purpose (an item the card can't give can only lower the floor), but if a card's real pool is narrower, its true floor is higher; gold fees and the time to collect a set aren't included, as for fixed turn-ins.
 
-**Decided (2026-10-26):** the Market recap's card turn-ins will include random-reward cards valued at their floor, with a note that the value is the worst roll ([decisions](decisions.md)). The pools reach the server as a small table resolved at load time. Not built yet.
+**Decided (2026-10-26):** the Market recap's card turn-ins will include random-reward cards valued at their floor, with a note that the value is the worst roll ([decisions](decisions.md)). The pools reach the server as a small table resolved at load time (`card_reward_pool`, built 2026-10-26).
 
 ## 13. Recipes: splinters, a few essence and oil upgrades and one Harvest crest change beat their inputs at typical prices; nothing survives harsh prices, and the scarab vendor never pays
 

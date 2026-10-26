@@ -40,7 +40,7 @@ Signals then become a ranked list: "farm X", "buy Y on day 2, sell on day 6".
 ## Phase 6: live, still to do
 
 - **Prediction alerts** once there are predictions to drift from.
-- **Divination card expected value** for random rewards: researched ([finding 12](findings.md#12-cards-with-random-rewards-two-delirium-orb-cards-beat-their-floor-at-typical-prices-nothing-survives-harsh-prices-in-the-launch-fortnight)); the user chose to show them on the Market recap's card turn-ins at their floor (2026-10-26, [decisions](decisions.md)); to build: the pools as a small server table resolved at load, and the "worst roll" note.
+- **Divination card expected value** for random rewards: researched ([finding 12](findings.md#12-cards-with-random-rewards-two-delirium-orb-cards-beat-their-floor-at-typical-prices-nothing-survives-harsh-prices-in-the-launch-fortnight)); the user chose to show them on the Market recap's card turn-ins at their floor (2026-10-26, [decisions](decisions.md)); built the same day (`card_reward_pool`, the "worst roll" note).
 
 ## Planned modules
 
@@ -68,7 +68,7 @@ Prediction(run_id, league_id, item_id, horizon_day, p10, p50, p90, rationale)
 
 ## Planned site structure
 
-The site is splitting into a **Trade** section and a **Research** section with preloaded data and graphs. The first step is done: the Backtest lives under Research at `/research/backtest` (2026-10-26). The rest follows the plan doc; build it step by step as the user approves.
+The site is splitting into a **Trade** section and a **Research** section with preloaded data and graphs. Research is built (2026-10-26): `/research` is a journal of the findings, with How the tools work, the Backtest, Multi-layered conversions and About under it. Still to come, as the user approves: simplifying the Trade pages (a summary line, hiding empty sections, the header search) and the History graphs, which need their own precomputed views.
 
 ## Add-ons
 

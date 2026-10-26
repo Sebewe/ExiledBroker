@@ -14,7 +14,9 @@ together, so the page's slider never asks the server again. Each look-back has:
   on count (MIN_LOOP_CHAOS / MIN_LOOP_ITEMS, a full set for cards): a thin market's
   one odd trade shows a huge edge nobody can repeat. Each comes with the orders the
   backtest's best option would place from the latest hour (LOOP_ORDER, CARD_ORDER) and
-  its last 24 hours' price range (one grouped query for the listed items).
+  its last 24 hours' price range (one grouped query for the listed items). A card
+  whose reward is random is valued at the cheapest item it can roll (`worst_roll`,
+  docs/findings.md 12).
 
 `analysis/backtest.py` replays these picks an hour late; the page words them as
 options to check, not promises, to match what it found.
@@ -374,6 +376,42 @@ def _card_chances(con, league: str, latest, card_ids: list[str]) -> pl.DataFrame
     return _chance_frame([(i, n, k or 0) for i, n, k in rows], keys)
 
 
+def _floor_card_chances(floors: pl.DataFrame, latest) -> pl.DataFrame:
+    """`_card_chances` for random-reward cards, from their hours at the floor
+    (`divination.hourly_floor_turn_ins` over CHANCE_HOURS): the cards bought the next
+    hour under the bid, the reward sold the hour after at its ask, the floor's average,
+    if even the cheapest roll's high reached it. An hour whose pool wasn't covered counts
+    as not going through."""
+    if floors.is_empty():
+        return _chance_frame([], {"item_id": pl.String})
+    after = [
+        floors.select(
+            "item_id", observed_at=pl.col("observed_at") - timedelta(hours=k), **{name: pl.col(col)}
+        )
+        for k, name, col in ((1, "next_low", "card_low"), (2, "later_high", "reward_high"))
+    ]
+    return (
+        floors.filter(
+            pl.col("observed_at") <= latest - timedelta(hours=2),
+            pl.col("reward_quantity") * pl.col("reward_low")
+            > pl.col("stack_size") * pl.col("card_low"),
+        )
+        .join(after[0], on=["item_id", "observed_at"], how="left")
+        .join(after[1], on=["item_id", "observed_at"], how="left")
+        .group_by("item_id")
+        .agg(
+            tries=pl.len(),
+            through=(
+                (pl.col("next_low") < pl.col("card_low"))
+                & (pl.col("later_high") > pl.col("reward_price"))
+            )
+            .fill_null(False)
+            .sum(),
+        )
+        .cast({"tries": pl.Int64, "through": pl.Int64})
+    )
+
+
 def _flips(con, league: str, latest) -> pl.DataFrame:
     """The latest hour's flip candidates in the Chaos market, widest range first, with
     their orders as placed: whole Chaos for whole lots."""
@@ -527,7 +565,7 @@ def _cards(turn_ins: pl.DataFrame, latest, hours: int) -> tuple[pl.DataFrame | l
     if paid.is_empty():
         return [], 0
     per = (
-        paid.group_by("item_id", "card", "reward")
+        paid.group_by("item_id", "card", "reward", "worst_roll")
         .agg(
             missed=pl.col("missed").sum(),
             margin=pl.col("margin").sort_by("observed_at").last(),
@@ -557,15 +595,34 @@ def missed(con: duckdb.DuckDBPyConnection, league: str) -> list[dict]:
             for d in DIRECTIONS
         ]
     )
-    turn_ins = divination.hourly_turn_ins(con, league, since=since).drop_nulls("margin")
-    cards = divination.followed_cards(con, turn_ins["card"].unique().sort().to_list()).select(
+    # Fixed rewards over the look-backs; random ones at their floor over CHANCE_HOURS,
+    # since their fill odds are counted here rather than in SQL (`_floor_card_chances`).
+    fixed = (
+        divination.hourly_turn_ins(con, league, since=since)
+        .drop_nulls("margin")
+        .with_columns(reward_high=pl.lit(None, pl.Float64), worst_roll=pl.lit(False))
+    )
+    floors = (
+        divination.hourly_floor_turn_ins(con, league, latest - timedelta(hours=CHANCE_HOURS))
+        .drop_nulls("margin")
+        .with_columns(worst_roll=pl.lit(True))
+    )
+    names = sorted(set(fixed["card"]) | set(floors["card"]))
+    cards = divination.followed_cards(con, names).select(
         "name",
         "item_id",
         "stack_size",
         "reward_quantity",
         reward=pl.format("{}× {}", pl.col("reward_quantity"), pl.col("reward_name")),
     )
-    turn_ins = turn_ins.join(cards, left_on="card", right_on="name")
+    floors = floors.join(cards, left_on="card", right_on="name")
+    turn_ins = pl.concat(
+        [
+            fixed.join(cards, left_on="card", right_on="name"),
+            floors.filter(pl.col("observed_at") > since),
+        ],
+        how="diagonal_relaxed",
+    )
     windows = {h: (_loops(loops, latest, h), _cards(turn_ins, latest, h)) for h in LOOKBACKS}
     # The orders and 24-hour ranges, once for every item any look-back lists.
     listed = {
@@ -579,7 +636,13 @@ def missed(con: duckdb.DuckDBPyConnection, league: str) -> list[dict]:
     loop_ranges = _ranges(con, league, latest, "cross_market_hour", listed["loops"])
     card_ranges = _ranges(con, league, latest, "price_observation", listed["cards"])
     loop_chances = _loop_chances(con, league, latest, listed["loops"])
-    card_chances = _card_chances(con, league, latest, listed["cards"])
+    random = set(floors["item_id"])
+    card_chances = pl.concat(
+        [
+            _card_chances(con, league, latest, [i for i in listed["cards"] if i not in random]),
+            _floor_card_chances(floors.filter(pl.col("item_id").is_in(listed["cards"])), latest),
+        ]
+    )
     flips = _flips(con, league, latest)
     flips = (
         flips.join(

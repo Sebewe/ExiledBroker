@@ -54,7 +54,8 @@ EB_DATABASE_URL=postgresql://eb:eb@localhost:55432/exiledbroker .venv/bin/eb ser
 cd web && npm install
 npm run dev          # http://localhost:5173, proxies /api to `eb serve` on :8000
 npm run gen:api      # after changing API models: regenerate openapi.json + src/api/schema.d.ts
-npm run typecheck && npm run lint && npm test && npm run build
+npm run gen:notes    # after editing docs/findings.md: regenerate the Research journal (src/research/notes.json)
+npm run typecheck && npm run lint && npm test && npm run build && npm run check:bundle   # first-visit and chart-chunk size budgets
 
 # The image Railway runs (web: API + built frontend; pipeline: eb pipeline run, hourly)
 docker compose up -d --build api             # the site as hosted, on http://localhost:8000
@@ -102,7 +103,7 @@ A background run (`nohup … &`) ignores Ctrl-C. Stop it with `pkill -f "eb "`, 
 
 **Curated mappings** (rebuilt after every load by `normalize/mappings.refresh_mappings`):
 - `tracked_item` groups (currency / essence / scarab / divination) are name rules in `normalize/tracked.py`, limited to the **core drop pool** (`ingest/core_pool.py`). The pool is poe.ninja's *current-league* exchange lists (`core_pool.SOURCES`: the currency group is the Currency list, Catalysts included, plus Fragment and Oil), one snapshot per list, replaced (never merged), plus overrides in the committed `config/core_pool.toml` (`exclude` global, `[include]` per group).
-- `divination_card`: cards are followed only if NeverSink's loot filter shows them (`ingest/loot_filter.py`, tiers t1–t4). Set size and reward come from RePoE (`normalize/divination.py`). `reward_item_id` is set only for fixed currency/card rewards. Random and unique rewards wait for expected-value work.
+- `divination_card`: cards are followed only if NeverSink's loot filter shows them (`ingest/loot_filter.py`, tiers t1–t4). Set size and reward come from RePoE (`normalize/divination.py`). `reward_item_id` is set only for fixed currency/card rewards. Random currency rewards are priced at their floor, the cheapest item they can roll: the pools in `config/card_rewards.toml` become `card_reward_pool` on each load (`normalize/card_rewards.py`, finding 12).
 
 **Analysis and scoring.** `analysis/launch_patterns.py` holds the phase-2 tools: unique moves by tier, relative launch curves using a median day-1 baseline, group timing, and card turn-ins across leagues. They report per league, newest first, with recency weights (half-life in leagues). `services/scoring.rank_score` is the one opportunity score: percentile rank per factor, then a weighted mean. Card flips, cross-market loops and the live view all use it. Turn-in figures use the median hour, because thin markets have junk hours.
 
@@ -122,7 +123,7 @@ Target: everything on Railway Hobby ($5 a month including $5 of usage): web, Pos
 - **What to fetch is decided by the database, not the disk** (`exchange_loader.needs_rebuild` / `loaded_hours`), not by which pages are stored. Reference data (RePoE names, core-pool snapshots, loot-filter tiers) lives in `reference_data` (`ingest/reference.py`). **Never download data we already have:** market hours are immutable and fetched once; reference sources go through `reference.fetch_if_changed`, which checks at most every `max_age` (RePoE weekly, pool and tiers daily; `eb exchange sync --refresh` checks now) using conditional requests (stored ETag / Last-Modified), so an unchanged source answers 304 and nothing is downloaded.
 - **The full list** of known cost issues and performance findings, with their status, is in `docs/hosting.md`.
 - **Performance is measured, not guessed.** CI (`.github/workflows/ci.yml`) runs lint, all tests and a Postgres 17 job. `tests/test_performance.py` budgets each page's reads, checks that live pages don't read more as history accumulates, and checks each live update's requests and writes (via `ingest_run`). When a change legitimately needs more, raise the budget in the same change and say why. Perf tooling stays local or in CI; nothing goes on the public site (a server-side dev panel later, if needed).
-- **Trade / Research split (in progress):** the site is splitting into a **Trade** section and a **Research** section with preloaded data and graphs. The Backtest has moved to Research (`/research/*`, `components/Research.tsx`, its pages listed in `lib/research.ts`); build further steps only as the user approves them.
+- **Trade / Research split (in progress):** the main menu is the Trade pages plus **Research** (`/research/*`: `components/Research.tsx` lays it out, `lib/research.ts` lists its pages, `pages/research/`). Its journal is `docs/findings.md` rendered at build time into `web/src/research/notes.json` (`npm run gen:notes`; `research/notes.test.ts` fails if it drifts), a lazy chunk, so it costs the server nothing. Trading pages link their method to `/research/method#<anchor>` instead of carrying it inline. Build further steps (Trade simplification, History graphs) only as the user approves them.
 
 ## Scope rules (decided by the user)
 

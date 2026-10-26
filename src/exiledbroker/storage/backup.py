@@ -412,6 +412,11 @@ def sync(src, dst, settings: Settings, leagues: list[str] | None = None) -> Sync
             result.tables.append("tracked_item")
         if _mirror(src, dst, "divination_card", ["item_id"]):
             result.tables.append("divination_card")
+        # An older local copy may not have it yet (it's built on the next load).
+        if site._has(src, "card_reward_pool") and _mirror(
+            src, dst, "card_reward_pool", ["reward_name", "item_id"]
+        ):
+            result.tables.append("card_reward_pool")
         if _sync_reference(src, dst):
             result.tables.append("reference_data")
 

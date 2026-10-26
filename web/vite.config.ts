@@ -10,6 +10,9 @@ export default defineConfig({
   define: { __BUILD_ID__: JSON.stringify(Date.now().toString(36)) },
   server: {
     proxy: { '/api': 'http://127.0.0.1:8000' },
+    // web/ plus docs/, which a test reads (research/notes.test.ts checks the journal
+    // against docs/findings.md); nothing else of the repo is served.
+    fs: { allow: ['.', '../docs'] },
   },
   test: {
     environment: 'jsdom',
