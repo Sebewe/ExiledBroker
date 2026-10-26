@@ -87,7 +87,7 @@ const recap = (hours: number, scale: number): MissedWindow => ({
     { item_id: 'currency:d', name: 'Reverent Fragment', direction: 'chaos_first', missed: 2000 * scale, best_edge: 0.12, hours_paid: hours, price: 50, volume: 4000 },
   ],
   cards: [
-    { item_id: 'currency:e', name: 'The Sephirot', reward: '10× Divine Orb', missed: 1000 * scale, margin: 400, set_cost: 1600, sets: 2.5, hours_paid: 1 },
+    { item_id: 'currency:e', name: 'The Sephirot', reward: '10× Divine Orb', worst_roll: false, missed: 1000 * scale, margin: 400, set_cost: 1600, sets: 2.5, hours_paid: 1 },
   ],
   loops_paid: 2 * scale,
   cards_paid: scale,
@@ -371,6 +371,15 @@ describe('Market recap', () => {
     renderPage()
     expect(await screen.findByText(/Its orders never went through lately/)).toBeInTheDocument()
     expect(screen.getByText('+2.00div')).toHaveClass('text-muted')
+  })
+
+  it('marks a random reward as valued at its worst roll', async () => {
+    const w = recap(1, 1)
+    const disdain = { item_id: 'currency:disdain', name: 'Disdain', reward: '1× Delirium Orb', worst_roll: true, missed: 30, margin: 2, set_cost: 5, sets: 15, hours_paid: 1 }
+    serve({ '/api/status': status('2026-10-22T08:00:00Z'), '/api/missed/Allflame': { body: [{ ...w, cards: [disdain] }] } })
+    renderPage()
+    expect(await screen.findByText('random: valued at the cheapest roll')).toBeInTheDocument()
+    expect(screen.getByText('a set, worst roll')).toBeInTheDocument()
   })
 
   it('prices the Divine Orb itself in Chaos', async () => {

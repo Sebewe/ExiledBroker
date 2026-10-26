@@ -1432,6 +1432,11 @@
               }
             ],
             "title": "Tries"
+          },
+          "worst_roll": {
+            "default": false,
+            "title": "Worst Roll",
+            "type": "boolean"
           }
         },
         "required": [

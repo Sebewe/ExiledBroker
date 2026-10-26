@@ -62,7 +62,9 @@ export default function Method() {
 
       <Part id="cards" title="Card turn-ins" use={{ to: '/#cards', label: 'Market recap' }} notes={[4, 12]}>
         <p>
-          A full set of a divination card cost less than what it turns into, at the hour's average prices, with at least a full set traded.
+          A full set of a divination card cost less than what it turns into, at the hour's average prices, with at least a full set traded. A reward
+          that rolls one of several items (10× Delirium Orb) is valued at the cheapest it can roll, so a set that pays, pays whatever rolls; the
+          card says worst roll.
         </p>
         <p>
           Likeliest to go through first, as for loops. The orders behind Show rates are the backtest's best: a bid at the card's lowest price from the

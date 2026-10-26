@@ -667,6 +667,11 @@ export interface components {
             through?: number | null;
             /** Tries */
             tries?: number | null;
+            /**
+             * Worst Roll
+             * @default false
+             */
+            worst_roll: boolean;
         };
         /**
          * MissedFlip

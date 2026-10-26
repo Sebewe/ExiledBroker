@@ -525,7 +525,7 @@ In the first 2 days a falling price says most of what a "dumped" reading would. 
 - **After the fortnight (Allflame only)** Disdain and Dementophobia beat their floor on every day, at harsh prices too (+140% and +25%), but only 12–56 cards trade a day, and it's one league.
 - **Caveats:** daily medians, not hours a trader can act in; the pools are broad on purpose (an item the card can't give can only lower the floor), but if a card's real pool is narrower, its true floor is higher; gold fees and the time to collect a set aren't included, as for fixed turn-ins.
 
-**Decided (2026-10-26):** the Market recap's card turn-ins will include random-reward cards valued at their floor, with a note that the value is the worst roll ([decisions](decisions.md)). The pools reach the server as a small table resolved at load time. Not built yet.
+**Decided (2026-10-26):** the Market recap's card turn-ins will include random-reward cards valued at their floor, with a note that the value is the worst roll ([decisions](decisions.md)). The pools reach the server as a small table resolved at load time (`card_reward_pool`, built 2026-10-26).
 
 ## 13. Recipes: splinters, a few essence and oil upgrades and one Harvest crest change beat their inputs at typical prices; nothing survives harsh prices, and the scarab vendor never pays
 

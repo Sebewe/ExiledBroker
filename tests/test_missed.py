@@ -153,3 +153,75 @@ def test_orders_are_whole_chaos_for_whole_lots():
     for side, rows in want.items():
         lot, total = missed.whole(pl.col("x"), side)
         assert target.select(lot=lot, total=total).rows() == [(n, float(c)) for n, c in rows], side
+
+
+def _orb_hours(con, item_id: str, name: str, hours: int, price: float, spread: float = 0.1):
+    """A reward-pool item's Chaos-market hours ending at LATEST (cross_market_hour only:
+    pool items needn't have price rows)."""
+    con.execute(
+        "INSERT INTO item (id, game, canonical_name, category) VALUES (?, 'poe1', ?, 'currency')",
+        [item_id, name],
+    )
+    con.execute("INSERT INTO card_reward_pool VALUES ('Delirium Orb', ?)", [item_id])
+    for h in range(hours):
+        con.execute(
+            "INSERT INTO cross_market_hour (league_id, item_id, observed_at, day_offset,"
+            " chaos_price, chaos_volume, chaos_low, chaos_high) VALUES ('L', ?, ?, 1, ?, 50, ?, ?)",
+            [
+                item_id,
+                LATEST - timedelta(hours=h),
+                price,
+                price * (1 - spread),
+                price * (1 + spread),
+            ],
+        )
+
+
+def test_random_rewards_are_valued_at_the_cheapest_roll(con):
+    """Disdain (5 cards → 1 Delirium Orb) at 0.3c a card: a set costs 1.5c and pays
+    if even the cheapest orb (2c) beats it. The dear orb (9c) never counts."""
+    _item(con, "currency:disdain", [0.3] * 6, spread=0.1)
+    con.execute("UPDATE price_observation SET volume = 50 WHERE item_id = 'currency:disdain'")
+    con.execute(
+        "INSERT INTO divination_card (item_id, name, stack_size, reward_kind, reward_name,"
+        " reward_quantity, reward_fixed, followed) VALUES ('currency:disdain', 'Disdain', 5,"
+        " 'currency', 'Delirium Orb', 1, false, true)"
+    )
+    _orb_hours(con, "currency:fine-delirium-orb", "Fine Delirium Orb", 6, 2.0)
+    _orb_hours(con, "currency:diviners-delirium-orb", "Diviner's Delirium Orb", 6, 9.0)
+    [one, _, three] = missed.missed(con, "L")
+    [card] = one["cards"]
+    assert (card["name"], card["reward"], card["worst_roll"]) == (
+        "Disdain",
+        "1× Delirium Orb",
+        True,
+    )
+    assert card["margin"] == pytest.approx(2.0 - 1.5) and card["set_cost"] == pytest.approx(1.5)
+    assert three["cards"][0]["hours_paid"] == 3
+    # Orders: bid the card's low (0.27c), ask the cheapest orb's average (2c); a set still
+    # pays at the cheapest orb's low (1.8c vs 1.35c).
+    assert (card["bid"], card["ask"], card["order_ok"]) == pytest.approx((0.27, 2.0, True))
+    # From each hour with the outcome known (4 of the 6): flat cards never trade under the
+    # bid, so nothing went through.
+    assert (card["tries"], card["through"], card["chance"]) == (4, 0, 0.0)
+
+
+def test_a_random_reward_needs_most_of_its_pool_traded(con):
+    """The cheap orb traded only hours ago: in the latest hours only the dear one did, so
+    a 'floor' of 9c would be a guess. Those hours don't count."""
+    _item(con, "currency:disdain", [0.3] * 6)
+    con.execute("UPDATE price_observation SET volume = 50 WHERE item_id = 'currency:disdain'")
+    con.execute(
+        "INSERT INTO divination_card (item_id, name, stack_size, reward_kind, reward_name,"
+        " reward_quantity, reward_fixed, followed) VALUES ('currency:disdain', 'Disdain', 5,"
+        " 'currency', 'Delirium Orb', 1, false, true)"
+    )
+    _orb_hours(con, "currency:diviners-delirium-orb", "Diviner's Delirium Orb", 6, 9.0)
+    _orb_hours(con, "currency:fine-delirium-orb", "Fine Delirium Orb", 6, 2.0)
+    con.execute(
+        "DELETE FROM cross_market_hour WHERE item_id = 'currency:fine-delirium-orb'"
+        " AND observed_at > ?",
+        [LATEST - timedelta(hours=3)],
+    )
+    [_, _, three] = missed.missed(con, "L")
+    assert three["cards"] == []

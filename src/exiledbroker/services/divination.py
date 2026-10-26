@@ -8,8 +8,9 @@ card), and every hour in which both the card and its reward traded:
     margin       = reward value - set cost
 
 A positive margin means buying a set of cards, turning it in and selling the reward
-was profitable at that hour's prices (before trade friction). Unique-item rewards
-need the expected value of the reward (it can roll differently), which comes later.
+was profitable at that hour's prices (before trade friction). A random currency reward
+("10x Delirium Orb") is valued at its floor, the cheapest item it can roll
+(`hourly_floor_turn_ins`, docs/findings.md 12). Unique-item rewards are out of scope.
 
 SQL here must stay Postgres-compatible: the hosted site's Postgres serves the same queries.
 """
@@ -109,6 +110,63 @@ def hourly_turn_ins(
         """,
         params,
     )
+    # Sorted here, not in SQL: Postgres orders text by locale, DuckDB bytewise.
+    return out.sort("observed_at", "card")
+
+
+# A random reward's hour counts only when this share of its pool traded that hour, so a
+# missing cheap item can't lift the floor (as in analysis/card_ev.MIN_COVERAGE).
+FLOOR_COVERAGE = 0.8
+
+
+def hourly_floor_turn_ins(
+    con: duckdb.DuckDBPyConnection, league: str, since: datetime
+) -> pl.DataFrame:
+    """`hourly_turn_ins` (in Chaos, with `reward_high`) for followed cards whose reward is
+    random, valued at its floor: each hour, the cheapest Chaos-market price among the
+    items `card_reward_pool` says it can roll (`reward_low` / `reward_high`: the lowest
+    low and the lowest high among them, so whatever rolls).
+
+    The pool is what traded since `since` (exclusive): items absent from the league
+    never count, and an hour needs FLOOR_COVERAGE of that pool traded. Aggregated in
+    SQL: one row per card and hour back."""
+    out = db.frame(
+        con,
+        """
+        WITH h AS (
+            SELECT p.reward_name, x.item_id, x.observed_at, x.chaos_price,
+                   x.chaos_low, x.chaos_high
+            FROM cross_market_hour x
+            JOIN card_reward_pool p ON p.item_id = x.item_id
+            WHERE x.league_id = (SELECT id FROM league WHERE name = ?)
+              AND x.observed_at > ? AND x.chaos_price > 0
+        ),
+        size AS (
+            SELECT reward_name, count(DISTINCT item_id) AS pool_size FROM h GROUP BY reward_name
+        ),
+        f AS (
+            SELECT h.reward_name, h.observed_at, min(h.chaos_price) AS floor,
+                   min(h.chaos_low) AS floor_low, min(h.chaos_high) AS floor_high
+            FROM h JOIN size s ON s.reward_name = h.reward_name
+            GROUP BY h.reward_name, h.observed_at, s.pool_size
+            HAVING count(*) >= ? * s.pool_size
+        )
+        SELECT c.observed_at, c.day_offset, d.name AS card,
+               c.chaos_value AS card_price, f.floor AS reward_price,
+               d.stack_size * c.chaos_value AS set_cost,
+               d.reward_quantity * f.floor AS reward_value,
+               d.reward_quantity * f.floor - d.stack_size * c.chaos_value AS margin,
+               c.volume AS card_volume, c.chaos_low AS card_low, c.chaos_high AS card_high,
+               f.floor_low AS reward_low, f.floor_high AS reward_high
+        FROM divination_card d
+        JOIN price_observation c ON c.item_id = d.item_id
+        JOIN f ON f.reward_name = d.reward_name AND f.observed_at = c.observed_at
+        WHERE d.followed AND d.reward_fixed = false AND d.stack_size IS NOT NULL
+          AND c.league_id = (SELECT id FROM league WHERE name = ?) AND c.source = ?
+          AND c.observed_at > ? AND c.chaos_value > 0
+        """,
+        [league, since, FLOOR_COVERAGE, league, HOURLY, since],
+    ).cast({**HOURLY_SCHEMA, "reward_high": pl.Float64})  # typed even when empty
     # Sorted here, not in SQL: Postgres orders text by locale, DuckDB bytewise.
     return out.sort("observed_at", "card")
 

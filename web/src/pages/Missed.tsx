@@ -761,7 +761,7 @@ function Cards({ w, money, href }: { w: MissedWindow; money: Money; href: ItemHr
               href={href(c.item_id)}
               muted={c.chance === 0}
               amount={`+${money(c.margin)}`}
-              label="a set, average prices"
+              label={c.worst_roll ? 'a set, worst roll' : 'a set, average prices'}
               footer={
                 <>
                   <span>set costs {money(c.set_cost)}</span>
@@ -774,6 +774,7 @@ function Cards({ w, money, href }: { w: MissedWindow; money: Money; href: ItemHr
             >
               <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted">
                 a full set turns into <Pill accent>{c.reward}</Pill>
+                {c.worst_roll && <span>random: valued at the cheapest roll</span>}
               </div>
               <Chance tries={c.tries} through={c.through} chance={c.chance} />
               <Rates label={`Rates for ${c.name}`} title={c.name}>
@@ -865,7 +866,9 @@ function cardSteps(c: MissedCard): Step[] {
     {
       verb: 'Sell',
       value: lotText(sell, 'chaos'),
-      note: sentence(eachText(sell, 'chaos'), `Ask the latest hour's average for each ${reward}`),
+      note: c.worst_roll
+        ? sentence(eachText(sell, 'chaos'), `The latest hour's average for the cheapest ${reward} it can roll: a dearer roll sells for more`)
+        : sentence(eachText(sell, 'chaos'), `Ask the latest hour's average for each ${reward}`),
     },
   ]
 }
