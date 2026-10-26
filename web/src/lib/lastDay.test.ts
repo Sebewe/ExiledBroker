@@ -42,13 +42,13 @@ describe('lastDay', () => {
       200,
     )!
     expect(d.dearest?.hour).toBe(2)
-    expect(d.dearest?.divine).toBeCloseTo(0.012)
+    expect(d.dearest?.price).toBeCloseTo(0.012)
     expect(d.dearest?.over).toBeCloseTo(0.012 / 0.011 - 1)
   })
 
   it('prices an hour with no Divine rate from its Divine market only', () => {
     const d = lastDay([h(5, { chaos_price: 2, chaos_units: 10, divine_price: 0.02, divine_units: 10, divine_rate: null })], 100)!
-    expect(d.dearest?.divine).toBeCloseTo(0.02)
+    expect(d.dearest?.price).toBeCloseTo(0.02)
     expect(d.valueChaos).toBeCloseTo(20 + 0.02 * 10 * 100)
   })
 })

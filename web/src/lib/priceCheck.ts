@@ -93,7 +93,19 @@ export function priceChartOption(
   bounds: [number, number],
   band: BandPoint[] | null,
   launchAt?: number | null,
+  chaosOnly = false,
 ): EChartsCoreOption {
+  const option = chartOption(t, points, bounds, band, launchAt)
+  return chaosOnly ? withoutDivine(option) : option
+}
+
+/** Divine Orb's chart: its price in Chaos alone, on one axis (a Divine is worth one Divine). */
+function withoutDivine(option: EChartsCoreOption): EChartsCoreOption {
+  const series = (option.series as { name?: string }[]).filter((s) => s.name !== 'Divine')
+  return { ...option, legend: { ...(option.legend as object), data: ['Chaos'] }, yAxis: [(option.yAxis as unknown[])[0]], series }
+}
+
+function chartOption(t: ChartTokens, points: SeriesPoint[], bounds: [number, number], band: BandPoint[] | null, launchAt?: number | null): EChartsCoreOption {
   const chaos = { ...line('Chaos', points.map(([at, c]) => [at, c])), yAxisIndex: 0, color: t.accent, lineStyle: { width: 2 }, tooltip: { valueFormatter: (v: number | null) => price(v, 'chaos') } }
   const divine = { ...line('Divine', points.map(([at, , d]) => [at, d])), yAxisIndex: 1, color: t.info, lineStyle: { width: 2 }, tooltip: { valueFormatter: (v: number | null) => price(v, 'divine') } }
   const iso = (ms: number) => new Date(ms).toISOString()

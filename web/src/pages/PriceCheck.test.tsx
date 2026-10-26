@@ -68,6 +68,7 @@ const league = (latest: number | null, divine: number | null = 200) => ({
 const status = (leagues: unknown[]) => ({ body: { now: iso(NOW), data_version: 'v1', leagues, upcoming: null } })
 
 const SPLINTER = 'currency:splinter-of-xoph'
+const DIVINE = 'currency:divine-orb'
 const ESSENCE = 'currency:deafening-essence-of-greed'
 const INDEX: PriceCheckIndex = {
   league: 'Allflame',
@@ -77,6 +78,7 @@ const INDEX: PriceCheckIndex = {
     { item_id: ESSENCE, name: 'Deafening Essence of Greed', label: 'Essence', chaos: 3, volume_h: 50, verdict_24h: 'hold', change_24h: 0.04 },
     { item_id: SPLINTER, name: 'Splinter of Xoph', label: 'Breach', chaos: 1.4, volume_h: 3200, verdict_24h: 'sell', change_24h: -0.06 },
     { item_id: 'currency:chaos-orb', name: 'Chaos Orb', label: null, chaos: 1, volume_h: 9000, verdict_24h: 'none', change_24h: null },
+    { item_id: DIVINE, name: 'Divine Orb', label: 'Currency', chaos: 200, volume_h: 400, verdict_24h: 'none', change_24h: 0.02 },
   ],
   movers: [SPLINTER, ESSENCE],
   movers_mode: 'calls',
@@ -108,6 +110,7 @@ const ITEM: PriceCheckItem = {
   day_offset: 9.9,
   thick: true,
   change_24h: -0.06,
+  unit: 'divine',
   series: hourly(240),
   outlook: { h24: horizon({ typical: -0.03, low: -0.09 }), d3: horizon({ verdict: 'none', typical: -0.01 }), unit: 'divine' },
   stack: {
@@ -176,7 +179,7 @@ describe('Price check', () => {
     // Focused, the search lists every item, most traded first, each with its group.
     fireEvent.focus(box)
     const options = within(screen.getByRole('listbox')).getAllByRole('option')
-    expect(options.map((o) => o.textContent)).toEqual(['Chaos Orb', 'Splinter of XophBreach', 'Deafening Essence of GreedEssence'])
+    expect(options.map((o) => o.textContent)).toEqual(['Divine OrbCurrency', 'Chaos Orb', 'Splinter of XophBreach', 'Deafening Essence of GreedEssence'])
   })
 
   it('opens an item from the movers, and from the search, with the item in the URL', async () => {
@@ -197,16 +200,44 @@ describe('Price check', () => {
     expect(await screen.findByRole('list', { name: 'Movers' })).toBeInTheDocument()
   })
 
-  it('answers a search for Divine Orb with its price, though it has no page of its own', async () => {
-    serve(live())
+  it("opens Divine Orb's own page: its price in Chaos, no call, its Chaos market only", async () => {
+    const item: PriceCheckItem = {
+      ...ITEM,
+      item_id: DIVINE,
+      name: 'Divine Orb',
+      label: 'Currency',
+      unit: 'chaos',
+      change_24h: 0.02,
+      series: hourly(240).map(([t]) => [t, 200, null]),
+      outlook: null,
+      stack: { chaos: { price: 200, volume_h: 400, sigma_h: 0.01, hours_traded: 1 }, divine: null },
+      launch_prices: null,
+      last_day: [
+        { hour: '2026-10-22T19:00:00Z', chaos_price: 198, chaos_units: 300, divine_price: null, divine_units: null, divine_rate: null },
+        { hour: '2026-10-22T20:00:00Z', chaos_price: 205, chaos_units: 500, divine_price: null, divine_units: null, divine_rate: null },
+        { hour: '2026-10-22T21:00:00Z', chaos_price: 201, chaos_units: 200, divine_price: null, divine_units: null, divine_rate: null },
+      ],
+    }
+    serve(live(item))
     renderPage('/price-check?league=Allflame')
     const box = await screen.findByRole('combobox', { name: 'Find an item' })
     fireEvent.focus(box)
     fireEvent.change(box, { target: { value: 'divine' } })
-    expect(screen.getByRole('listbox')).toHaveTextContent('Divine Orb is 200.0c in the latest hour.')
-    expect(screen.queryByText(/No item matches/)).not.toBeInTheDocument()
-    fireEvent.change(box, { target: { value: 'divinee' } })
-    expect(screen.getByText('No item matches "divinee".')).toBeInTheDocument()
+    fireEvent.keyDown(box, { key: 'Enter' })
+    expect(await screen.findByRole('heading', { name: 'Divine Orb', level: 2 })).toBeInTheDocument()
+    // In Chaos, even where the visitor's unit would make it "1.0 div".
+    expect(screen.getByTitle('Latest hourly price')).toHaveTextContent('200')
+    expect(screen.getByTitle('Latest hourly price')).not.toHaveTextContent(/div/)
+    const verdict = within(screen.getByRole('region', { name: 'Verdict' }))
+    expect(verdict.getByText(/has no call of its own/)).toBeInTheDocument()
+    expect(verdict.queryByText('No clear signal')).toBeNull()
+    const chart = screen.getByRole('img', { name: /hourly price in Chaos, 3 days/ })
+    expect(chart.dataset.series).toBe('Chaos:72')
+    expect(screen.queryByText(/No Divine rate for these hours yet/)).toBeNull()
+    expect(screen.getByText(/of the Chaos market's trading/)).toBeInTheDocument()
+    expect(screen.queryByText('Divine market')).toBeNull()
+    expect(screen.getByText(/^Highest price at/)).toHaveTextContent('Highest price at 20:00 your time: 205.0c each')
+    expect(screen.queryByRole('heading', { name: 'At past launches' })).toBeNull()
   })
 
   it('asks for each table at the data version it has, so no cache can hand it an older hour', async () => {

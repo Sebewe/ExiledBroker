@@ -41,10 +41,12 @@ def item_view(league: str, item_id: str, entry: dict) -> View:
 
 
 def movers_views(league: str) -> list[View]:
-    """The movers' item views: what a visitor most likely opens (api/warm.py)."""
+    """The movers' item views and Divine Orb's (the search box's example): what a
+    visitor most likely opens (api/warm.py)."""
     doc = deps.payload(index_view(league)).rows[0]
     entries = listed(league)
-    return [item_view(league, i, entries[i]) for i in doc.movers if i in entries]
+    ids = [*doc.movers, price_check.DIVINE_ID]
+    return [item_view(league, i, entries[i]) for i in ids if i in entries]
 
 
 @router.get("/price-check/{league}", response_model=PriceCheckIndex)

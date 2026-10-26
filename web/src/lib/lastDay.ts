@@ -20,9 +20,11 @@ export type LastDay = {
   valueChaos: number | null
   /** The hour (UTC, 0–23) with the most units traded, and how many. */
   busiest: { hour: number; units: number } | null
-  /** The hour with the highest price per unit, in Divines (both markets, by units),
-   *  and how far it sits over the day's median hourly price (0.05 = 5%). */
-  dearest: { hour: number; divine: number; over: number | null } | null
+  /** The hour with the highest price per unit, in `unit` (Divines: both markets, by
+   *  units; Chaos: Divine Orb's own price), and how far it sits over the day's median
+   *  hourly price (0.05 = 5%). */
+  dearest: { hour: number; price: number; over: number | null } | null
+  unit: 'divine' | 'chaos'
 }
 
 const median = (xs: number[]) => {
@@ -47,7 +49,9 @@ function divinePrice(h: DayHour): number | null {
   return units ? sum / units : null
 }
 
-export function lastDay(rows: DayHour[], divineChaos: number | null | undefined): LastDay | null {
+/** `unit` "chaos" is Divine Orb's view: its hours have no Divine rate, so its price is
+ *  its Chaos price. */
+export function lastDay(rows: DayHour[], divineChaos: number | null | undefined, unit: 'divine' | 'chaos' = 'divine'): LastDay | null {
   if (!rows.length) return null
   let chaosUnits = 0
   let divineUnits = 0
@@ -72,7 +76,7 @@ export function lastDay(rows: DayHour[], divineChaos: number | null | undefined)
   const top = rows.reduce((a, b) => (units(b) > units(a) ? b : a))
   const typicalUnits = median(rows.map(units)) ?? 0
   const priced = rows
-    .map((h) => ({ h, p: divinePrice(h) }))
+    .map((h) => ({ h, p: unit === 'chaos' ? h.chaos_price : divinePrice(h) }))
     .filter((x): x is { h: DayHour; p: number } => x.p != null && units(x.h) >= MIN_SHARE * typicalUnits)
   const best = priced.length ? priced.reduce((a, b) => (b.p > a.p ? b : a)) : null
   const mid = median(priced.map((x) => x.p))
@@ -84,6 +88,7 @@ export function lastDay(rows: DayHour[], divineChaos: number | null | undefined)
     units: chaosUnits + divineUnits,
     valueChaos: valued ? value : null,
     busiest: units(top) > 0 ? { hour: hourOf(top), units: units(top) } : null,
-    dearest: best ? { hour: hourOf(best.h), divine: best.p, over: mid ? best.p / mid - 1 : null } : null,
+    dearest: best ? { hour: hourOf(best.h), price: best.p, over: mid ? best.p / mid - 1 : null } : null,
+    unit,
   }
 }

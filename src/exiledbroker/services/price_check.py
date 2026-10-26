@@ -23,20 +23,29 @@ and movers, and one item's view, each one small document per data version.
 - **One item** adds its hourly series over the hosted window (Chaos, and Divines at the
   hour's rate), the stack seller's inputs (`sell_helper.markets`), its typical launch prices
   (`launch_history`) and the best-hour inputs (`sell_helper.constants`).
+- **Divine Orb** is the rate the others are quoted at, so `cross_market_hour` has no row
+  for it: its own market (Divine/Chaos) is its hourly row in `price_observation`. It is
+  listed and has an item view priced in Chaos only (`unit` "chaos"): its 24-hour move in
+  Chaos, no outlook (a verdict judged in Divines means nothing for the Divine), the Chaos
+  market's stack inputs, no launch prices. It is never a mover.
 
 SQL here must stay Postgres-compatible and aggregates in SQL: the hosted site's
 Postgres serves the same queries.
 """
 
 import math
+import statistics
 from datetime import UTC, datetime, timedelta
+from itertools import pairwise
 
 import polars as pl
 
 from exiledbroker.analysis import price_outlook as po
 from exiledbroker.config import Settings, get_settings
 from exiledbroker.normalize import mechanics as basket_config
+from exiledbroker.normalize.exchange_loader import SOURCE as HOURLY
 from exiledbroker.services import price_paths, sell_helper
+from exiledbroker.services.live import DIVINE_ID
 from exiledbroker.storage import db
 
 NOW_HOURS = po.SMOOTH_HOURS  # the price now: the latest 6 hours' median
@@ -407,6 +416,9 @@ def index(con, league: str, settings: Settings | None = None) -> dict:
         moves.sort(key=lambda x: (-x["_amount"], x["item_id"]))
         doc["movers"] = [x["item_id"] for x in moves[:MOVERS]]
     doc["items"] = [{k: v for k, v in x.items() if not k.startswith("_")} for x in out]
+    divine = divine_entry(con, league, latest)
+    if divine is not None:  # never a mover: it has no move in Divines
+        doc["items"] = sorted([*doc["items"], divine], key=lambda x: (x["name"], x["item_id"]))
     return doc
 
 
@@ -542,6 +554,8 @@ def item(con, league: str, item_id: str, entry: dict) -> dict:
     and best-hour inputs."""
     state = league_state(con, league)
     latest, day = state["latest"], state["day_offset"]
+    if item_id == DIVINE_ID:
+        return divine_item(con, league, entry, latest, day)
     f = with_moves(features(con, league, latest, item_id)) if latest is not None else pl.DataFrame()
     if f.is_empty():
         f = _no_features(item_id)
@@ -556,6 +570,7 @@ def item(con, league: str, item_id: str, entry: dict) -> dict:
         "day_offset": day,
         "thick": bool(row["thick"]),
         "change_24h": row["change_24h"],
+        "unit": "divine",
         "series": series(con, league, item_id),
         "outlook": look,
         "stack": stack(con, league, latest, item_id, row["loaded"] or 0)
@@ -566,3 +581,148 @@ def item(con, league: str, item_id: str, entry: dict) -> dict:
         "hours": helper["hours"],
         "impact": helper["impact"],
     }
+
+
+# --- Divine Orb, in Chaos ----------------------------------------------------------------
+
+
+def divine_hours(con, league: str, first: datetime | None = None) -> list[tuple]:
+    """Divine Orb's traded hours in its Divine/Chaos market, from `first` on (else the
+    hosted window): (hour, Chaos per Divine, Divines traded). A primary-key range (item,
+    league, time); a few hundred rows at most."""
+    return db.rows(
+        con,
+        f"""
+        SELECT observed_at, chaos_value, volume FROM price_observation
+        WHERE item_id = ? AND league_id = (SELECT id FROM league WHERE name = ?)
+          AND source = ? AND chaos_value > 0 AND volume > 0
+          {"AND observed_at >= ?" if first is not None else ""}
+        ORDER BY observed_at
+        """,
+        [DIVINE_ID, league, HOURLY, *([first] if first is not None else [])],
+    )
+
+
+def _median(xs: list[float]) -> float | None:
+    return statistics.median(xs) if xs else None
+
+
+def divine_features(con, league: str, latest: datetime, rows: list[tuple]) -> dict:
+    """What `features` and `with_moves` say of an item, for Divine Orb from its own rows
+    (`divine_hours`), in Chaos: the price now and 24 hours earlier (medians of the traded
+    hours in each NOW_HOURS), the move between them, the units traded and the thickness
+    over the latest TRAIL_HOURS, and the loaded hours."""
+    first = latest - timedelta(hours=TRAIL_HOURS - 1)
+    now = latest - timedelta(hours=NOW_HOURS - 1)
+    ago_end = latest - timedelta(hours=PRICE_HOURS)
+    ago = ago_end - timedelta(hours=NOW_HOURS - 1)
+    trail = [(t, c, v) for t, c, v in rows if first <= t <= latest]
+    hrs = db.rows(
+        con,
+        """
+        SELECT hour FROM exchange_hour_loaded
+        WHERE league_id = (SELECT id FROM league WHERE name = ?) AND hour >= ? AND hour <= ?
+        """,
+        [league, first, latest],
+    )
+    loaded = len(hrs)
+    now_p = [c for t, c, _ in trail if t >= now]
+    ago_p = [c for t, c, _ in trail if ago <= t <= ago_end]
+    chaos_now, chaos_ago = _median(now_p), _median(ago_p)
+    ok = len(now_p) >= NOW_MIN and len(ago_p) >= NOW_MIN and chaos_ago
+    traded = {t: c * v for t, c, v in trail}
+    cv_h = _median([traded.get(h, 0.0) for (h,) in hrs])
+    thick = bool(
+        loaded and len(trail) / loaded >= po.THICK_SHARE and (cv_h or 0) >= po.THICK_CHAOS_H
+    )
+    return {
+        "chaos_now": chaos_now,
+        "change_24h": chaos_now / chaos_ago - 1 if ok else None,
+        "units": sum(v for *_, v in trail),
+        "hours": len(trail),
+        "loaded": loaded,
+        "thick": thick,
+    }
+
+
+def divine_entry(con, league: str, latest: datetime) -> dict | None:
+    """Divine Orb's row of the search list (its 24-hour move in Chaos), or None when
+    it hasn't traded in the hosted window."""
+    rows = divine_hours(con, league, latest - timedelta(hours=TRAIL_HOURS - 1))
+    if not rows and not db.rows(
+        con,
+        "SELECT 1 FROM price_observation WHERE item_id = ? "
+        "AND league_id = (SELECT id FROM league WHERE name = ?) AND source = ? LIMIT 1",
+        [DIVINE_ID, league, HOURLY],
+    ):
+        return None
+    f = divine_features(con, league, latest, rows)
+    name = db.scalar(con, "SELECT canonical_name FROM item WHERE id = ?", [DIVINE_ID])
+    return {
+        "item_id": DIVINE_ID,
+        "name": name or "Divine Orb",
+        "label": GROUP_LABELS["currency"],
+        "chaos": _sig(f["chaos_now"]),
+        "volume_h": _sig(f["units"] / f["loaded"]) if f["loaded"] and f["units"] else None,
+        "verdict_24h": "none",
+        "change_24h": _sig(f["change_24h"]),
+    }
+
+
+def divine_item(con, league: str, entry: dict, latest: datetime | None, day) -> dict:
+    """Divine Orb's view, in Chaos: its series (the Divine column empty: a Divine is
+    worth one), no outlook, the Chaos market's stack inputs (price over the latest 24
+    hours, units an hour, hourly swing and share of hours traded over the latest 3 days)
+    and its last day's trading. The best-hour inputs are the same as any item's."""
+    rows = divine_hours(con, league)
+    helper = sell_helper.constants(con, day)
+    doc = {
+        "item_id": DIVINE_ID,
+        "name": entry["name"],
+        "label": entry["label"],
+        "latest_hour": latest.replace(tzinfo=UTC) if latest is not None else None,
+        "day_offset": day,
+        "unit": "chaos",
+        "thick": False,
+        "change_24h": None,
+        "series": [[t.replace(tzinfo=UTC), _sig(c), None] for t, c, _ in rows],
+        "outlook": None,
+        "stack": {"chaos": None, "divine": None},
+        "launch_prices": None,
+        "last_day": [],
+        "hours": helper["hours"],
+        "impact": helper["impact"],
+    }
+    if latest is None:
+        return doc
+    f = divine_features(con, league, latest, rows)
+    doc |= {"thick": f["thick"], "change_24h": _sig(f["change_24h"])}
+    day_start = latest - timedelta(hours=PRICE_HOURS)
+    doc["last_day"] = [
+        {
+            "hour": t.replace(tzinfo=UTC),
+            "chaos_price": _sig(c),
+            "chaos_units": _sig(v),
+            "divine_price": None,
+            "divine_units": None,
+            "divine_rate": None,
+        }
+        for t, c, v in rows
+        if day_start < t <= latest
+    ]
+    first = latest - timedelta(hours=TRAIL_HOURS - 1)
+    trail = [(t, c) for t, c, _ in rows if first <= t <= latest]
+    # sell_helper.markets' sigma: hourly log changes between consecutive traded hours.
+    steps = [
+        math.log(c / pc) for (pt, pc), (t, c) in pairwise(trail) if t - pt == timedelta(hours=1)
+    ]
+    sigma = statistics.stdev(steps) if len(steps) >= 2 else None
+    if f["hours"]:
+        loaded = f["loaded"]
+        doc["stack"]["chaos"] = {
+            "price": _median([c for t, c, _ in rows if day_start < t <= latest]),
+            "volume_h": f["units"] / loaded if loaded else None,
+            "sigma_h": sigma,
+            "hours_traded": f["hours"] / loaded if loaded else None,
+        }
+    return doc

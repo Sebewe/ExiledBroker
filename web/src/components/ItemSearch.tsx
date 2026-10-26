@@ -1,5 +1,5 @@
 import { Search } from 'lucide-react'
-import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { useId, useRef, useState, type KeyboardEvent } from 'react'
 import { matchOptions, type SearchOption } from '../lib/search'
 
 // A type-to-filter picker for long item lists (hundreds of items), in place of a native
@@ -8,10 +8,6 @@ import { matchOptions, type SearchOption } from '../lib/search'
 // Rows rendered at once; past that the list says to keep typing.
 const LIMIT = 50
 
-/** A quick answer for a name the list doesn't have (Price check's Divine Orb: its price
- *  is the rate everything else is quoted at), shown above the matches when typed. */
-export type SearchNote = { name: string; content: ReactNode }
-
 export function ItemSearch<T extends SearchOption>({
   label,
   options,
@@ -19,7 +15,6 @@ export function ItemSearch<T extends SearchOption>({
   onChange,
   placeholder = 'Type to search…',
   size = 'md',
-  notes = [],
 }: {
   label: string
   options: T[]
@@ -28,7 +23,6 @@ export function ItemSearch<T extends SearchOption>({
   placeholder?: string
   /** "lg": the Price check page's headline box, as wide as its column. */
   size?: 'md' | 'lg'
-  notes?: SearchNote[]
 }) {
   const lg = size === 'lg'
   const id = useId()
@@ -41,7 +35,6 @@ export function ItemSearch<T extends SearchOption>({
   const open = query !== null
   const matches = open ? matchOptions(options, query) : []
   const shown = matches.slice(0, LIMIT)
-  const said = open && query.trim() ? matchOptions(notes.map((n) => ({ ...n, id: n.name })), query) : []
 
   const close = () => {
     setQuery(null)
@@ -111,12 +104,7 @@ export function ItemSearch<T extends SearchOption>({
           onMouseDown={(e) => e.preventDefault()}
           className={`absolute top-full left-0 z-30 mt-1 max-h-80 ${lg ? 'w-full' : 'w-80'} max-w-[calc(100vw-2rem)] overflow-y-auto rounded-md border border-border bg-surface p-1 shadow-lg shadow-shadow/40`}
         >
-          {said.map((n) => (
-            <li key={n.id} role="presentation" className="rounded bg-accent/10 px-2.5 py-2 text-sm text-text">
-              {n.content}
-            </li>
-          ))}
-          {shown.length === 0 && said.length === 0 && <li className="px-2.5 py-2 text-sm text-muted">No item matches "{query.trim()}".</li>}
+          {shown.length === 0 && <li className="px-2.5 py-2 text-sm text-muted">No item matches "{query.trim()}".</li>}
           {shown.map((o, i) => (
             <li
               key={o.id}

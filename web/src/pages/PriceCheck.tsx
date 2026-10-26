@@ -44,6 +44,9 @@ import { useNumberParam, useParam } from '../lib/useParam'
 
 const DEFAULT_QTY = 100
 
+/** Divine Orb's prices: always in Chaos. */
+const chaosMoney: Money = (chaos) => price(chaos, 'chaos')
+
 export default function PriceCheck() {
   const status = useStatus()
   const serverNow = useServerNow()
@@ -88,7 +91,6 @@ export default function PriceCheck() {
             <Search
               data={data}
               value={itemId || undefined}
-              divineChaos={info.divine_chaos}
               onChange={(id) => {
                 trackFeature('price-check-item')
                 setItem(id)
@@ -105,17 +107,7 @@ export default function PriceCheck() {
   )
 }
 
-function Search({
-  data,
-  value,
-  onChange,
-  divineChaos,
-}: {
-  data: PriceCheckIndex
-  value: string | undefined
-  onChange: (id: string) => void
-  divineChaos: number | null | undefined
-}) {
+function Search({ data, value, onChange }: { data: PriceCheckIndex; value: string | undefined; onChange: (id: string) => void }) {
   // Before anything is typed, the most traded items come first: what a player most likely holds.
   const options = useMemo(
     () =>
@@ -124,23 +116,8 @@ function Search({
         .map((x) => ({ id: x.item_id, name: x.name, group: x.label ?? undefined })),
     [data.items],
   )
-  // Divine Orb has no item view (its price is the rate everything else is quoted at), so the
-  // search answers it directly.
-  const notes = divineChaos
-    ? [
-        {
-          name: 'Divine Orb',
-          content: (
-            <>
-              <span className="font-semibold">Divine Orb</span> is <span className="num font-semibold text-accent-strong">{price(divineChaos)}</span> in the latest hour.
-              Every price on the site is quoted against it.
-            </>
-          ),
-        },
-      ]
-    : []
   if (data.items.length === 0) return <Empty>No item has traded yet this league. Items appear here as the first hours are published.</Empty>
-  return <ItemSearch size="lg" label="Find an item" options={options} value={value} onChange={onChange} placeholder="Type an item, e.g. Divine Orb or Stacked Deck" notes={notes} />
+  return <ItemSearch size="lg" label="Find an item" options={options} value={value} onChange={onChange} placeholder="Type an item, e.g. Divine Orb or Stacked Deck" />
 }
 
 function Block({ id, title, icon: Icon, note, children }: { id: string; title: string; icon: typeof Coins; note?: ReactNode; children: ReactNode }) {
@@ -270,13 +247,16 @@ function ItemView({
   if (fallback) return fallback
   const item = q.data!
   if (item.item_id !== itemId) return <Skeleton rows={6} />
+  // Divine Orb is priced in Chaos only: in the visitor's unit it would always read 1 Divine.
+  const chaosOnly = item.unit === 'chaos'
+  const shown = chaosOnly ? chaosMoney : money
   const lastChaos = [...item.series].reverse().find(([, c]) => c != null)?.[1] ?? entry?.chaos ?? null
   return (
     <>
       {back}
       <header className="-mt-4 flex flex-wrap items-baseline gap-x-4 gap-y-1">
         <span className="num text-3xl font-semibold" title="Latest hourly price">
-          {money(lastChaos)}
+          {shown(lastChaos)}
         </span>
         <h2 className="min-w-0 truncate text-2xl" title={item.name}>
           {item.name}
@@ -285,14 +265,25 @@ function ItemView({
       </header>
       <VerdictCard item={item} />
       <PriceChart item={item} info={info} />
-      <Selling item={item} money={money} divineChaos={info.divine_chaos} />
-      <LaunchPrices item={item} money={money} divineChaos={info.divine_chaos} />
+      <Selling item={item} money={shown} divineChaos={info.divine_chaos} />
+      {!chaosOnly && <LaunchPrices item={item} money={money} divineChaos={info.divine_chaos} />}
     </>
   )
 }
 
 function VerdictCard({ item }: { item: PriceCheckItem }) {
   const o = item.outlook
+  // Divine Orb: calls are judged in Divines, and a Divine is always worth one.
+  if (!o)
+    return (
+      <section aria-label="Verdict" className="flex items-start gap-2 rounded-xl border border-border bg-surface p-4 text-sm text-muted sm:p-5">
+        <Scale aria-hidden className="mt-0.5 size-4 shrink-0 text-accent" />
+        <p>
+          Every other price on the site is quoted against {item.name}, and Sell or Hold calls are judged in Divines, so it has no call of its own. Its chart is its
+          price in Chaos.
+        </p>
+      </section>
+    )
   // After the launch fortnight there is no call at all (decided after finding 9): one line.
   if (isLater(o))
     return (
@@ -349,7 +340,11 @@ function PriceChart({ item, info }: { item: PriceCheckItem; info: LiveLeague }) 
     const band = latestShown ? outlookBand(item.series, item.outlook, info.divine_chaos) : null
     return { bounds, points, band }
   }, [item, range, info.launched_at, info.divine_chaos])
-  const build = useCallback((t: ChartTokens) => priceChartOption(t, points, bounds ?? [0, 0], band, range === 'launch' && bounds ? bounds[0] : null), [points, bounds, band, range])
+  const chaosOnly = item.unit === 'chaos'
+  const build = useCallback(
+    (t: ChartTokens) => priceChartOption(t, points, bounds ?? [0, 0], band, range === 'launch' && bounds ? bounds[0] : null, chaosOnly),
+    [points, bounds, band, range, chaosOnly],
+  )
   const priced = points.filter(([, c, d]) => c != null || d != null).length
   return (
     <Block id="chart" title="Price this league" icon={LineChart}>
@@ -366,13 +361,14 @@ function PriceChart({ item, info }: { item: PriceCheckItem; info: LiveLeague }) 
           <LazyChart
             build={build}
             height={300}
-            label={`${item.name}: hourly price in Chaos (left axis) and in Divines (right axis), ${RANGES[range].toLowerCase()}${band ? ', with the outlook range past the latest hour' : ''}`}
+            label={`${item.name}: hourly price in Chaos${chaosOnly ? '' : ' (left axis) and in Divines (right axis)'}, ${RANGES[range].toLowerCase()}${band ? ', with the outlook range past the latest hour' : ''}`}
           />
         </div>
       )}
       <ul className="flex max-w-3xl flex-col gap-1 text-xs text-faint">
         {priced === 1 && <li>Only one hour has traded so far: the lines start as the next hours are published.</li>}
-        {!hasDivine(item.series) && <li>No Divine rate for these hours yet, so there's no Divine line: only its Chaos price.</li>}
+        {chaosOnly && <li>Its own market's price: how many Chaos a Divine Orb traded for each hour, the rate the site converts every price with.</li>}
+        {!chaosOnly && !hasDivine(item.series) && <li>No Divine rate for these hours yet, so there's no Divine line: only its Chaos price.</li>}
         {band && <li>The shaded range past the latest hour is what past leagues did from this point, in Divines (right axis); the dashed line is the typical path.</li>}
         <li>Hourly, UTC. Lines break at hours with no trades.</li>
       </ul>
@@ -399,8 +395,9 @@ function Selling({ item, money, divineChaos }: { item: PriceCheckItem; money: Mo
         note={item.impact?.note ?? undefined}
         money={money}
         divineChaos={divineChaos}
+        chaosOnly={item.unit === 'chaos'}
       />
-      <BestHours rows={item.last_day} money={money} divineChaos={divineChaos} />
+      <BestHours rows={item.last_day} money={money} divineChaos={divineChaos} unit={item.unit} />
     </Block>
   )
 }
