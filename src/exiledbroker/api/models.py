@@ -3,7 +3,7 @@ OpenAPI schema), so a renamed column fails here, in the tests, rather than in th
 browser. Prices are chaos unless the endpoint takes a `unit`. Nulls are real: at a
 league's launch most values are missing for a while."""
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel
@@ -507,3 +507,37 @@ class AdminOverview(BaseModel):
     now: datetime
     data_version: str | None
     pipeline: list[PipelineLeague]  # the most recently run league first
+# Usage counts (/api/stats, api/usage.py, docs/usage.md)
+class UsageTotal(BaseModel):
+    views: int  # page views, all time
+    visitor_days: int  # distinct visitors summed over the days
+    since: date | None = None  # the first day counted
+
+
+class UsagePeriod(BaseModel):
+    period: str  # '2026-10' (month), '2026-W44' (week) or a day
+    visitors: int
+    returning: int  # seen on 2 or more days of the period
+    finished: bool
+
+
+class UsageDay(BaseModel):
+    day: date
+    views: int
+    visitors: int
+
+
+class UsageEvent(BaseModel):
+    event: str  # 'page:/launch' or 'feature:price-check-item'
+    views: int
+    visitors: int  # distinct visitors summed over the days
+    views_recent: int = 0  # the last 30 days
+    visitors_recent: int = 0
+
+
+class UsageStats(BaseModel):
+    stored: bool  # false: counts kept in memory only (no EB_DATABASE_URL)
+    total: UsageTotal
+    periods: list[UsagePeriod]
+    days: list[UsageDay]  # the whole site, the last 30 days
+    events: list[UsageEvent]

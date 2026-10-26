@@ -2548,6 +2548,162 @@
         "title": "Upcoming",
         "type": "object"
       },
+      "UsageDay": {
+        "properties": {
+          "day": {
+            "format": "date",
+            "title": "Day",
+            "type": "string"
+          },
+          "views": {
+            "title": "Views",
+            "type": "integer"
+          },
+          "visitors": {
+            "title": "Visitors",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "day",
+          "views",
+          "visitors"
+        ],
+        "title": "UsageDay",
+        "type": "object"
+      },
+      "UsageEvent": {
+        "properties": {
+          "event": {
+            "title": "Event",
+            "type": "string"
+          },
+          "views": {
+            "title": "Views",
+            "type": "integer"
+          },
+          "views_recent": {
+            "default": 0,
+            "title": "Views Recent",
+            "type": "integer"
+          },
+          "visitors": {
+            "title": "Visitors",
+            "type": "integer"
+          },
+          "visitors_recent": {
+            "default": 0,
+            "title": "Visitors Recent",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "event",
+          "views",
+          "visitors"
+        ],
+        "title": "UsageEvent",
+        "type": "object"
+      },
+      "UsagePeriod": {
+        "properties": {
+          "finished": {
+            "title": "Finished",
+            "type": "boolean"
+          },
+          "period": {
+            "title": "Period",
+            "type": "string"
+          },
+          "returning": {
+            "title": "Returning",
+            "type": "integer"
+          },
+          "visitors": {
+            "title": "Visitors",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "period",
+          "visitors",
+          "returning",
+          "finished"
+        ],
+        "title": "UsagePeriod",
+        "type": "object"
+      },
+      "UsageStats": {
+        "properties": {
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/UsageDay"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/UsageEvent"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "periods": {
+            "items": {
+              "$ref": "#/components/schemas/UsagePeriod"
+            },
+            "title": "Periods",
+            "type": "array"
+          },
+          "stored": {
+            "title": "Stored",
+            "type": "boolean"
+          },
+          "total": {
+            "$ref": "#/components/schemas/UsageTotal"
+          }
+        },
+        "required": [
+          "stored",
+          "total",
+          "periods",
+          "days",
+          "events"
+        ],
+        "title": "UsageStats",
+        "type": "object"
+      },
+      "UsageTotal": {
+        "properties": {
+          "since": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since"
+          },
+          "views": {
+            "title": "Views",
+            "type": "integer"
+          },
+          "visitor_days": {
+            "title": "Visitor Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "views",
+          "visitor_days"
+        ],
+        "title": "UsageTotal",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -3043,9 +3199,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Stats Api Stats Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/UsageStats"
                 }
               }
             },

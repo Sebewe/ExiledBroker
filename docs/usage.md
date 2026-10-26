@@ -65,7 +65,7 @@ curl -s -H "Authorization: Bearer $EB_ADMIN_TOKEN" https://exiledbroker.trade/ap
   "total": {"views": 1234, "visitor_days": 456, "since": "2026-10-26"},
   "periods": [{"period": "2026-10", "visitors": 210, "returning": 64, "finished": false}],
   "days": [{"day": "2026-10-26", "views": 80, "visitors": 31}],
-  "events": [{"event": "page:/", "views": 900, "visitors": 300, "views_30d": 400, "visitors_30d": 150}]
+  "events": [{"event": "page:/", "views": 900, "visitors": 300, "views_recent": 400, "visitors_recent": 150}]
 }
 ```
 
