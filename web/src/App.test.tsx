@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
@@ -26,7 +26,8 @@ describe('routes', () => {
     )
     // Price check is a lazy chunk: under a busy test run its import can take over a second.
     expect(await screen.findByRole('heading', { name: 'Price check', level: 1 }, { timeout: 5000 })).toBeInTheDocument()
-    expect(document.title).toBe('Price check · ExiledBroker')
+    // The title is set in an effect after the redirect, which can land after the heading shows.
+    await waitFor(() => expect(document.title).toBe('Price check · ExiledBroker'))
   })
 })
 
