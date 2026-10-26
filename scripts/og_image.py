@@ -20,7 +20,9 @@ W, H = 1200, 630
 
 
 def font(family: str, weight: int, size: int) -> ImageFont.FreeTypeFont:
-    return ImageFont.truetype(str(FONTS / family / f"files/{family}-latin-{weight}-normal.woff"), size)
+    return ImageFont.truetype(
+        str(FONTS / family / f"files/{family}-latin-{weight}-normal.woff"), size
+    )
 
 
 def main() -> None:
