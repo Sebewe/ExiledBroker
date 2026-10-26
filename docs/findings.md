@@ -410,10 +410,108 @@ The median move that followed a call: days 0–2 sells −24% (thin) / −31% (t
 
 **Caveats.** Five leagues, and only three for the walk-forward checks. Today's core pool and followed cards are applied to every league, so items that left the game are missing and survivors are slightly favoured. The 24-hour day-1 baseline needs 6 traded hours, which drops the thinnest items, especially in Settlers. Loops and card margins are hourly summaries, not an order book (finding 2's caveats), and the paying-share thresholds (25% of hours, half the hours) were picked here, not tuned out of sample.
 
+## 11. Demand: volume, price and stock don't make a buy label; one launch-week lead to paper-trade; "Being dumped" describes, it doesn't save money
+
+*`analysis/demand.py` (`readings`, `with_excess`, `labels`, `lolo`, `summary`; `stock` / `stock_features` read the pages on disk; `python -m exiledbroker.analysis.demand <copy of the database> [--stock]`, seconds). Settlers, Mercenaries, Keepers, Mirage and Allflame, days 0–13, plus Allflame's days 76–90; today's core pool, no uniques; liquid = the Market recap's rule over the 6-hour window (≥ 2,000c traded an hour on average, ≥ 5c). Trades through `analysis/backtest.py`'s dummy trader. Built 2026-10-25, read-only, no requests; two independent audits rebuilt the headline numbers (no lookahead found) and their corrections are applied here. Workstream A of [demand.md](demand.md).*
+
+**Method.** Per item and loaded hour t, over hours t−5..t and both legs: value traded in Divines against the same 6 hours on the previous 3 days (at least 1, so readings start on day 1), the 6-hour price move in Divines, and the stock. **Outcomes start after the decision**: buy at the median of hours t+1..t+3, sell at the same three hours 24 h or 72 h later (finding 9). A label is judged on its **excess**: its move minus the same hour's median over liquid items, since most items fall in Divines over the fortnight (finding 10) and "Being dumped → falls" is true of nearly everything. Thresholds are chosen on four leagues and scored on the fifth.
+
+**What the stock fields are.** `lowest_stock` / `highest_stock` are each side's book at its thinnest and fullest moment of the hour: the item side is sellers' listings, the currency side buyers' Chaos or Divines (extracted from all 2,016 loaded pages: 2.3M item-market-hours, 1,128 items).
+- **No cap and no pinned values**: they look like the whole book, not only listings near the best price.
+- **Slow and about an hour deep**: level autocorrelation 0.99, median hourly change 11–13%; the median highest stock is 1.5 hours of trading, and 38–48% of hours trade more than the book held, so it refills within the hour.
+- **Two separate books**: buyers' and sellers' stock correlate 0.48 within an item; buyers hold 0.95× the sellers' value in the Chaos market, 0.35× in the Divine.
+- **Buyers arrive late**: buyers' stock exists in 0–48% of markets in hour 0, 62–79% by hour 24. After day 13 books are 13 hours of trading deep against 0.8 at launch, so a threshold would be per phase.
+
+**Labels** (liquid, days 0–13, held out; Leagues = how many of 5 have the label's sign). Intervals resample 5-day blocks (outcomes overlap across days; 1-day blocks for the momentum rows). *Money* is the arithmetic mean against matched liquid items, unclipped.
+
+| Label (rule chosen held out) | Signals | Raw / hit | Excess, log [95%] | Excess, money | Leagues | Beyond the same 3-day move |
+|---|---|---|---|---|---|---|
+| Demand rising (volume ≥ 3× usual, price ≥ +10%), 24 h | 12,029 | +1.7% / 56% | +2.3% [−1.2, +3.5] | +5.2% | 5 | −2.6% (0 of 5) |
+| Demand rising, 72 h | 11,760 | +2.7% / 56% | +6.1% [+2.5, +8.6] | +11.2% | 5 | −1.3% |
+| Being dumped (volume ≥ 3× the market's ratio, price ≤ −10%), 24 h | 785 | −9.8% / 59% | −9.0% [−13.7, −5.7] | **−3.6%** | 5 | −10% on days 0–6 (4 of 5) |
+| Being dumped, 72 h | 6,816 | −13.3% / 57% | −10.1% [−15.7, −2.8] | −3.3% | 4 | |
+| Busier (volume ≥ 1.5× the market's ratio), 24 h | | +1.3% / 54% | +1.4% | | 5 | in units instead: −1.7% |
+| *3-day move against the market, bottom fifth (nothing fitted), 72 h* | 33,513 | −17.3% / 67% | −18.8% [−21.6, −15.9] | | 5 | |
+| *3-day move, top fifth, 72 h* | 32,637 | +9.6% / 65% | +8.1% [+6.0, +10.0] | | 5 | |
+| All liquid item-hours, for scale | | −0.7% (24 h), −2.2% (72 h) | 0 | | | |
+
+- **"Demand rising" is 3-day momentum under another name**: once the item's 3-day move against the market is known it adds nothing (−0.8% on days 0–6, 2 of 5; −12% on days 7–13, 0 of 5).
+  - **Only items that stay labelled carry it**: first hour of each run +0.6% [−0.8, +1.9]; each item weighted equally −6.2%; it fails for scarabs and essences.
+  - **It's mostly the launch ramp**: 80% of signals fall on days 1–4, when a quarter of liquid item-hours pass the rule. +2% to +12% on days 0–7, −4% to −21% on days 7–14, in every league.
+  - **Executable, it shrinks further**: a trader acting in hour t+1 pays about 1.3 points above the three-hour median entry for rising items, so 24 h is about +1%.
+- **Volume in Divines stands in for price**: value traded rises when an item holds its price. In units, "Busier" turns negative, and with the 3-day move held fixed more volume predicts a slightly worse outcome in all 5 leagues.
+- **"Being dumped" is real but small in money.** It survives every log-scale check (first hour of each run −7.6%; against finding 9's item path −8.0%, 5 of 5; against the same 3-day move −10% on days 0–6, −19% on days 7–13), but in money it's −3.6% at 24 h: 9% of dumped items rebound over 50% within a day, mostly scarabs. About 150 signals a league fortnight.
+- **After day 13** (Allflame only) every label reverses: rising −10%, dumped +10%.
+
+**Does stock add anything?** A rank model of the 72 h excess, held out (IC = mean per-hour rank correlation):
+
+| Added to volume, price, price level and group | 72 h IC gain [95%] | Leagues improved |
+|---|---|---|
+| All stock features | +0.013 [+0.002, +0.027] | 4 of 5 |
+| Drain only (6-hour mean of 1 − lowest ÷ highest of the sellers' stock) | +0.015 [+0.003, +0.027] | 4 of 5 |
+| Buyers-against-sellers imbalance only | −0.004 | 2 of 5 |
+
+- **The imbalance adds nothing**: buyers' stock is counted in currency, so it repeats the price move (as in finding 7).
+- **Drain adds a little**: a calm book, one trading didn't empty, goes with better outcomes.
+- **"Rising on a calm book"** (rising, drain ≤ 0.4, imbalance not falling) looks strong by the loose test and weak by the strict one: 72 h, 1,403 signals, raw +14.0%, 65% hit, excess +17.0% [+9.7, +23.9], +8.6% beyond a no-stock model, but **+2.0% [−5.7, +9.7] against items with the same 3-day move, 2 of 5 leagues**. It reverses on days 7–13 (−6%), is about 0 with items weighted equally, and its edge fades league by league: rising signals passing minus failing the filter, +31 / +18 / +24 / +10 / −1 points from Settlers to Allflame. Drain was found on pooled data; only its threshold was held out.
+
+**Mechanics** (`config/mechanics.toml`'s 20 baskets, liquid items, days 1–13, held out):
+- **Rising: no robust signal.** +5.8% at 24 h, but first hour of each run +2.0%, mechanics weighted equally −0.1%, each league × mechanic once −2.6%; one cluster (Mercenaries' Necropolis, 66 signals) is +45%.
+- **Busier says nothing about price** (1 of 5 leagues).
+- **Dumped holds on days 1–6 only**: −10.3% at 24 h, −16.3% at 72 h (5 of 5), −5.7% / −7.3% with mechanics weighted equally. Strongest for Runegrafts, Beyond, Tattoos, Divination and Essence; positive for Heist, Necropolis and Blight.
+- The calm-book filter on baskets (+29% at 72 h, days 1–6) isn't independent confirmation: a signal's top item carries 50–70% of the basket's weight, and the filter was fixed on the same leagues.
+
+**The past-launch baseline for an item's first 2 days** (the item's median 6-hour volume at that hour of other leagues' launches, scaled by total market volume). It covers 91–100% of active item-hours against 54–73% for own history, and tracks volume better (rank correlation 0.80–0.88 against 0.56–0.70). Only a baseline from **earlier** leagues is deployable:
+
+| Hours 6–47, active items (≥ 500c an hour, ≥ 5c), held out | Signals | Excess [95%] |
+|---|---|---|
+| Rising, earlier leagues only (4 leagues), 24 h / 72 h | 3,687 / 3,686 | +6.9% / +5.7%; from all other leagues +3.2% / −0.8% (3 / 1 of 5): not stable |
+| Dumped, earlier leagues only, 24 h / 72 h | 632 / 517 | −17.6% [−23.4, −10.6] / −23.8% [−35.8, −11.0] |
+| A price fall alone, no volume condition | | −24.8% / −27.4% |
+
+In the first 2 days a falling price says most of what a "dumped" reading would. (A first run's −32% / −43% used later leagues in the baseline.)
+
+**Trading it** (the backtest's dummy trader: 100 Divines, acting in hour t+1 in the Chaos market, at most 10 Divines and 10% of the hour's units a trade, unsold within 6 hours = lost). Return on capital deployed, launch fortnight, 72 h hold; per league Settlers / Mercenaries / Keepers / Mirage / Allflame. 3–5% a side is finding 4's 5–10% round trip; harsh (buy at the hour's high, sell at its low) is a worst case, since the median liquid item's hourly range is 30–50%.
+
+| Strategy | Trades | 3% a side | 5% a side (per league) | Harsh | Matched random: 5% / harsh |
+|---|---|---|---|---|---|
+| Demand rising | ≈ 290 | +3.7% | −0.7% (−12 / −4 / +3 / −3 / +9) | −27% | −8.9% / −29% |
+| **Rising on a calm book** | ≈ 190 | +27.2% | **+21.9%** (+5 / +28 / +34 / +9 / +24) | −1% to −3% (positive only in Mercenaries, Keepers) | −4.8% / −29% |
+| Calmest 10% of books, no label | ≈ 710 | +14.5% | +9.2% (−3 / +5 / +15 / +7 / +15) | −6% | −6.1% / – |
+| 3-day move, top fifth | ≈ 350 | +11.8% | +7.3% (−1 / +18 / +5 / +12 / −2) | −16% | −5.3% / – |
+| The recap's Rising rule, 72 h | 671 | | | −47% (all lose) | beats random in 0 of 5 |
+| Holding Divines | | 0 | 0 | 0 | |
+
+- **Rising on a calm book is the one lead**: about 27 points better than random buys at the same hours in all 5 leagues under every price assumption, positive in all 5 up to 5% a side, break-even at about 15% a side.
+- **It's launch weekend**: at 5% a side, entries on days 1–2 return +52%, later ones +0.1% (without the bank's limit: day 1 +58%, day 2 +29%, day 3 +11%, day 4 +7%, then about 0). Not just the Launch picks again: trades outside that league's walk-forward picks still return +20%.
+- **It's small**: about 40 trades and 200 Divines deployed a league fortnight, about +40 Divines at 5% a side, against the Launch picks' +21 to +186 at harsh prices (finding 4).
+- **Longer holds** (chosen after seeing the results): harsh +14% to +17% at 96 h, +28% to +31% at 120 h, from about 5 launch weekends; Allflame about 0 at 120 h (−13% weighting trades equally), Settlers loses at every hold.
+- **After day 13** every strategy loses, worse than random (calm-book rising −56% harsh).
+- **"Being dumped" saves nothing**: exiting the Launch picks on the flag takes the harsh basket from ×1.92 to ×1.85 or ×1.57, worse than exiting at a random hour; a holder selling on the flag does 3.0% worse than selling a random liquid item (3 of 5). The 3-day bottom fifth is the better "sell these first" hint (+8% against selling at random at 72 h, 5 of 5), but saves only +2.2% [−1.7, +5.9] in absolute terms.
+
+**Caveats.**
+- Small effective samples: hourly signals overlap and the lead rests on about 5 launch weekends. Per-league signs and first-hour counts are the robust part; "5 of 5" is a sign test on five.
+- Thresholds came from small grids (54 configurations a label in the first pass, 10 for the stock filter).
+- Fills are unobservable (finding 5): the truth sits between fair and harsh, and the trader pays only the Chaos market's spread.
+- All five leagues launched on a Friday evening UTC, so phase effects (days 1–2, the turn after day 7) are confounded with weekends.
+- Today's core pool: liquid items outside it (retired currencies, delve and socketable items) show far stronger rising moves (+9% / +21% at 24 / 72 h, a few items), which a new league can't know in advance.
+- The liquid rule averages the window; the recap tests the latest hour, a little stricter.
+
+**Decided:**
+- **Stock's buyers-against-sellers imbalance is out**: it adds nothing over price and volume (as finding 7). Only the sellers' drain carries a little.
+- **No "Demand rising", "Busier" or mechanic "farm this" label**: none beats the item's own 3-day move held out, and none pays as a buy at realistic spreads.
+- **No label after day 13**: every reading reverses there.
+
+**For the user to decide:**
+- **Whether to pursue the lead.** "Rising on a calm book, entered on days 1–4, held 3–5 days" is the only buy rule that beat random in every league and stayed positive at a 5–10% round trip, but it's small, concentrated on launch weekends, and fading in the newest leagues. The cheap test is a local paper trade on the next league (~2026-11-13) with `analysis/demand.py`, no loading or building; load the item-side stock fields (about 14 MB for Allflame's window) only if it holds.
+- **Whether to show plain descriptions.** "Trading 3× its usual, price −12% in Divines" is accurate, but as a decision aid it mostly repeats finding 9's verdict. A days 1–6 "Being dumped" mark is honest as a description; in money it's about −3.6% against the market, so it shouldn't read as advice to sell.
+- **Whether 3-day relative momentum goes into Price check** (a "falling behind the market" list): the strongest reading here, but it overlaps the item-path verdict.
+
 ## Still to do
 
 - **Check in-game whether GGG's hourly lowest and highest ratios are executed trades** (findings 2, 4, 5). It's the one question hourly data can't answer, and it decides whether the loops' limit orders, the card limit orders and the volatile flips are real.
 - **Rerun finding 10 on the next league once its fortnight completes (~2026-11-27).** The sixth league is the first real out-of-sample check of these patterns; the Launch picks and Price check's paths gain it as one more league (rebuild and reseed).
+- **Paper-trade finding 11's lead on the next league** (rising on a calm book, entered on days 1–4, held 3–5 days), from the pages as they arrive, before loading any stock field.
 - **Divination card expected value** for random rewards (not unique ones: uniques are out of scope).
 - **Patch notes (phase 3)** to explain the level shifts that past prices can't (finding 3's group levels, finding 8's Necropolis and Tattoos).
 - **A `days` limit on `cross_market.summarize` and `divination.turn_in_summary`** (and so `turn_ins_across_leagues`): they read every loaded hour, so for Allflame they mix its latest 14 days into launch comparisons. Finding 10 filtered in its own queries.

@@ -4,7 +4,21 @@ This plan comes from an interview with the user on 2026-10-25. **Demand** tells 
 
 ## Status (2026-10-25)
 
-Planned. A (research) comes first and gates the rest: B–E start only once A has settled what the signal is.
+**A is done ([finding 11](findings.md#11-demand-volume-price-and-stock-dont-make-a-buy-label-one-launch-week-lead-to-paper-trade-being-dumped-describes-it-doesnt-save-money)); B–E are on hold until the user decides.** The research found no demand signal to build on, apart from one lead that isn't proven yet:
+- **No label passes the plan's bar.** "Demand rising", "Busier" and a mechanic "farm this" label don't beat the item's own 3-day move against the market when tested leave one league out. They also lose money as buys at realistic spreads. Every reading reverses after day 13.
+- **"Being dumped" is real but small.** It's −9% in log terms, but only about −3.6% in money against the market, and it saves nothing as an exit or a no-buy rule. It's honest only as a description on days 1–6.
+- **Stock: the buyers-against-sellers imbalance is out.** It repeats the price move. Only the sellers' "drain" (how far trading emptied the book within the hour) adds a little.
+- **The one lead is "rising on a calm book"** (rising, with drain ≤ 0.4). It beat random buys by about 27 points in all 5 leagues, and it returned +22% at 5% a side over 3 days, positive in every league. But almost all of that comes from entries on launch days 1–2. It's about +40 Divines per league fortnight, it adds only +2% against the 3-day move, and its edge fades in the newest leagues.
+
+**Recommendation (for the user to decide):**
+- **Don't build B–E now.**
+- **Paper-trade the lead on the next league (~2026-11-13).** Run it locally with `analysis/demand.py` on the pages as they arrive, with no loading and no requests beyond the live feed.
+- **If it holds, build a reduced version:**
+  - B loads only the item-side `lowest_stock` / `highest_stock` per leg, for kept items (about 14 MB for Allflame's window).
+  - C computes the one rule, on days 1–4 only.
+  - D shows it as a short Market recap list, worded as an option to check.
+  - The past-launch baseline table isn't needed: in the first 2 days a falling price says what it would.
+- **If the user wants plain readings anyway** ("trading 3× its usual, price −12%"), they need no stock and no new table. They're mostly finding 9's verdict again, though.
 
 ## What the data can say
 
