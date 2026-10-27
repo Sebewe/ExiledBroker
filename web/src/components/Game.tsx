@@ -18,8 +18,9 @@ import { trackFeature } from '../lib/usage'
 
 const div = (v: number) => price(v, 'divine')
 const chaos = (v: number) => price(v)
-// Under half a hundredth of a Divine is no change: ±0.00div.
-const signed = (v: number) => (Math.abs(v) < 0.005 ? `±${div(0)}` : `${v < 0 ? '−' : '+'}${div(Math.abs(v))}`)
+// Hundredths of a Divine, so the bar's line fits a phone (+0.0346div cut the hour off);
+// under half a hundredth is no change: ±0.00div.
+const signed = (v: number) => (Math.abs(v) < 0.005 ? '±0.00div' : `${v < 0 ? '−' : '+'}${Math.abs(v).toFixed(2)}div`)
 
 type TradeProps = { kind: 'loop' | 'card'; itemId: string; name: string; direction?: string | null } | { kind: 'flip'; flip: MissedFlip }
 
