@@ -115,7 +115,9 @@ describe('Portfolio (the trading game)', () => {
     serve({ ...previewRoutes(), '/api/status': { body: previewStatus() }, '/api/preview/game/25': { body: h25 } })
     renderPage()
     expect(await screen.findByText('Dump now')).toBeInTheDocument()
-    expect(screen.getByText(/Its sale didn't fill: holding 4 Reverent Fragment at 22\.0c each/)).toBeInTheDocument()
+    expect(screen.getByText(/Its sale didn't fill: holding 4 Reverent Fragment, averaging 22\.0c/)).toBeInTheDocument()
+    // Worth what Sell now gets (4 × 20c), not the average.
+    expect(document.body.textContent).toContain('worth 80.0c')
     fireEvent.click(await screen.findByRole('button', { name: /Sell now/ }))
     expect(await screen.findByText('Nothing open.')).toBeInTheDocument()
     expect(JSON.parse(localStorage.getItem('eb-game')!).chaos).toBeCloseTo(100 + 80)

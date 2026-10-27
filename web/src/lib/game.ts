@@ -221,7 +221,8 @@ export function step(s: GameState, next: PreviewGameHour): GameState {
       if (t.state === 'filled' && t.settle != null && n >= t.settle) {
         if (t.unsold && t.hold && t.units) {
           // The sale never filled: the items stay with the player, to sell or hold.
-          t = { ...t, state: 'held', left: t.lots * t.units, mark: next.prices[t.hold]?.[1] ?? null }
+          const p = next.prices[t.hold]
+          t = { ...t, state: 'held', left: t.lots * t.units, mark: p?.[1] ?? null, low: p?.[0] ?? null }
           open.push(t)
           continue
         }
@@ -233,8 +234,8 @@ export function step(s: GameState, next: PreviewGameHour): GameState {
         }
       }
       if (t.state === 'held' && t.hold) {
-        const avg = next.prices[t.hold]?.[1]
-        if (avg != null) t = { ...t, mark: avg }
+        const p = next.prices[t.hold]
+        if (p?.[1] != null) t = { ...t, mark: p[1], low: p[0] }
       }
       open.push(t)
       continue
@@ -308,10 +309,15 @@ export function setListing(s: GameState, id: string, listing: number | null): Ga
   return { ...s, open: s.open.map((t) => (t.id === id && t.kind === 'flip' ? { ...t, listing } : t)) }
 }
 
-/** What an open trade is worth now, in Chaos: orders at what they tied up, items held
- *  at their last average price. */
+/** What an open trade is worth now, in Chaos: orders at what they tied up, a flip's
+ *  items at their last average price, and an order's items left unsold (Dump now) at
+ *  what selling them now gets, the last lowest trade: in a thin market the average
+ *  would show a profit that dumping doesn't get. */
 export function worth(t: Trade): number {
-  if (t.kind !== 'flip') return t.state === 'held' && t.mark != null ? (t.left ?? 0) * t.mark : t.stake
+  if (t.kind !== 'flip') {
+    const each = t.low ?? t.mark
+    return t.state === 'held' && each != null ? (t.left ?? 0) * each : t.stake
+  }
   if (t.state === 'bidding') return t.stake
   return t.left * t.mark
 }

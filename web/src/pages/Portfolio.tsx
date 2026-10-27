@@ -134,7 +134,7 @@ function OpenRow({ t, n, launched }: { t: Trade; n: number; launched: string | n
       : t.state === 'placed'
         ? `${t.lots} ${t.lots === 1 ? 'purchase' : 'purchases'} placed: fills next hour or comes back`
         : t.state === 'held'
-          ? `Its sale didn't fill: holding ${t.left} ${t.kind === 'card' ? 'of the reward' : t.name}${t.mark != null ? ` at ${chaos(t.mark)} each` : ''}`
+          ? `Its sale didn't fill: holding ${t.left} ${t.kind === 'card' ? 'of the reward' : t.name}${t.mark != null ? `, averaging ${chaos(t.mark)}` : ''}`
           : t.settle != null
             ? `${t.lots} filled; sells ${hourLabel(launched, t.settle)}`
             : "Filled; the sale isn't known by the end of the preview's data"

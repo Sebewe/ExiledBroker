@@ -152,7 +152,9 @@ localStorage (in memory where storage is blocked): no accounts, nothing sent.
   purchase (the loop's item, the card's reward), priced each hour in `prices` (a
   loop's item from its Chaos market, `cross_market_hour`, since the hourly price rows keep
   only price-mapping items; a card's reward from the Backtest's hourly prices), flagged **Dump now**, with "Sell now" at the hour's lowest
-  trade; they can also hold on.
+  trade; they can also hold on. Held like this, the items are valued at what Sell now gets
+  (the hour's lowest trade), since in a thin market the average shows a profit dumping
+  doesn't get.
   Random-reward cards aren't offered (the Backtest can't price them).
 - **Flips** are held positions, played in the browser from each hour's Chaos prices (low,
   average, high, items traded) of every item the game lists to flip. The bid (the recap's)
