@@ -450,6 +450,11 @@ describe('Market recap in the preview: the trading game', () => {
     // 5 of the 8 filled and sold at +10%; the 3 that didn't came back.
     expect(await bar.findByText('1 closed, +50.0c')).toBeInTheDocument()
     expect(bar.getByLabelText('Your wallet')).toHaveTextContent('4.00div · 850.0c')
+    // Coloured is the profit alone, not the whole balance in Divines (the user).
+    const gain = bar.getByLabelText('Profit')
+    expect(gain).toHaveTextContent('+0.500div profit')
+    expect(gain.className).toMatch(/text-positive/)
+    expect(bar.getByText(/· worth /).className).toMatch(/text-muted/)
     expect(JSON.parse(localStorage.getItem('eb-game')!)).toMatchObject({ n: 29, open: [] })
     // Hour 29 is the sample's last: the clock stops there.
     expect(bar.getByRole('button', { name: 'End of the data' })).toBeDisabled()

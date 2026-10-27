@@ -257,9 +257,16 @@ export function GameBar({ here }: { here?: 'portfolio' } = {}) {
               <span className="num font-semibold whitespace-nowrap text-text" aria-label="Your wallet">
                 {div(wallet.div)} · {chaos(wallet.chaos)}
               </span>
+              {/* The colour is the profit's alone (the user: green on the whole balance misled). */}
               {s && worth != null && rate && (
-                <span className={`num hidden text-xs font-semibold whitespace-nowrap sm:inline ${gainTone}`} title="All you have, open trades included, in Divines at this hour's price">
-                  ≈ {div(worth)} {signed(gain)}
+                <span className="hidden text-xs whitespace-nowrap sm:inline">
+                  <span className={`num font-semibold ${gainTone}`} aria-label="Profit" title="What you've made or lost so far, open trades included, in Divines at this hour's price">
+                    {signed(gain)} profit
+                  </span>
+                  <span className="num text-muted" title="All you have, open trades included, in Divines at this hour's price">
+                    {' '}
+                    · worth {div(worth)}
+                  </span>
                 </span>
               )}
             </p>
@@ -271,7 +278,7 @@ export function GameBar({ here }: { here?: 'portfolio' } = {}) {
               ) : s ? (
                 <>
                   {/* On a phone the gain moves down here, next to the hour. */}
-                  {worth != null && rate && <span className={`num font-semibold sm:hidden ${gainTone}`}>{signed(gain)} · </span>}
+                  {worth != null && rate && <span className={`num font-semibold sm:hidden ${gainTone}`}>{signed(gain)} profit · </span>}
                   {hourLabel(clock.launched, clock.n)}
                   {s.open.length > 0 && ` · ${s.open.length} open`}
                 </>
