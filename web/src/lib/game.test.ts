@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { MissedFlip, PreviewGameHour, PreviewGameOrder } from '../api/client'
-import { buyIn, exchange, hourAt, isoAt, listingAt, pay, placeFlip, placeOrder, profit, quickSell, setListing, startGame, startWorth, step, tally, total } from './game'
+import { buyIn, dumpNow, exchange, hourAt, isoAt, listingAt, pay, placeFlip, placeOrder, profit, quickSell, setListing, startGame, startWorth, step, tally, total } from './game'
 import { parse, type FlipTrade, type GameState } from './gameStore'
 
 const LAUNCH = '2026-03-06T20:00:00Z'
@@ -134,6 +134,23 @@ describe('loops and card turn-ins', () => {
     expect(ok(placeOrder(s, early, loop(), 'X', 2))).toMatchObject({ div: 10, chaos: 0 })
   })
 
+  it("holds the items when the sale never filled, flags them Dump now, and sells them now", () => {
+    const stuck = loop({ pnl: -500, unsold: true, hold: 'currency:a', units: 8 })
+    let s = ok(placeOrder(startGame('Mirage', 24), hour(24), stuck, 'X', 1))
+    s = step(s, hour(25))
+    expect(dumpNow(s.open[0]!, 25)).toBe(false)
+    // The hour the market never took it: nothing sells by itself, 8 items are held.
+    s = step(s, hour(26, { prices: { 'currency:a': [9, 10, 11, 100] } }))
+    expect(s.done).toEqual([])
+    expect(s.open[0]).toMatchObject({ state: 'held', left: 8, mark: 10 })
+    expect(dumpNow(s.open[0]!, 26)).toBe(true)
+    expect(total(s, 100)).toBeCloseTo(11 + 0.8) // 9 div, 100c and 8 × 10c held
+    expect(quickSell(s, hour(26), s.open[0]!.id)).toMatch(/didn’t trade/)
+    s = ok(quickSell(s, hour(26, { prices: { 'currency:a': [9, 10, 11, 100] } }), s.open[0]!.id))
+    expect(s.chaos).toBeCloseTo(100 + 72)
+    expect(s.done[0]).toMatchObject({ outcome: 'quick-sold', cost: 100, back: 72 })
+  })
+
   it("can't buy into a trade whose smallest purchase costs more than the wallet", () => {
     const s = startGame('Mirage', 24)
     expect(placeOrder(s, hour(24), loop({ lot: 1300 }), 'Y', 1)).toMatch(/One purchase costs 1300c/)
@@ -188,6 +205,17 @@ describe('flips', () => {
     expect(s.open).toEqual([])
     expect(s.done[0]).toMatchObject({ outcome: 'sold', cost: 400 })
     expect(s.done[0]!.back).toBeCloseTo(198 + 3 * 89.1)
+  })
+
+  it('flags Dump now once its price is under what it cost after 6 hours listed unsold', () => {
+    const h = held()
+    let s = setListing(h, h.open[0]!.id, 200) // never sells
+    const low = { prices: { 'currency:f': [60, 70, 75, 1000] as [number, number, number, number] } }
+    for (let n = 26; n <= 31; n++) s = step(s, hour(n, low))
+    expect(dumpNow(s.open[0]!, 31)).toBe(false) // listed from hour 26: 5 hours
+    s = step(s, hour(32, low))
+    expect(dumpNow(s.open[0]!, 32)).toBe(true)
+    expect(dumpNow(held().open[0]!, 40)).toBe(false) // still over what it cost
   })
 
   it("holds at the player's price, and sells now at the hour's lowest trade", () => {

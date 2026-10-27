@@ -108,6 +108,19 @@ describe('Portfolio (the trading game)', () => {
     expect(JSON.parse(localStorage.getItem('eb-game')!).chaos).toBeCloseTo(220 + 390)
   })
 
+  it('flags what never sold as Dump now, and sells it now', async () => {
+    const stuck = { ...LOOP, pnl: -100, unsold: true, hold: 'currency:d', units: 4 }
+    const h25 = gameHourDoc(25, { prices: { 'currency:d': [20, 22, 25, 100] } })
+    setGame(step(ok(placeOrder(startGame('Mirage', 24), gameHourDoc(24), stuck, 'Reverent Fragment', 1)), h25))
+    serve({ ...previewRoutes(), '/api/status': { body: previewStatus() }, '/api/preview/game/25': { body: h25 } })
+    renderPage()
+    expect(await screen.findByText('Dump now')).toBeInTheDocument()
+    expect(screen.getByText(/Its sale didn't fill: holding 4 Reverent Fragment at 22\.0c each/)).toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: /Sell now/ }))
+    expect(await screen.findByText('Nothing open.')).toBeInTheDocument()
+    expect(JSON.parse(localStorage.getItem('eb-game')!).chaos).toBeCloseTo(100 + 80)
+  })
+
   it('resets the game', async () => {
     played()
     serve({ ...previewRoutes(), '/api/status': { body: previewStatus() }, '/api/preview/game/25': { body: H25 } })

@@ -14,7 +14,10 @@ import { EMPTY, START_CHAOS, START_DIV, type Done, type FlipTrade, type GameStat
 //   bid), so a trade costs at least its smallest buy-in.
 // - Loops and card turn-ins: the recap's own order that hour, filled by the Backtest's
 //   rules. Purchases fill up to what that order could (a tenth of what traded, 10 Divines
-//   at most), earn the order's return, and are tied up until the hour it sold.
+//   at most), earn the order's return, and are tied up until the hour it sold. Nothing
+//   sells by itself at a loss: where the sale never filled (the Backtest gives up and
+//   counts it lost), the player is left holding the items, flagged "Dump now", and
+//   sells them (at the hour's lowest trade) or holds on.
 // - Flips: a bid at the recap's price, filled the next hour if a trade went under it
 //   (whole bids, up to a tenth of what traded), then the items are held and listed, at
 //   the recap's ask cut each hour unless the player sets a price, selling when a trade
@@ -25,6 +28,7 @@ import { EMPTY, START_CHAOS, START_DIV, type Done, type FlipTrade, type GameStat
 const HOUR = 3_600_000
 export const CAPTURE = 0.1 // share of an hour's trades one player can take
 export const TRADE_DIVINES = 10 // at most this much in one order
+export const DUMP_AFTER = 6 // hours a flip is listed unsold before it can be flagged
 
 /** The game hour (hours since launch) whose latest loaded hour is `iso`. */
 export const hourAt = (launchedAt: string, iso: string) => Math.round((Date.parse(iso) - Date.parse(launchedAt)) / HOUR) + 1
@@ -132,6 +136,9 @@ export function placeOrder(s: GameState, doc: PreviewGameHour, o: PreviewGameOrd
     spent: o.spent ?? null,
     pnl: o.pnl ?? null,
     settle,
+    unsold: !!o.unsold,
+    hold: o.hold ?? null,
+    units: o.units ?? null,
     state: 'placed',
   }
   return { ...paid, rate: hourRate(doc) ?? paid.rate, open: [...paid.open, t] }
@@ -211,11 +218,23 @@ export function step(s: GameState, next: PreviewGameHour): GameState {
         chaos += t.stake - filled
         t = { ...t, stake: filled, lots, state: 'filled' }
       }
-      if (t.settle != null && t.pnl != null && t.spent && n >= t.settle) {
-        const back = t.stake * (1 + t.pnl / t.spent)
-        chaos += back
-        closed.push(done(t, n, t.stake, back, 'sold'))
-        continue
+      if (t.state === 'filled' && t.settle != null && n >= t.settle) {
+        if (t.unsold && t.hold && t.units) {
+          // The sale never filled: the items stay with the player, to sell or hold.
+          t = { ...t, state: 'held', left: t.lots * t.units, mark: next.prices[t.hold]?.[1] ?? null }
+          open.push(t)
+          continue
+        }
+        if (t.pnl != null && t.spent) {
+          const back = t.stake * (1 + t.pnl / t.spent)
+          chaos += back
+          closed.push(done(t, n, t.stake, back, 'sold'))
+          continue
+        }
+      }
+      if (t.state === 'held' && t.hold) {
+        const avg = next.prices[t.hold]?.[1]
+        if (avg != null) t = { ...t, mark: avg }
       }
       open.push(t)
       continue
@@ -252,18 +271,34 @@ export function step(s: GameState, next: PreviewGameHour): GameState {
   return { ...s, n, rate: hourRate(next) ?? s.rate, chaos, open, done: [...s.done, ...closed] }
 }
 
-/** Sell what's left of a flip at this hour's lowest trade. */
+/** Items a trade holds now (a flip's, or an order's whose sale never filled): the item,
+ *  how many, and what's been sold of them already (Chaos); null: none held. */
+export function holding(t: Trade): { item: string; left: number; got: number } | null {
+  if (t.kind === 'flip') return t.state === 'holding' ? { item: t.item_id, left: t.left, got: t.got } : null
+  return t.state === 'held' && t.hold ? { item: t.hold, left: t.left ?? 0, got: 0 } : null
+}
+
+/** "Dump now": holding it no longer pays. An order's items whose sale never filled; a
+ *  flip whose price fell under what it cost after DUMP_AFTER hours listed unsold. */
+export function dumpNow(t: Trade, n: number): boolean {
+  if (t.kind !== 'flip') return t.state === 'held'
+  if (t.state !== 'holding' || t.left !== t.units) return false
+  return n - (t.at + 2) >= DUMP_AFTER && t.mark < t.stake / t.units
+}
+
+/** Sell what a trade holds at this hour's lowest trade. */
 export function quickSell(s: GameState, doc: PreviewGameHour, id: string): GameState | string {
   const t = s.open.find((x) => x.id === id)
-  if (!t || t.kind !== 'flip' || t.state !== 'holding') return 'Nothing held to sell.'
-  const lo = doc.prices[t.item_id]?.[0]
+  const h = t && holding(t)
+  if (!t || !h) return 'Nothing held to sell.'
+  const lo = doc.prices[h.item]?.[0]
   if (lo == null) return 'It didn’t trade this hour: there’s no price to sell at.'
-  const got = t.left * lo
+  const got = h.left * lo
   return {
     ...s,
     chaos: s.chaos + got,
     open: s.open.filter((x) => x.id !== id),
-    done: [...s.done, done(t, s.n, t.stake, t.got + got, 'quick-sold')],
+    done: [...s.done, done(t, s.n, t.stake, h.got + got, 'quick-sold')],
   }
 }
 
@@ -276,7 +311,8 @@ export function setListing(s: GameState, id: string, listing: number | null): Ga
 /** What an open trade is worth now, in Chaos: orders at what they tied up, items held
  *  at their last average price. */
 export function worth(t: Trade): number {
-  if (t.kind !== 'flip' || t.state === 'bidding') return t.stake
+  if (t.kind !== 'flip') return t.state === 'held' && t.mark != null ? (t.left ?? 0) * t.mark : t.stake
+  if (t.state === 'bidding') return t.stake
   return t.left * t.mark
 }
 

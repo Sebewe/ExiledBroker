@@ -909,6 +909,8 @@ export interface components {
             direction?: string | null;
             /** Filled */
             filled: boolean | null;
+            /** Hold */
+            hold?: string | null;
             /** Item Id */
             item_id: string;
             /**
@@ -924,6 +926,10 @@ export interface components {
             settle_at: string | null;
             /** Spent */
             spent: number | null;
+            /** Units */
+            units?: number | null;
+            /** Unsold */
+            unsold?: boolean | null;
         };
         /** PreviewGameRange */
         PreviewGameRange: {

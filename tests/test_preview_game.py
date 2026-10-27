@@ -48,9 +48,23 @@ def market(monkeypatch):
     rate = pl.DataFrame({"observed_at": [T0 + h * H for h in range(8)], "rate": [100.0] * 8})
     monkeypatch.setattr(pb.bt, "_cross_hours", lambda *a, **k: cross)
     monkeypatch.setattr(pb.bt, "_rate", lambda *a, **k: rate)
-    # Cards stand in: one card's order from hour 1 filled at a 5c loss, sold in hour 3.
-    cards = {("c", T0 + H): (True, -5.0, 105.0, T0 + 3 * H, 35.0)}
+    # Cards stand in: one card's order from hour 1 filled, and its reward "r" (3 a
+    # purchase) never sold: the Backtest counted it a 5c loss when it gave up, in hour 3.
+    cards = {("c", T0 + H): (True, -5.0, 105.0, T0 + 3 * H, 35.0, "r", 3.0, True)}
     monkeypatch.setattr(pb, "_card_orders", lambda *a: cards)
+    reward = pl.DataFrame(
+        {
+            "item_id": ["r"] * 2,
+            "observed_at": [T0 + H, T0 + 2 * H],
+            "day_offset": [0, 0],
+            "p": [40.0, 30.0],
+            "lo": [38.0, 25.0],
+            "hi": [42.0, 33.0],
+            "units": [50.0, 60.0],
+            "cv": [0.0, 0.0],
+        }
+    )
+    monkeypatch.setattr(pb.bt, "_prices", lambda *a, **k: reward)
 
 
 def _windows() -> list[dict]:
@@ -82,6 +96,7 @@ def test_the_game_takes_each_hours_own_order_with_what_it_spent_and_when_it_sold
     assert loop["settle_at"] == f"{T0 + 2 * H:%Y-%m-%dT%H:%M:%S}Z"
     # It buys whole lots of what one sale takes: 1 Divine for 8 items, at the 10c bid.
     assert loop["lot"] == pytest.approx(80.0)
+    assert (loop["hold"], loop["units"], loop["unsold"]) == ("a", 8, False)
     # Hour 1's didn't fill: nothing spent; hour 2's wasn't placed.
     nxt = next(o for o in out[2]["orders"] if o["kind"] == "loop")
     assert (nxt["filled"], nxt["spent"], nxt["pnl"], nxt["settle_at"]) == (False, None, None, None)
@@ -89,5 +104,9 @@ def test_the_game_takes_each_hours_own_order_with_what_it_spent_and_when_it_sold
     # The card's order from hour 1 lost 5c of the 105c it spent; random rewards aren't offered.
     card = next(o for o in out[2]["orders"] if o["kind"] == "card")
     assert (card["spent"], card["pnl"], card["lot"]) == (105.0, -5.0, 35.0)
+    # Its reward never sold: the player holds 3 a purchase, priced each hour.
+    assert (card["hold"], card["units"], card["unsold"]) == ("r", 3.0, True)
+    assert out[2]["prices"] == {"r": [38.0, 40.0, 42.0, 50.0]}
+    assert out[3]["prices"] == {"r": [25.0, 30.0, 33.0, 60.0]}
     assert all(o["item_id"] != "w" for g in out.values() for o in g["orders"])
-    assert out[1]["prices"] == {}  # no flips listed
+    assert out[1]["prices"] == {}  # no flips listed, and no hour of the reward

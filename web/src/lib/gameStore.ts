@@ -31,7 +31,15 @@ export type OrderTrade = {
   pnl: number | null
   /** The game hour it sells in; null: not known by the snapshot's end. */
   settle: number | null
-  state: 'placed' | 'filled'
+  /** Its sale never filled (the Backtest gave up at `settle`): from then the player holds
+   *  `units` of `hold` a purchase (the loop's item, the card's reward) and sells them. */
+  unsold?: boolean
+  hold?: string | null
+  units?: number | null
+  /** Items held once its sale didn't fill, and their last average price (Chaos each). */
+  left?: number
+  mark?: number | null
+  state: 'placed' | 'filled' | 'held'
 }
 
 /** A flip: a bid, then items held and listed until they sell or are quick-sold. */
