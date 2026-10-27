@@ -306,12 +306,14 @@ function Likely({ value }: { value: number | null }) {
   return <Meter label="Best odds" value={value} hint="How often the likeliest one's orders went through in the last 3 days (optimistic fills)" />
 }
 
-/** A section: its title, one plain line on what it is (`lead`), the results, and a link to
- *  how they're picked (`method`: its anchor on Research's How the tools work). */
+/** A section: its title, one plain sentence on what it found this hour (`takeaway`), one
+ *  plain line on what it is (`lead`), the results, and a link to how they're picked
+ *  (`method`: its anchor on Research's How the tools work). */
 function Block({
   id,
   title,
   icon: Icon,
+  takeaway,
   lead,
   method,
   children,
@@ -320,6 +322,7 @@ function Block({
   id?: string
   title: string
   icon: typeof Waves
+  takeaway?: ReactNode
   lead?: string
   method?: string
   children: ReactNode
@@ -334,6 +337,7 @@ function Block({
         </h2>
         {more}
       </div>
+      {takeaway && <p className="-mt-1 max-w-3xl font-medium text-text">{takeaway}</p>}
       {lead && <p className="-mt-1 max-w-3xl text-sm text-muted">{lead}</p>}
       {children}
       {method && (
@@ -636,7 +640,8 @@ function Rates({ label, title, children }: { label: string; title: string; child
   )
 }
 
-/** How often the same orders went through in the last 3 days (optimistic fills). */
+/** How often the same orders went through in the last 3 days (optimistic fills), for a
+ *  card's Details. The never-went-through warning is `NeverFilled`, always visible. */
 function Chance({
   tries,
   through,
@@ -659,11 +664,14 @@ function Chance({
       <span className="text-[11px] text-faint">
         {through} of {tries} tries in the last 3 days, by the optimistic fill rule
       </span>
-      {chance === 0 && (
-        <span className="text-[11px] text-warning">Its orders never went through lately, so the profit above is unlikely to be yours.</span>
-      )}
     </div>
   )
+}
+
+/** Shown on the card itself, outside Details: a profit whose orders never went through. */
+function NeverFilled({ chance }: { chance?: number | null }) {
+  if (chance !== 0) return null
+  return <span className="text-[11px] text-warning">Its orders never went through lately, so the profit above is unlikely to be yours.</span>
 }
 
 function Loops({ w, money, rate, href, play }: { w: MissedWindow; money: Money; rate: number | null | undefined; href: ItemHref; play: boolean }) {
