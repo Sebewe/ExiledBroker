@@ -6,7 +6,8 @@ import { useSyncExternalStore } from 'react'
 // hour from it; the rules that change it are in lib/game.ts, loaded with the game.
 
 const KEY = 'eb-game'
-export const START_CASH = 10 // Divines
+export const START_DIV = 10
+export const START_CHAOS = 200
 
 /** A loop or a card turn-in: the recap's own order that hour, its outcome read from the
  *  snapshot when placed (and shown only once the clock passes it). */
@@ -18,9 +19,9 @@ export type OrderTrade = {
   direction?: string | null
   /** The game hour it was placed in (hours since launch). */
   at: number
-  /** Divines tied up: the purchases bought while the order waits, what filled once it has. */
+  /** Chaos tied up: the purchases bought while the order waits, what filled once it has. */
   stake: number
-  /** The game's Divine price in Chaos: the trade's Chaos are converted at it. */
+  /** The Divine's price in Chaos the hour it was placed (for the 10 Divines a trade). */
   rate: number
   /** Chaos one purchase costs (the smallest whole trade at the order's bid), and how many. */
   lot: number
@@ -40,7 +41,7 @@ export type FlipTrade = {
   item_id: string
   name: string
   at: number
-  /** Divines put in: the stake while bidding, the items' cost once bought. */
+  /** Chaos put in: the stake while bidding, the items' cost once bought. */
   stake: number
   rate: number
   /** Items one purchase buys, its Chaos (the recap's whole bid), and how many were bid for. */
@@ -54,7 +55,7 @@ export type FlipTrade = {
   /** Items bought, and still held. */
   units: number
   left: number
-  /** Divines the sales brought in so far. */
+  /** Chaos the sales brought in so far. */
   got: number
   /** The listing, Chaos an item: null follows the recap's (its ask, cut each hour). */
   listing: number | null
@@ -74,7 +75,7 @@ export type Done = {
   direction?: string | null
   at: number
   closed: number
-  /** Divines in, and out. Equal when nothing filled. */
+  /** Chaos in, and out. Equal when nothing filled. */
   cost: number
   back: number
   outcome: 'sold' | 'quick-sold' | 'unfilled'
@@ -82,22 +83,25 @@ export type Done = {
 
 export type GameState = {
   /** The stored format: an older game starts over. */
-  v: 2
+  v: 3
   /** The snapshot's league: a game of another league starts over. */
   league: string
   /** The game hour the clock is at (hours since launch); 0: no game yet. */
   n: number
   /** Where it started, for the history. */
   start: number
-  /** The Divine's price in Chaos, fixed for the game at its first trade (0: none yet):
-   *  every Chaos amount converts at it, so the total moves only with the trades. */
+  /** The Divine's latest market price in Chaos (the hour's average), to value the
+   *  wallet in an hour without one; 0: none seen yet. */
   rate: number
-  cash: number
+  /** The wallet: Divines and Chaos, apart. Trades are paid in Chaos; Divines are
+   *  exchanged at the hour's average price, by the player or when Chaos run short. */
+  div: number
+  chaos: number
   open: Trade[]
   done: Done[]
 }
 
-export const EMPTY: GameState = { v: 2, league: '', n: 0, start: 0, rate: 0, cash: START_CASH, open: [], done: [] }
+export const EMPTY: GameState = { v: 3, league: '', n: 0, start: 0, rate: 0, div: START_DIV, chaos: START_CHAOS, open: [], done: [] }
 
 const finite = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x)
 
@@ -105,17 +109,18 @@ const finite = (x: unknown): x is number => typeof x === 'number' && Number.isFi
 export function parse(raw: string | null): GameState {
   try {
     const v = JSON.parse(raw ?? 'null') as Partial<GameState> | null
-    if (!v || v.v !== 2 || typeof v.league !== 'string' || !finite(v.n) || !finite(v.cash) || !Array.isArray(v.open) || !Array.isArray(v.done)) return EMPTY
+    if (!v || v.v !== 3 || typeof v.league !== 'string' || !finite(v.n) || !finite(v.div) || !finite(v.chaos) || !Array.isArray(v.open) || !Array.isArray(v.done)) return EMPTY
     const ok = (t: unknown) => !!t && typeof t === 'object' && typeof (t as Trade).id === 'string' && finite((t as Trade).stake) && finite((t as Trade).at) && finite((t as Trade).lots)
     // A closed trade has no stake: what went in and came back.
     const closed = (t: unknown) => !!t && typeof t === 'object' && typeof (t as Done).id === 'string' && finite((t as Done).at) && finite((t as Done).cost) && finite((t as Done).back)
     return {
-      v: 2,
+      v: 3,
       league: v.league,
       n: Math.max(0, Math.round(v.n)),
       start: finite(v.start) ? v.start : 0,
       rate: finite(v.rate) && v.rate > 0 ? v.rate : 0,
-      cash: v.cash,
+      div: v.div,
+      chaos: v.chaos,
       open: v.open.filter(ok) as Trade[],
       done: v.done.filter(closed).slice(-500) as Done[],
     }

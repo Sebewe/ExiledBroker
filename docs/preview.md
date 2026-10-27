@@ -113,21 +113,26 @@ disk stops the build (and the last snapshot stands).
 
 ### The trading game
 
-The user's design (2026-10-27): players start with 10 Divines at the end of the chosen
-day and play the rewound league hour by hour, trading only what the Market recap lists,
+The user's design (2026-10-27): players start with 10 Divines and 200 Chaos at the end of
+the chosen day and play the rewound league hour by hour, trading only what the Market recap lists,
 so the only way up is trading. The rules are `lib/game.ts`; the state is `eb-game` in
 localStorage (in memory where storage is blocked): no accounts, nothing sent.
 
+- **The wallet** (the user, 2026-10-27): Divines and Chaos kept apart, 10 div and 200c to
+  start. Trades are paid in Chaos and pay out in Chaos. Divines exchange at the hour's
+  average Divine price (`divine_chaos`), whole Divines at a time: by the player (the bar's
+  Exchange, either way) or on their own when a trade needs more Chaos than the wallet has.
+  The total is shown in Divines at the hour's price and the gain is measured against the
+  start (10 div + 200c) at that same price. The bar (with "Next hour") is on the recap
+  and the Portfolio page, which also shows each open trade's buy price and a "Reset
+  game" button. A game stored before this (`v` not 3) starts over.
 - **Whole purchases at the real price** (the user, 2026-10-27: "you can't put 2 div in
   something that has a 3 div buy-in"). A player buys a number of a trade's smallest whole
   purchases: a loop's or card's order `lot` (Chaos for the smallest whole lot at its bid,
   `sell_lot` units of a loop, enough whole sets for a card), a flip's whole bid
-  (`bid_lot` items for `bid_total`). The form says what one costs and how many fit in the
-  Divines free (10 at most); a trade whose purchase costs more than that can't be placed.
-  Orders fill in whole purchases too. Chaos convert to Divines at one price fixed for the
-  game at its first trade (`GameState.rate`; the user: keep the portfolio in Divines, no
-  real-time conversion), so the total moves only with the trades. A game stored before
-  this (no `v: 2`) starts over.
+  (`bid_lot` items for `bid_total`). The form says what one costs in Chaos and how many the
+  wallet can pay (exchanging Divines, 10 Divines' worth a trade at most); a trade whose
+  purchase costs more than that can't be placed. Orders fill in whole purchases too.
 - **Hours.** `game/{n}` is the site `n` hours after launch (its latest hour is
   `launch + n − 1 h`), for every `n` from the first day's end to `next_until`
   (`manifest.game`: `first`, `last`). A game starts at the chosen day's end; while it runs,

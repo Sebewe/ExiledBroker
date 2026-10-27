@@ -1,14 +1,15 @@
 import { RotateCcw, Tag } from 'lucide-react'
 import { useId, useState } from 'react'
 import { Link } from 'react-router'
+import { GameBar } from '../components/Game'
 import { useGameHour, useStatus } from '../api/queries'
 import { hourLabel, useGameClock } from '../lib/gameClock'
 import { Notice } from '../components/Notice'
 import { PageHeader, Section } from '../components/Section'
 import { Stat } from '../components/Stat'
 import { price, signedPct } from '../lib/format'
-import { listingAt, quickSell, setListing, tally, total, worth } from '../lib/game'
-import { EMPTY, setGame, START_CASH, type Done, type FlipTrade, type Trade } from '../lib/gameStore'
+import { hourRate, listingAt, profit, quickSell, setListing, startWorth, tally, total, worth } from '../lib/game'
+import { EMPTY, setGame, START_CHAOS, START_DIV, type Done, type FlipTrade, type Trade } from '../lib/gameStore'
 import { usePreview } from '../lib/preview'
 import { queryFallback } from '../lib/queryFallback'
 
@@ -18,7 +19,10 @@ import { queryFallback } from '../lib/queryFallback'
 // only: the state is in this browser, and the page reads the game's current hour.
 
 const div = (v: number) => price(v, 'divine')
+const chaos = (v: number) => price(v)
 const signed = (v: number) => `${v < -0.005 ? '−' : '+'}${div(Math.abs(v))}`
+const signedChaos = (v: number) => `${v < -0.05 ? '−' : '+'}${chaos(Math.abs(v))}`
+const START = `${div(START_DIV)} and ${chaos(START_CHAOS)}`
 const tone = (v: number) => (v > 0.005 ? 'text-positive' : v < -0.005 ? 'text-negative' : 'text-muted')
 
 const KIND = { loop: 'Loop', card: 'Card turn-in', flip: 'Flip' } as const
@@ -56,39 +60,46 @@ export default function Portfolio() {
     <>
       {header}
       <Board />
+      <GameBar here="portfolio" />
     </>
   )
 }
 
 function Board() {
   const clock = useGameClock()
+  const doc = useGameHour(clock.running || undefined).data
   if (!clock.running)
     return (
       <Notice kind="info" title="No trades yet">
-        You start with {div(START_CASH)}. On the{' '}
+        You start with {START}. On the{' '}
         <Link to="/" className="text-accent hover:text-accent-strong">
           Market recap
         </Link>
-        , pick a trade, press "Trade this hour" and choose how many whole purchases to make, then "Next hour" in the bar at the bottom to see how it went. Only what the recap lists can be traded, and
+        , pick a trade, press "Trade this hour" and choose how many whole purchases to make (paid in Chaos; Divines are exchanged when Chaos run short), then "Next hour" in the bar at the bottom to see how it went. Only what the recap lists can be traded, and
         the market only takes so much each hour.
       </Notice>
     )
   const s = clock.s
-  const now = total(s)
+  const rate = hourRate(doc) ?? s.rate
+  const now = total(s, rate)
+  const gain = profit(s, rate)
   const t = tally(s.done)
   return (
     <>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-muted">
+          Started at {hourLabel(clock.launched, s.start)}; now at <span className="text-text">{hourLabel(clock.launched, s.n)}</span>.
+          {rate > 0 && ` A Divine is ${chaos(rate)} this hour.`}
+        </p>
+        <Reset />
+      </div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat label="Worth now" value={div(now)} />
-        <Stat label={`Since you started with ${div(START_CASH)}`} value={`${signed(now - START_CASH)} (${signedPct(now / START_CASH - 1, 0)})`} />
-        <Stat label="Free to trade" value={div(s.cash)} />
+        <Stat label="Wallet" value={`${div(s.div)} · ${chaos(s.chaos)}`} />
+        <Stat label="Worth now, open trades included" value={rate > 0 ? div(now) : '–'} />
+        <Stat label={`Since you started with ${START}`} value={rate > 0 ? `${signed(gain)} (${signedPct(now / startWorth(s, rate) - 1, 0)})` : '–'} />
         <Stat label="Trades closed" value={t.trades ? `${t.won} of ${t.trades} made money` : '–'} />
       </div>
-      <p className="text-sm text-muted">
-        Started at {hourLabel(clock.launched, s.start)}; now at <span className="text-text">{hourLabel(clock.launched, s.n)}</span>.
-        {s.rate > 0 && ` Chaos convert at ${price(s.rate)} a Divine, fixed for this game.`}
-      </p>
-      <Section title="Open" description="Orders waiting to fill or sell, and flips you hold. A held flip counts at its latest average price.">
+      <Section title="Open" description="Orders waiting to fill or sell, and flips you hold, with what you paid. A held flip counts at its latest average price.">
         {s.open.length === 0 ? (
           <p className="text-sm text-muted">Nothing open.</p>
         ) : (
@@ -100,14 +111,13 @@ function Board() {
         )}
       </Section>
       <Section title="History" description="Every trade that closed, newest first.">
-        {s.done.length === 0 ? <p className="text-sm text-muted">No trade has closed yet: step the clock with "Next hour" on the recap.</p> : <HistoryTable rows={s.done} launched={clock.launched} />}
+        {s.done.length === 0 ? <p className="text-sm text-muted">No trade has closed yet: step the clock with "Next hour" in the bar below.</p> : <HistoryTable rows={s.done} launched={clock.launched} />}
         {t.trades > 0 && (
           <p className="text-sm text-muted">
-            Closed trades made <span className={`num font-semibold ${tone(t.profit)}`}>{signed(t.profit)}</span> in all.
+            Closed trades made <span className={`num font-semibold ${tone(t.profit)}`}>{signedChaos(t.profit)}</span> in all.
           </p>
         )}
       </Section>
-      <StartOver />
     </>
   )
 }
@@ -119,8 +129,8 @@ function OpenRow({ t, n, launched }: { t: Trade; n: number; launched: string | n
   const state =
     t.kind === 'flip'
       ? t.state === 'bidding'
-        ? `Bid for ${t.lots * t.lot} at ${price(t.bid)} each: fills next hour if a trade goes under it`
-        : `Holding ${t.left} of ${t.units}${t.got > 0 ? `, ${div(t.got)} sold so far` : ''}`
+        ? `Bid for ${t.lots * t.lot} at ${chaos(t.bid)} each: fills next hour if a trade goes under it`
+        : `Holding ${t.left} of ${t.units}${t.got > 0 ? `, ${chaos(t.got)} sold so far` : ''}`
       : t.state === 'placed'
         ? `${t.lots} ${t.lots === 1 ? 'purchase' : 'purchases'} placed: fills next hour or comes back`
         : t.settle != null
@@ -135,10 +145,14 @@ function OpenRow({ t, n, launched }: { t: Trade; n: number; launched: string | n
         <p className="text-xs text-muted">
           {hourLabel(launched, t.at)} · {state}
         </p>
+        <p className="num text-xs text-muted">
+          <span className="text-faint">Bought at</span>{' '}
+          {t.kind === 'flip' ? `${chaos(t.bid)} each` : `${chaos(t.lot)} a purchase × ${t.lots}`}
+        </p>
       </div>
       <div className="flex shrink-0 flex-wrap items-center gap-3">
         <span className="num text-sm">
-          <span className="text-faint">in</span> {div(t.stake)} <span className="text-faint">· worth</span> {div(worth(t))}
+          <span className="text-faint">in</span> {chaos(t.stake)} <span className="text-faint">· worth</span> {chaos(worth(t))}
         </span>
         {t.kind === 'flip' && t.state === 'holding' && <FlipControls t={t} n={n} />}
       </div>
@@ -230,9 +244,9 @@ function HistoryTable({ rows, launched }: { rows: Done[]; launched: string | nul
             const gain = x.back - x.cost
             return (
               <tr key={x.id} className="border-t border-border">
-                <td className={`num px-3 py-2 text-right font-semibold ${x.outcome === 'unfilled' ? 'text-faint' : tone(gain)}`}>{x.outcome === 'unfilled' ? '–' : signed(gain)}</td>
-                <td className="num px-3 py-2 text-right">{div(x.cost)}</td>
-                <td className="num px-3 py-2 text-right">{div(x.back)}</td>
+                <td className={`num px-3 py-2 text-right font-semibold ${x.outcome === 'unfilled' ? 'text-faint' : tone(gain)}`}>{x.outcome === 'unfilled' ? '–' : signedChaos(gain)}</td>
+                <td className="num px-3 py-2 text-right">{chaos(x.cost)}</td>
+                <td className="num px-3 py-2 text-right">{chaos(x.back)}</td>
                 <td className="max-w-64 truncate px-3 py-2" title={tradeName(x)}>
                   {tradeName(x)}
                 </td>
@@ -249,21 +263,26 @@ function HistoryTable({ rows, launched }: { rows: Done[]; launched: string | nul
   )
 }
 
-function StartOver() {
+/** Reset the game: back to the start, every trade cleared (asks first). */
+function Reset() {
   const [sure, setSure] = useState(false)
   return sure ? (
     <div className="flex flex-wrap items-center gap-2 text-sm">
-      <span>Start over with {div(START_CASH)}? Your trades here are cleared.</span>
+      <span>Reset to {START}? Every trade here is cleared.</span>
       <button type="button" onClick={() => setGame(EMPTY)} className="min-h-8 cursor-pointer rounded-md bg-negative/15 px-3 font-semibold text-negative hover:bg-negative/25">
-        Start over
+        Reset
       </button>
       <button type="button" onClick={() => setSure(false)} className="min-h-8 cursor-pointer px-2 text-muted hover:text-text">
         Keep playing
       </button>
     </div>
   ) : (
-    <button type="button" onClick={() => setSure(true)} className="inline-flex min-h-8 cursor-pointer items-center gap-1.5 self-start text-sm text-muted hover:text-negative">
-      <RotateCcw aria-hidden className="size-4" /> Start over
+    <button
+      type="button"
+      onClick={() => setSure(true)}
+      className="inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border px-3 text-sm font-semibold text-muted hover:border-negative/50 hover:text-negative"
+    >
+      <RotateCcw aria-hidden className="size-4" /> Reset game
     </button>
   )
 }
