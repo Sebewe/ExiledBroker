@@ -312,6 +312,24 @@ def _card_orders(con, league: str, cards: list[str], since, until, last_hour) ->
     return _orders(t, ["item_id"], unknown, spent, _settled(), lot, pl.col("reward_id"), held)
 
 
+def _chaos_hours(con, league: str, items: list[str], since) -> pl.DataFrame | None:
+    """`items`' hourly Chaos-market prices (low, average, high, items traded) from `since`."""
+    if not items:
+        return None
+    marks = ", ".join("?" for _ in items)
+    return db.frame(
+        con,
+        f"""
+        SELECT item_id, observed_at, chaos_low AS lo, chaos_price AS p, chaos_high AS hi,
+               chaos_volume AS units
+        FROM cross_market_hour
+        WHERE league_id = (SELECT id FROM league WHERE name = ?) AND chaos_price > 0
+          AND observed_at >= ? AND item_id IN ({marks})
+        """,
+        [league, since, *items],
+    )
+
+
 def game_hours(con, league: str, games: dict[int, dict], last_hour: datetime) -> dict:
     """The trading game's hours (lib/game.ts): `games` (hours since launch -> the
     league's latest hour, its Divine rate and its Market recap then), each given what a
@@ -337,14 +355,22 @@ def game_hours(con, league: str, games: dict[int, dict], last_hour: datetime) ->
         k: find[k](con, league, sorted(v), first - bt.H, end, last_hour) if v else {}
         for k, v in keys.items()
     }
-    # What an order whose sale never filled leaves the player holding (the loop's item,
-    # the card's reward), priced each hour as the Backtest sells it.
-    held = sorted({v[5] for o in orders.values() for v in o.values() if v[7] and v[5]} - flipped)
+
+    # What an order whose sale never filled leaves the player holding, priced each hour:
+    # a loop's item from its Chaos market (the hourly price rows keep only price-mapping
+    # items), a card's reward as the Backtest sells it.
+    def held(kind: str) -> list[str]:
+        return sorted({v[5] for v in orders[kind].values() if v[7] and v[5]} - flipped)
+
     prices: dict[datetime, dict] = {}
-    if held:
-        for r in bt._prices(con, league, held, first).iter_rows(named=True):
+    cards = held("card")
+    for px in (
+        _chaos_hours(con, league, held("loop"), first),
+        bt._prices(con, league, cards, first) if cards else None,
+    ):
+        for r in px.iter_rows(named=True) if px is not None else ():
             hour = prices.setdefault(r["observed_at"], {})
-            hour[r["item_id"]] = [r["lo"], r["p"], r["hi"], r["units"]]
+            hour.setdefault(r["item_id"], [r["lo"], r["p"], r["hi"], r["units"]])
     if flipped:
         px = flips.chaos_prices(con, league).filter(
             pl.col("item_id").is_in(sorted(flipped)), pl.col("observed_at") >= first
