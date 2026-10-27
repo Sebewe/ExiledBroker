@@ -21,3 +21,5 @@ export function useGameClock() {
 
 /** "Day 5, 14:00 UTC" for game hour `n`. */
 export const hourLabel = (launched: string | null | undefined, n: number) => (launched ? `Day ${dayOf(n)}, ${isoAt(launched, n).slice(11, 16)} UTC` : `Hour ${n}`)
+/** The same, short enough for the game bar on a phone: "Day 6, 23h". */
+export const shortHourLabel = (launched: string | null | undefined, n: number) => (launched ? `Day ${dayOf(n)}, ${isoAt(launched, n).slice(11, 13)}h` : `Hour ${n}`)
