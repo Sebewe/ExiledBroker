@@ -5,6 +5,7 @@ import type { BacktestFlip, BacktestLaunch, BacktestLimit, BacktestReport } from
 import { useBacktest, useStatus } from '../api/queries'
 import { Notice } from '../components/Notice'
 import { PageHeader, Section } from '../components/Section'
+import { HowItWorks } from '../components/HowItWorks'
 import { queryFallback } from '../lib/queryFallback'
 
 // The backtest's write-up: every figure comes from the stored report (analysis/backtest.py,
@@ -42,9 +43,7 @@ export default function Backtest() {
   return (
     <>
       <PageHeader title="Backtest">
-        Would following this site have paid? We replayed every hour of exchange data we have as a trader who does only what the site said at the time, an hour
-        late, at fair prices and at the worst prices traded. Predicting a market from hourly summaries is hard, and most of what looks like free money doesn't
-        survive the test. Here's what does.
+        Whether following this site's advice would have paid, replayed over every hour of exchange data we have. <HowItWorks anchor="backtest" />
       </PageHeader>
       {queryFallback(status) ??
         queryFallback(report) ??

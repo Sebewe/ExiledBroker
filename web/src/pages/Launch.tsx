@@ -5,6 +5,7 @@ import { useLaunchPicks, useLeagues, useStatus } from '../api/queries'
 import { ItemName } from '../components/ItemLink'
 import { Notice } from '../components/Notice'
 import { PageHeader } from '../components/Section'
+import { HowItWorks } from '../components/HowItWorks'
 import { count } from '../lib/format'
 import { useItemHref } from '../lib/itemHref'
 import { queryFallback } from '../lib/queryFallback'
@@ -60,8 +61,7 @@ export default function Launch() {
   return (
     <>
       <PageHeader title="Launch market">
-        What to buy with your first couple of Divines, so early-league inflation doesn't eat your currency. Ranked from the last five challenge leagues' hourly
-        prices, the newest counting most.
+        What to buy with your first couple of Divines, so early-league inflation doesn't eat your currency. <HowItWorks anchor="launch-picks" />
       </PageHeader>
       {queryFallback(status) ??
         queryFallback(board) ??
