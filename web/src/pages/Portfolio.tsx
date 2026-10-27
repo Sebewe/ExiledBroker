@@ -12,7 +12,7 @@ import { Skeleton } from '../components/QueryState'
 import { PageHeader, Section } from '../components/Section'
 import { Stat } from '../components/Stat'
 import { alpha, axisStyle, baseOptions, line, type ChartTokens } from '../lib/chartOptions'
-import { price, signedPct, tone, utcHour } from '../lib/format'
+import { pctTone, price, signedPct, utcHour } from '../lib/format'
 import { atFor, DIVINE, hoursFrom, keptAsChaos, MAX_POSITIONS, MAX_STAKE, portfolio, usePortfolio, valueStake, type Position, type Valued } from '../lib/portfolio'
 import { fetchPreview, previewKey, usePreview } from '../lib/preview'
 import { queryFallback } from '../lib/queryFallback'
@@ -152,7 +152,7 @@ function Edge({ label, value }: { label: string; value: number | null }) {
   return (
     <div className="rounded-lg border border-border bg-surface px-3 py-2.5 sm:px-4 sm:py-3">
       <div className="text-xs leading-snug text-muted">{label}</div>
-      <div className={`num mt-1 text-xl font-semibold sm:text-2xl ${tone(value)}`}>{signedPct(value, 1)}</div>
+      <div className={`num mt-1 text-xl font-semibold sm:text-2xl ${pctTone(value, 1)}`}>{signedPct(value, 1)}</div>
     </div>
   )
 }
@@ -262,16 +262,16 @@ type Row = { p: Position; missing: boolean; pending: boolean; v: Valued | undefi
 
 function Positions({ rows, at }: { rows: Row[]; at: number }) {
   return (
-    <div className="overflow-x-auto rounded-lg border border-border">
+    <div className="relative overflow-x-auto rounded-lg border border-border">
       <table className="w-full text-sm">
         <thead className="bg-surface text-xs text-muted">
           <tr>
-            <th className="px-3 py-2 text-left font-medium">Item</th>
-            <th className="px-3 py-2 text-right font-medium">Worth</th>
-            <th className="px-3 py-2 text-right font-medium">Change</th>
-            <th className="px-3 py-2 text-right font-medium">Stake</th>
-            <th className="hidden px-3 py-2 text-right font-medium sm:table-cell">Bought at</th>
-            <th className="hidden px-3 py-2 text-right font-medium sm:table-cell">Price now</th>
+            <th className="px-2 py-2 sm:px-3 text-left font-medium">Item</th>
+            <th className="px-2 py-2 text-right sm:px-3 font-medium">Worth</th>
+            <th className="px-2 py-2 text-right sm:px-3 font-medium">Change</th>
+            <th className="px-2 py-2 text-right sm:px-3 font-medium">Stake</th>
+            <th className="hidden px-2 py-2 text-right sm:px-3 font-medium sm:table-cell">Bought at</th>
+            <th className="hidden px-2 py-2 text-right sm:px-3 font-medium sm:table-cell">Price now</th>
             <th className="px-1 py-2">
               <span className="sr-only">Remove</span>
             </th>
@@ -295,15 +295,15 @@ function PositionRow({ r, at }: { r: Row; at: number }) {
   const note = r.missing ? "Not in the preview's data" : v && !v.entry ? "Hadn't traded by then: nothing bought" : null
   return (
     <tr>
-      <td className="max-w-48 px-3 py-2">
+      <td className="max-w-28 px-2 py-2 sm:max-w-48 sm:px-3">
         <div className="truncate font-medium" title={p.name}>
           {p.name}
         </div>
         {note && <div className="text-xs text-faint">{note}</div>}
       </td>
-      <td className="num px-3 py-2 text-right font-semibold">{r.pending ? '…' : div(worth)}</td>
-      <td className={`num px-3 py-2 text-right ${tone(change)}`}>{signedPct(change, 1)}</td>
-      <td className="px-3 py-2 text-right">
+      <td className="num px-2 py-2 text-right sm:px-3 font-semibold">{r.pending ? '…' : div(worth)}</td>
+      <td className={`num px-2 py-2 text-right sm:px-3 ${pctTone(change, 1)}`}>{signedPct(change, 1)}</td>
+      <td className="px-2 py-2 text-right sm:px-3">
         <label className="inline-flex items-center gap-1">
           <span className="sr-only">Stake on {p.name}, in Divines</span>
           <input
@@ -320,13 +320,13 @@ function PositionRow({ r, at }: { r: Row; at: number }) {
               else e.target.value = String(p.stake) // not a stake: put it back
             }}
             onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-            className="num w-16 rounded border border-border bg-bg px-1.5 py-0.5 text-right"
+            className="num w-14 rounded border border-border bg-bg px-1.5 py-0.5 text-right sm:w-16"
           />
-          <span className="text-xs text-faint">div</span>
+          <span className="hidden text-xs text-faint sm:inline">div</span>
         </label>
       </td>
-      <td className="num hidden px-3 py-2 text-right text-muted sm:table-cell">{div(v?.entry)}</td>
-      <td className="num hidden px-3 py-2 text-right text-muted sm:table-cell">{div(priceNow)}</td>
+      <td className="num hidden px-2 py-2 text-right sm:px-3 text-muted sm:table-cell">{div(v?.entry)}</td>
+      <td className="num hidden px-2 py-2 text-right sm:px-3 text-muted sm:table-cell">{div(priceNow)}</td>
       <td className="px-1 py-2 text-right">
         <button
           type="button"
