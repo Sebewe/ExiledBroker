@@ -20,7 +20,8 @@ import { queryFallback } from '../lib/queryFallback'
 
 const div = (v: number) => price(v, 'divine')
 const chaos = (v: number) => price(v)
-const signed = (v: number) => `${v < -0.005 ? '−' : '+'}${div(Math.abs(v))}`
+// Under half a hundredth of a Divine is no change: ±0.00div.
+const signed = (v: number) => (Math.abs(v) < 0.005 ? `±${div(0)}` : `${v < 0 ? '−' : '+'}${div(Math.abs(v))}`)
 const signedChaos = (v: number) => `${v < -0.05 ? '−' : '+'}${chaos(Math.abs(v))}`
 const START = `${div(START_DIV)} and ${chaos(START_CHAOS)}`
 const tone = (v: number) => (v > 0.005 ? 'text-positive' : v < -0.005 ? 'text-negative' : 'text-muted')
@@ -35,7 +36,7 @@ export default function Portfolio() {
   const header = (
     <PageHeader title="Portfolio">
       Your trading game: the trades you made on the{' '}
-      <Link to="/" className="text-accent hover:text-accent-strong">
+      <Link to="/" className="text-accent underline decoration-accent/40 underline-offset-2 hover:text-accent-strong">
         Market recap
       </Link>{' '}
       and what each made or lost. Kept in this browser only.
@@ -48,7 +49,7 @@ export default function Portfolio() {
         {queryFallback(status) ?? (
           <Notice kind="info" title="Part of the pre-launch preview">
             The trading game let you trade a past league's early days hour by hour before launch. The live league is on now: the{' '}
-            <Link to="/" className="text-accent hover:text-accent-strong">
+            <Link to="/" className="text-accent underline decoration-accent/40 underline-offset-2 hover:text-accent-strong">
               Market recap
             </Link>{' '}
             has today's trades.
@@ -72,7 +73,7 @@ function Board() {
     return (
       <Notice kind="info" title="No trades yet">
         You start with {START}. On the{' '}
-        <Link to="/" className="text-accent hover:text-accent-strong">
+        <Link to="/" className="text-accent underline decoration-accent/40 underline-offset-2 hover:text-accent-strong">
           Market recap
         </Link>
         , pick a trade, press "Trade this hour" and choose how many whole purchases to make (paid in Chaos; Divines are exchanged when Chaos run short), then "Next hour" in the bar at the bottom to see how it went. Only what the recap lists can be traded, and
@@ -99,6 +100,12 @@ function Board() {
         <Stat label={`Since you started with ${START}`} value={rate > 0 ? `${signed(gain)} (${signedPct(now / startWorth(s, rate) - 1, 0)})` : '–'} />
         <Stat label="Trades closed" value={t.trades ? `${t.won} of ${t.trades} made money` : '–'} />
       </div>
+      {/* Without this, a game whose trades all paid can show a loss and look broken. */}
+      {rate > 0 && Math.abs(s.div - START_DIV) > 1e-9 && (
+        <p className="-mt-4 text-xs text-faint">
+          Counted in Divines at this hour's price. Divines you exchanged for Chaos count against you if the Divine has risen since, and for you if it fell.
+        </p>
+      )}
       <Section title="Open" description="Orders waiting to fill or sell, and flips you hold, with what you paid. A held flip counts at its latest average price.">
         {s.open.length === 0 ? (
           <p className="text-sm text-muted">Nothing open.</p>

@@ -53,8 +53,10 @@ export function Layout({ children }: { children: ReactNode }) {
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:rounded focus:bg-surface focus:px-3 focus:py-2">
         Skip to content
       </a>
-      <header className="sticky top-0 z-20 border-b border-border bg-bg/90 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2.5">
+      {/* Pinned from tablet width up; on a phone the menu wraps to two rows, too tall to keep
+          on screen next to the game bar. */}
+      <header className="z-20 border-b border-border bg-bg/90 backdrop-blur md:sticky md:top-0">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5 sm:gap-x-6">
           <NavLink to="/" className="text-lg font-semibold tracking-tight" aria-label="ExiledBroker home">
             <span className="text-accent">Exiled</span>Broker
           </NavLink>
@@ -86,7 +88,7 @@ export function Layout({ children }: { children: ReactNode }) {
               </NavLink>
             ))}
           </nav>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
             <span className="mr-1">
               <FreshnessBadge />
             </span>
@@ -114,7 +116,7 @@ export function Layout({ children }: { children: ReactNode }) {
       <footer className="mx-auto max-w-7xl px-4 pt-4 pb-8 text-xs text-faint">
         Hourly prices from Grinding Gear Games' public currency exchange history. Not affiliated with or endorsed
         by Grinding Gear Games or poe.ninja.{' '}
-        <Link to="/research/about" className="underline-offset-2 hover:text-text hover:underline">
+        <Link to="/research/about" className="underline underline-offset-2 hover:text-text">
           About and data sources
         </Link>
       </footer>

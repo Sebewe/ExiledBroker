@@ -8,6 +8,7 @@ describe('format', () => {
     expect(price(1.234)).toBe('1.23c')
     expect(price(0.012345)).toBe('0.0123c')
     expect(price(2.5, 'divine')).toBe('2.50div')
+    expect(price(1.78e-15, 'divine')).toBe('0.00div')
     expect(price(null)).toBe('–')
     expect(price(999.96, 'divine')).toBe('1,000div') // rounds up into the next tier
     expect(price(9.996)).toBe('10.0c')
@@ -27,5 +28,7 @@ describe('format', () => {
   it('times are UTC', () => {
     expect(utcHour('2026-10-22T08:00:00Z')).toBe('Oct 22, 08:00 UTC')
     expect(duration(2 * 3_600_000 + 5 * 60_000)).toBe('2h 05m')
+    expect(duration(47 * 3_600_000 + 59 * 60_000)).toBe('47h 59m')
+    expect(duration(5606 * 3_600_000 + 13 * 60_000)).toBe('233d 14h')
   })
 })

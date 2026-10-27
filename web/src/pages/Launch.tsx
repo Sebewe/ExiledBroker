@@ -99,7 +99,8 @@ export default function Launch() {
                     {current?.window_id === x.window_id && (
                       <span className="absolute top-2 right-2 flex items-center gap-1 text-[11px] font-medium text-accent-strong">
                         <span className="size-1.5 animate-pulse rounded-full bg-accent" aria-hidden />
-                        Now
+                        {/* On a phone the three windows are too narrow for the word: the dot says it. */}
+                        <span className="sr-only sm:not-sr-only">Now</span>
                       </span>
                     )}
                   </button>

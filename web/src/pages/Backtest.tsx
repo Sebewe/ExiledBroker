@@ -150,7 +150,7 @@ function Report({ r }: { r: BacktestReport }) {
           <li>
             <span className="text-text">Buy the day-1 launch picks and sell them in days 12–14.</span> It's where the money is, because it rides the league's
             biggest move instead of an hour's spread. Spread your Divines across the list: a single pick can fall. See{' '}
-            <Link to="/launch" className="text-accent hover:text-accent-strong">
+            <Link to="/launch" className="text-accent underline decoration-accent/40 underline-offset-2 hover:text-accent-strong">
               Launch market
             </Link>
             .
