@@ -142,7 +142,7 @@ function chartOption(t: ChartTokens, points: SeriesPoint[], bounds: [number, num
   return {
     ...baseOptions(t),
     legend: { ...(baseOptions(t).legend as object), data: band ? ['Chaos', 'Divine', 'Outlook range'] : ['Chaos', 'Divine'] },
-    grid: { left: 8, right: 8, top: 40, bottom: 8, containLabel: true },
+    grid: { left: 8, right: 8, top: 56, bottom: 8, containLabel: true },
     xAxis: {
       type: 'time',
       min: bounds[0],
@@ -212,7 +212,7 @@ function sinceLaunch(t: ChartTokens, { chaos, divine, bandSeries, axis, bounds, 
   return {
     ...baseOptions(t),
     legend: { ...(baseOptions(t).legend as object), data: band ? ['Chaos', 'Divine', 'Outlook range'] : ['Chaos', 'Divine'] },
-    grid: { left: 8, right: 8, top: 40, bottom: 24, containLabel: true },
+    grid: { left: 8, right: 8, top: 56, bottom: 24, containLabel: true },
     xAxis: {
       type: 'value',
       name: 'Days since league start',

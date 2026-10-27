@@ -83,7 +83,8 @@ export function revealChartOption(t: ChartTokens, next: PreviewItemNext, cutoff:
       axisLabel: { ...axis.axisLabel, formatter: { day: '{d} {MMM}', hour: '{HH}:{mm}\n{d} {MMM}', minute: '{HH}:{mm}\n{d} {MMM}' } },
       splitLine: { show: false },
     },
-    yAxis: { type: 'value', name: unit === 'chaos' ? 'Chaos' : 'Divine', scale: true, ...axis, axisLabel: { ...axis.axisLabel, formatter: fmt } },
+    // No axis name: the labels carry the unit ("1.20div"), and a name sat under the legend.
+    yAxis: { type: 'value', scale: true, ...axis, axisLabel: { ...axis.axisLabel, formatter: fmt } },
     series: [
       {
         ...line(dayLabel, before),

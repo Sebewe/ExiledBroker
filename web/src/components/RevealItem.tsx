@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react'
 import type { PriceCheckItem, Verdict } from '../api/client'
 import { usePreviewItemNext } from '../api/queries'
 import type { ChartTokens } from '../lib/chartOptions'
-import { price, signedPct, tone } from '../lib/format'
+import { pctTone, price, signedPct } from '../lib/format'
 import { hasHistory, VERDICT_SHORT } from '../lib/priceCheck'
 import { usePreview } from '../lib/preview'
 import { outcome, revealChartOption, type Outcome } from '../lib/revealItem'
@@ -74,7 +74,7 @@ function OutcomeCard({ title, o, verdict, unit }: { title: string; o: Outcome; v
         <p className="text-sm text-muted">It didn't trade enough around then to compare.</p>
       ) : (
         <>
-          <p className={`num text-xl font-semibold ${tone(o.change)}`}>{signedPct(o.change, 0)}</p>
+          <p className={`num text-xl font-semibold ${pctTone(o.change, pctDigits(o.change))}`}>{signedPct(o.change, pctDigits(o.change))}</p>
           <p className="num text-xs text-faint">
             {price(o.from, unit)} → {price(o.to, unit)}
           </p>
@@ -84,6 +84,9 @@ function OutcomeCard({ title, o, verdict, unit }: { title: string; o: Outcome; v
     </div>
   )
 }
+
+/** Whole percents, but a change under 1% keeps a decimal: −0.5%, not −0%. */
+const pctDigits = (change: number) => (Math.abs(change) < 0.01 ? 1 : 0)
 
 function verdictText(verdict: Verdict, o: Outcome): string {
   const moved = o.change! < 0 ? 'It fell' : o.change! > 0 ? 'It rose' : 'It held its price'

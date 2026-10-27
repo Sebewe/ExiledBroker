@@ -213,7 +213,8 @@ export default function Missed() {
 /** The preview's reveal, once opened: each recap trade's next hours (lib/reveal). */
 type Next = { byKey: Map<string, PreviewTradeNext>; hours: number }
 
-/** The reveal's answers for every trade on the page: its flips, loops and cards. */
+/** The reveal's answers for every trade on the page: its flips, loops and cards, in the
+ *  look-back shown. d{day}/recap-next holds every look-back's, so it has more trades. */
 function shownTrades(w: MissedWindow, next: Next): PreviewTradeNext[] {
   const keys = [
     ...w.flips.map((f) => tradeKey('flip', f.item_id)),
