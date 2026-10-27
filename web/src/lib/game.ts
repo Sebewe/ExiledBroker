@@ -5,11 +5,15 @@ import { EMPTY, START_CASH, type Done, type FlipTrade, type GameState, type Orde
 // end of a day of the rewound league and steps the clock an hour at a time. Each hour's
 // document (`game/{n}`) is the Market recap then, the orders a player can take and the
 // Chaos prices of the items it lists to flip.
+// Purchases are whole, at the real price: a player buys a number of the trade's smallest
+// whole purchases (a loop's or card's whole lot at its bid, a flip's whole bid), so 2
+// Divines can't buy into a trade whose smallest purchase costs 3. Chaos convert to
+// Divines at one price fixed for the game (its Divine price at the first trade).
 // - Loops and card turn-ins: the recap's own order that hour, filled by the Backtest's
-//   rules. A stake fills up to what that order could (a tenth of what traded, 10 Divines
-//   at most), earns the order's return on it, and is tied up until the hour it sold.
+//   rules. Purchases fill up to what that order could (a tenth of what traded, 10 Divines
+//   at most), earn the order's return, and are tied up until the hour it sold.
 // - Flips: a bid at the recap's price, filled the next hour if a trade went under it
-//   (up to a tenth of what traded), then the items are held and listed, at the recap's
+//   (whole bids, up to a tenth of what traded), then the items are held and listed, at the recap's
 //   ask cut each hour unless the player sets a price, selling when a trade goes over it,
 //   a tenth of the hour's trades at most. Quick-selling takes the hour's lowest trade.
 // Nothing can be bought but what the recap lists, so the only way up is trading.
@@ -43,22 +47,45 @@ export function startGame(league: string, n: number): GameState {
   return { ...EMPTY, league, n, start: n }
 }
 
+/** The game's Divine price in Chaos: fixed at the first trade, this hour's until then. */
+export const gameRate = (s: GameState, doc: PreviewGameHour | undefined) => s.rate || doc?.divine_chaos || 0
+
+/** One purchase of a trade this hour: Chaos, Divines, and how many the player can buy (cash
+ *  and the 10 Divines an order takes at most); null without a Divine price. */
+export function buyIn(s: GameState, doc: PreviewGameHour, chaos: number): { chaos: number; div: number; max: number } | null {
+  const rate = gameRate(s, doc)
+  if (!rate || !(chaos > 0)) return null
+  const div = chaos / rate
+  return { chaos, div, max: Math.floor((Math.min(s.cash, TRADE_DIVINES) + 1e-9) / div) }
+}
+
+/** Chaos one purchase of an order costs (snapshots before purchases were whole: a
+ *  hundredth of a Divine, near enough to any amount). */
+export const orderLot = (o: PreviewGameOrder, rate: number) => o.lot ?? rate / 100
+
 /** Already placed this trade this hour (one order a trade an hour: the market's share
  *  can't be taken twice). */
 export const placedNow = (s: GameState, kind: string, itemId: string, direction?: string | null) =>
   s.open.some((t) => t.at === s.n && orderKey(t.kind, t.item_id, t.kind === 'loop' ? t.direction : null) === orderKey(kind, itemId, direction))
 
-function check(s: GameState, doc: PreviewGameHour, stake: number): string | null {
-  if (!doc.divine_chaos) return 'There is no Divine price this hour yet.'
-  if (!(stake > 0)) return 'Put in more than nothing.'
-  if (stake > s.cash + 1e-9) return 'You don’t have that many Divines free.'
+function check(s: GameState, doc: PreviewGameHour, chaos: number, lots: number): string | null {
+  const b = buyIn(s, doc, chaos)
+  if (!b) return 'There is no Divine price this hour yet.'
+  if (!(lots >= 1) || !Number.isInteger(lots)) return 'Buy at least one whole purchase.'
+  if (b.div > s.cash + 1e-9) return `One purchase costs ${b.div.toFixed(2)} div: more than your ${s.cash.toFixed(2)} free.`
+  if (lots * b.div > s.cash + 1e-9) return 'You don’t have that many Divines free.'
+  if (lots > Math.max(1, b.max)) return `${TRADE_DIVINES} Divines at most in one trade.`
   return null
 }
 
-/** Place a loop's or card turn-in's order this hour: the new state, or why not. */
-export function placeOrder(s: GameState, doc: PreviewGameHour, o: PreviewGameOrder, name: string, stake: number): GameState | string {
-  const why = check(s, doc, stake)
+/** Place `lots` purchases of a loop's or card turn-in's order this hour: the new state,
+ *  or why not. */
+export function placeOrder(s: GameState, doc: PreviewGameHour, o: PreviewGameOrder, name: string, lots: number): GameState | string {
+  const rate = gameRate(s, doc)
+  const lot = orderLot(o, rate)
+  const why = check(s, doc, lot, lots)
   if (why) return why
+  const stake = (lots * lot) / rate
   if (o.filled == null) return 'No order this hour: it didn’t pay from the bid.'
   if (placedNow(s, o.kind, o.item_id, o.direction)) return 'Already placed this hour.'
   const settle = o.settle_at ? s.n + Math.round((Date.parse(o.settle_at) - Date.parse(doc.latest_hour)) / HOUR) : null
@@ -70,20 +97,24 @@ export function placeOrder(s: GameState, doc: PreviewGameHour, o: PreviewGameOrd
     direction: o.direction,
     at: s.n,
     stake,
-    rate: doc.divine_chaos!,
+    rate,
+    lot,
+    lots,
     filled: o.filled,
     spent: o.spent ?? null,
     pnl: o.pnl ?? null,
     settle,
     state: 'placed',
   }
-  return { ...s, cash: s.cash - stake, open: [...s.open, t] }
+  return { ...s, rate, cash: s.cash - stake, open: [...s.open, t] }
 }
 
-/** Bid on a flip this hour. */
-export function placeFlip(s: GameState, doc: PreviewGameHour, f: MissedFlip, stake: number): GameState | string {
-  const why = check(s, doc, stake)
+/** Bid for `lots` of a flip's whole bids this hour. */
+export function placeFlip(s: GameState, doc: PreviewGameHour, f: MissedFlip, lots: number): GameState | string {
+  const rate = gameRate(s, doc)
+  const why = check(s, doc, f.bid_total, lots)
   if (why) return why
+  const stake = (lots * f.bid_total) / rate
   if (placedNow(s, 'flip', f.item_id)) return 'Already placed this hour.'
   const t: FlipTrade = {
     id: newId(),
@@ -92,7 +123,10 @@ export function placeFlip(s: GameState, doc: PreviewGameHour, f: MissedFlip, sta
     name: f.name,
     at: s.n,
     stake,
-    rate: doc.divine_chaos!,
+    rate,
+    lot: f.bid_lot,
+    lotCost: f.bid_total,
+    lots,
     bid: f.bid,
     ask: f.ask,
     cut: f.cut,
@@ -103,7 +137,7 @@ export function placeFlip(s: GameState, doc: PreviewGameHour, f: MissedFlip, sta
     mark: f.price,
     state: 'bidding',
   }
-  return { ...s, cash: s.cash - stake, open: [...s.open, t] }
+  return { ...s, rate, cash: s.cash - stake, open: [...s.open, t] }
 }
 
 /** A flip's listing in game hour `n` (Chaos an item): the player's, or the recap's ask
@@ -126,7 +160,7 @@ const done = (t: Trade, closed: number, cost: number, back: number, outcome: Don
 /** Step the clock to the next hour (`next`: its document): fills, sales and refunds. */
 export function step(s: GameState, next: PreviewGameHour): GameState {
   const n = s.n + 1
-  const rate = next.divine_chaos
+  const rate = gameRate(s, next)
   let cash = s.cash
   const open: Trade[] = []
   const closed: Done[] = []
@@ -138,9 +172,16 @@ export function step(s: GameState, next: PreviewGameHour): GameState {
           closed.push(done(t, n, t.stake, t.stake, 'unfilled'))
           continue
         }
-        const filled = Math.min(t.stake, t.spent / t.rate)
+        // Whole purchases, as many as the order filled.
+        const lots = Math.min(t.lots, Math.floor(t.spent / t.lot + 1e-9))
+        if (lots < 1) {
+          cash += t.stake
+          closed.push(done(t, n, t.stake, t.stake, 'unfilled'))
+          continue
+        }
+        const filled = (lots * t.lot) / t.rate
         cash += t.stake - filled
-        t = { ...t, stake: filled, state: 'filled' }
+        t = { ...t, stake: filled, lots, state: 'filled' }
       }
       if (t.settle != null && t.pnl != null && t.spent && n >= t.settle) {
         const back = t.stake * (1 + t.pnl / t.spent)
@@ -155,16 +196,17 @@ export function step(s: GameState, next: PreviewGameHour): GameState {
     const [lo, avg, hi, traded] = p ?? [null, null, null, null]
     if (avg != null) t = { ...t, mark: avg }
     if (t.state === 'bidding') {
-      const r = t.rate
-      const take = lo != null && lo <= t.bid ? Math.floor(Math.min((t.stake * r) / t.bid, CAPTURE * (traded ?? 0), (TRADE_DIVINES * r) / t.bid)) : 0
-      if (take < 1) {
+      // Whole bids: as many as were placed, a tenth of what traded, 10 Divines at most.
+      const lots = lo != null && lo <= t.bid ? Math.floor(Math.min(t.lots, (CAPTURE * (traded ?? 0)) / t.lot, (TRADE_DIVINES * t.rate) / t.lotCost) + 1e-9) : 0
+      if (lots < 1) {
         cash += t.stake
         closed.push(done(t, n, t.stake, t.stake, 'unfilled'))
         continue
       }
-      const cost = (take * t.bid) / r
+      const cost = (lots * t.lotCost) / t.rate
+      const units = lots * t.lot
       cash += t.stake - cost
-      open.push({ ...t, stake: cost, units: take, left: take, state: 'holding' })
+      open.push({ ...t, stake: cost, lots, units, left: units, state: 'holding' })
       continue
     }
     if (n >= t.at + 2 && hi != null && rate) {
@@ -187,7 +229,7 @@ export function quickSell(s: GameState, doc: PreviewGameHour, id: string): GameS
   const t = s.open.find((x) => x.id === id)
   if (!t || t.kind !== 'flip' || t.state !== 'holding') return 'Nothing held to sell.'
   const lo = doc.prices[t.item_id]?.[0]
-  const rate = doc.divine_chaos
+  const rate = gameRate(s, doc)
   if (lo == null || !rate) return 'It didn’t trade this hour: there’s no price to sell at.'
   const got = (t.left * lo) / rate
   return {
@@ -205,16 +247,16 @@ export function setListing(s: GameState, id: string, listing: number | null): Ga
 }
 
 /** What an open trade is worth now, in Divines: orders at what they tied up, items held
- *  at their last average price. */
-export function worth(t: Trade, rate: number | null | undefined): number {
+ *  at their last average price (at the game's Divine price). */
+export function worth(t: Trade): number {
   if (t.kind !== 'flip' || t.state === 'bidding') return t.stake
-  return (t.left * t.mark) / (rate || t.rate)
+  return (t.left * t.mark) / t.rate
 }
 
 /** Everything: free Divines and the open trades' worth. */
-export const total = (s: GameState, rate: number | null | undefined) => s.cash + s.open.reduce((sum, t) => sum + worth(t, rate), 0)
+export const total = (s: GameState) => s.cash + s.open.reduce((sum, t) => sum + worth(t), 0)
 
-export const profit = (s: GameState, rate: number | null | undefined) => total(s, rate) - START_CASH
+export const profit = (s: GameState) => total(s) - START_CASH
 
 /** The closed trades' tally: how many made money, and what they made. */
 export function tally(xs: Done[]) {

@@ -916,6 +916,8 @@ export interface components {
              * @enum {string}
              */
             kind: "loop" | "card";
+            /** Lot */
+            lot?: number | null;
             /** Pnl */
             pnl: number | null;
             /** Settle At */

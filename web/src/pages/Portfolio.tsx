@@ -62,7 +62,6 @@ export default function Portfolio() {
 
 function Board() {
   const clock = useGameClock()
-  const doc = useGameHour(clock.running || undefined).data
   if (!clock.running)
     return (
       <Notice kind="info" title="No trades yet">
@@ -70,13 +69,12 @@ function Board() {
         <Link to="/" className="text-accent hover:text-accent-strong">
           Market recap
         </Link>
-        , pick a trade and press "Trade this hour", then "Next hour" in the bar at the bottom to see how it went. Only what the recap lists can be traded, and
+        , pick a trade, press "Trade this hour" and choose how many whole purchases to make, then "Next hour" in the bar at the bottom to see how it went. Only what the recap lists can be traded, and
         the market only takes so much each hour.
       </Notice>
     )
   const s = clock.s
-  const rate = doc?.divine_chaos
-  const now = total(s, rate)
+  const now = total(s)
   const t = tally(s.done)
   return (
     <>
@@ -88,6 +86,7 @@ function Board() {
       </div>
       <p className="text-sm text-muted">
         Started at {hourLabel(clock.launched, s.start)}; now at <span className="text-text">{hourLabel(clock.launched, s.n)}</span>.
+        {s.rate > 0 && ` Chaos convert at ${price(s.rate)} a Divine, fixed for this game.`}
       </p>
       <Section title="Open" description="Orders waiting to fill or sell, and flips you hold. A held flip counts at its latest average price.">
         {s.open.length === 0 ? (
@@ -95,7 +94,7 @@ function Board() {
         ) : (
           <ul className="flex flex-col gap-2">
             {s.open.map((x) => (
-              <OpenRow key={x.id} t={x} n={s.n} rate={rate} launched={clock.launched} />
+              <OpenRow key={x.id} t={x} n={s.n} launched={clock.launched} />
             ))}
           </ul>
         )}
@@ -116,16 +115,16 @@ function Board() {
 const tradeName = (x: { kind: Trade['kind']; name: string; direction?: string | null }) =>
   `${KIND[x.kind]}: ${x.name}${x.kind === 'loop' && x.direction ? ` (${DIRECTION[x.direction] ?? x.direction})` : ''}`
 
-function OpenRow({ t, n, rate, launched }: { t: Trade; n: number; rate: number | null | undefined; launched: string | null | undefined }) {
+function OpenRow({ t, n, launched }: { t: Trade; n: number; launched: string | null | undefined }) {
   const state =
     t.kind === 'flip'
       ? t.state === 'bidding'
-        ? 'Bid placed: fills next hour if a trade goes under it'
+        ? `Bid for ${t.lots * t.lot} at ${price(t.bid)} each: fills next hour if a trade goes under it`
         : `Holding ${t.left} of ${t.units}${t.got > 0 ? `, ${div(t.got)} sold so far` : ''}`
       : t.state === 'placed'
-        ? 'Order placed: fills next hour or comes back'
+        ? `${t.lots} ${t.lots === 1 ? 'purchase' : 'purchases'} placed: fills next hour or comes back`
         : t.settle != null
-          ? `Filled; sells ${hourLabel(launched, t.settle)}`
+          ? `${t.lots} filled; sells ${hourLabel(launched, t.settle)}`
           : "Filled; the sale isn't known by the end of the preview's data"
   return (
     <li className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-3 sm:flex-row sm:items-center sm:justify-between">
@@ -139,7 +138,7 @@ function OpenRow({ t, n, rate, launched }: { t: Trade; n: number; rate: number |
       </div>
       <div className="flex shrink-0 flex-wrap items-center gap-3">
         <span className="num text-sm">
-          <span className="text-faint">in</span> {div(t.stake)} <span className="text-faint">· worth</span> {div(worth(t, rate))}
+          <span className="text-faint">in</span> {div(t.stake)} <span className="text-faint">· worth</span> {div(worth(t))}
         </span>
         {t.kind === 'flip' && t.state === 'holding' && <FlipControls t={t} n={n} />}
       </div>

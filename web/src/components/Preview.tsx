@@ -1,11 +1,11 @@
-import { Eye, Timer } from 'lucide-react'
+import { Eye, Timer, Wallet } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router'
 import { useServerNow, useStatus } from '../api/queries'
 import type { Upcoming } from '../api/client'
 import { clock, launchDay } from '../lib/countdown'
 import { utcHour } from '../lib/format'
-import { gameHour, useGame } from '../lib/gameStore'
+import { gameHour, START_CASH, useGame } from '../lib/gameStore'
 import { usePreview } from '../lib/preview'
 import { trackFeature } from '../lib/usage'
 
@@ -192,7 +192,7 @@ export function PreviewWelcome() {
           if (e.key === 'Tab') e.preventDefault()
           if (e.key === 'Escape') accept()
         }}
-        className="w-full max-w-md rounded-xl border border-accent/40 bg-surface p-6 shadow-xl shadow-shadow/40"
+        className="max-h-full w-full max-w-md overflow-y-auto rounded-xl border border-accent/40 bg-surface p-6 shadow-xl shadow-shadow/40"
       >
         <h2 id="preview-welcome-title" className="flex items-center gap-2 font-display text-xl text-text">
           <Eye aria-hidden className="size-5 text-accent" />
@@ -207,6 +207,19 @@ export function PreviewWelcome() {
           </strong>
           : real data, rewound. It switches to the next league live once that launches.
         </p>
+        {preview.manifest?.game && (
+          <div className="mt-4 rounded-lg border border-border bg-bg/60 p-3 text-sm leading-relaxed text-muted">
+            <p className="flex items-center gap-1.5 font-semibold text-text">
+              <Wallet aria-hidden className="size-4 text-accent" /> Paper trading
+            </p>
+            <p className="mt-1">
+              Try the trades on the Market recap with {START_CASH} pretend Divines. Press <span className="text-text">Trade this hour</span> on one and choose how
+              many to buy: purchases are whole, at the real price that hour, so a trade costs at least its smallest buy-in. Then press{' '}
+              <span className="text-text">Next hour</span> in the bar at the bottom: orders fill only as far as the market really traded, and sell when it did.
+              Your trades and what each made are on the Portfolio page, kept in this browser only.
+            </p>
+          </div>
+        )}
         <button
           ref={button}
           type="button"

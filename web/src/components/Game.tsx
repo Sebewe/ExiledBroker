@@ -6,7 +6,7 @@ import type { MissedFlip, PreviewGameHour } from '../api/client'
 import { useGameHour } from '../api/queries'
 import { price } from '../lib/format'
 import { hourLabel, useGameClock } from '../lib/gameClock'
-import { orderIn, placeFlip, placeOrder, placedNow, startGame, step, tally, total } from '../lib/game'
+import { buyIn, gameRate, orderIn, orderLot, placeFlip, placeOrder, placedNow, startGame, step, tally, total } from '../lib/game'
 import { getGame, setGame, START_CASH, type GameState } from '../lib/gameStore'
 import { fetchPreview, previewKey } from '../lib/preview'
 import { trackFeature } from '../lib/usage'
@@ -21,8 +21,8 @@ const signed = (v: number) => `${v < -0.005 ? '−' : '+'}${div(Math.abs(v))}`
 
 type TradeProps = { kind: 'loop' | 'card'; itemId: string; name: string; direction?: string | null } | { kind: 'flip'; flip: MissedFlip }
 
-/** "Trade this hour" on one of the recap's trades: a stake in Divines, placed in the
- *  game's hour (starting a game if none runs). */
+/** "Trade this hour" on one of the recap's trades: a number of its whole purchases, at
+ *  their real price, placed in the game's hour (starting a game if none runs). */
 export function GameTrade(props: TradeProps) {
   const clock = useGameClock()
   const doc = useGameHour(clock.playable ? clock.n : undefined).data
@@ -63,8 +63,10 @@ export function GameTrade(props: TradeProps) {
       </div>
     )
 
-  const submit = (stake: number) => {
-    const next = props.kind === 'flip' ? placeFlip(base, doc, props.flip, stake) : placeOrder(base, doc, order!, props.name, stake)
+  const rate = gameRate(base, doc)
+  const buy = buyIn(base, doc, props.kind === 'flip' ? props.flip.bid_total : orderLot(order!, rate))
+  const submit = (lots: number) => {
+    const next = props.kind === 'flip' ? placeFlip(base, doc, props.flip, lots) : placeOrder(base, doc, order!, props.name, lots)
     if (typeof next === 'string') return setError(next)
     trackFeature('game-trade')
     setGame(next)
@@ -72,12 +74,23 @@ export function GameTrade(props: TradeProps) {
     setAmount('')
     setError(null)
   }
+  if (!buy) return hint('No Divine price this hour yet: trades open once there is one.')
+  if (buy.max < 1)
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        {hint(`One purchase costs ${div(buy.div)}: more than your ${div(base.cash)} free.`)}
+        {holding}
+      </div>
+    )
   if (!open)
     return (
       <div className="flex flex-wrap items-center justify-between gap-2">
         <button
           type="button"
-          onClick={() => setOpen(true)}
+          onClick={() => {
+            setOpen(true)
+            setAmount('1')
+          }}
           className="inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-md border border-accent/50 bg-accent/10 px-2.5 text-sm font-semibold text-accent-strong hover:bg-accent/20"
         >
           <Wallet aria-hidden className="size-4" /> Trade this hour
@@ -85,46 +98,59 @@ export function GameTrade(props: TradeProps) {
         {holding}
       </div>
     )
-  const cash = base.cash
+  const lots = Number(amount)
+  const what =
+    props.kind === 'flip'
+      ? `${props.flip.bid_lot} ${props.flip.bid_lot === 1 ? 'item' : 'items'} for ${price(props.flip.bid_total)} (${div(buy.div)})`
+      : `${price(buy.chaos)} (${div(buy.div)}), the smallest whole buy at its bid`
   return (
     <form
       className="flex flex-col gap-2 rounded-lg border border-accent/30 bg-accent/5 p-3"
       onSubmit={(e) => {
         e.preventDefault()
-        submit(Number(amount))
+        submit(lots)
       }}
     >
       <label htmlFor={id} className="text-xs text-muted">
-        Divines to put in <span className="text-faint">({div(cash)} free)</span>
+        Purchases <span className="text-faint">(one is {what}; up to {buy.max})</span>
       </label>
       <div className="flex flex-wrap items-center gap-1.5">
         <input
           id={id}
           type="number"
-          inputMode="decimal"
-          min="0"
-          step="any"
-          max={cash}
+          inputMode="numeric"
+          min="1"
+          step="1"
+          max={buy.max}
           value={amount}
           autoFocus
           onChange={(e) => setAmount(e.target.value)}
-          className="num min-h-8 w-24 rounded-md border border-border bg-bg px-2 text-sm"
+          className="num min-h-8 w-20 rounded-md border border-border bg-bg px-2 text-sm"
         />
-        {[0.25, 0.5, 1].map((f) => (
+        {[
+          ['1', 1],
+          ['Half', Math.max(1, Math.floor(buy.max / 2))],
+          ['Max', buy.max],
+        ].map(([label, v]) => (
           <button
-            key={f}
+            key={label}
             type="button"
-            onClick={() => setAmount(String(Math.floor(cash * f * 100) / 100))}
+            onClick={() => setAmount(String(v))}
             className="min-h-8 cursor-pointer rounded-md border border-border px-2 text-xs text-muted hover:text-text"
           >
-            {f === 1 ? 'All' : `${f * 100}%`}
+            {label}
           </button>
         ))}
+        {lots >= 1 && (
+          <span className="num text-sm text-muted">
+            = {div(Math.floor(lots) * buy.div)} <span className="text-faint">of {div(base.cash)} free</span>
+          </span>
+        )}
       </div>
       {hint(
         props.kind === 'flip'
           ? `Bids ${price(props.flip.bid)} an item. If it fills next hour, the items are listed at ${price(props.flip.ask)}, ${Math.round(props.flip.cut * 100)}% lower each hour they don't sell; change the price or sell on the Portfolio page.`
-          : "Fills up to what the market took that hour (10 div at most); the rest comes back. Your Divines are tied up until it sells.",
+          : 'Fills whole purchases, up to what the market took that hour (10 div at most); the rest comes back. Your Divines are tied up until it sells.',
       )}
       {error && <p className="text-xs text-negative">{error}</p>}
       <div className="flex gap-2">
@@ -144,7 +170,6 @@ export function GameTrade(props: TradeProps) {
 export function GameBar() {
   const clock = useGameClock()
   const qc = useQueryClient()
-  const doc = useGameHour(clock.running || undefined).data
   const [busy, setBusy] = useState(false)
   const [news, setNews] = useState<{ n: number; text: string } | null>(null)
   const [error, setError] = useState(false)
@@ -156,7 +181,7 @@ export function GameBar() {
   }, [shown])
   if (!shown) return null
   const s = clock.running ? clock.s : null
-  const worth = s ? total(s, doc?.divine_chaos) : START_CASH
+  const worth = s ? total(s) : START_CASH
   const gain = worth - START_CASH
   const atEnd = !!clock.range && clock.n >= clock.range.last
 

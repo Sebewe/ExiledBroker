@@ -49,13 +49,13 @@ const FLIP = {
   ask_total: 110,
   cut: 0.1,
 }
-const LOOP = { kind: 'loop' as const, item_id: 'currency:d', direction: 'chaos_first', filled: true, spent: 500, pnl: 50, settle_at: gameHourDoc(25).latest_hour }
+const LOOP = { kind: 'loop' as const, item_id: 'currency:d', direction: 'chaos_first', filled: true, spent: 500, pnl: 50, settle_at: gameHourDoc(25).latest_hour, lot: 100 }
 const H25 = gameHourDoc(25, { prices: { 'currency:f': [78, 90, 100, 1000] } })
 
 /** A game at hour 25: a loop bought and sold at +10%, and 5 Orbs of Conflict held. */
 function played() {
   let s = ok(placeOrder(startGame('Mirage', 24), gameHourDoc(24), LOOP, 'Reverent Fragment', 2))
-  s = ok(placeFlip(s, gameHourDoc(24), FLIP, 4))
+  s = ok(placeFlip(s, gameHourDoc(24), FLIP, 5))
   setGame(step(s, H25))
 }
 
