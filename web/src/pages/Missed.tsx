@@ -195,7 +195,17 @@ export default function Missed() {
               )}
             </>
           ) : (
-            <Notice kind="info">Nothing to recap yet.</Notice>
+            <Notice kind="info" title="Nothing to recap yet">
+              The next hour usually lands about an hour after the last one. Meanwhile,{' '}
+              <Link to="/price-check" className="text-accent hover:text-accent-strong">
+                Price check
+              </Link>{' '}
+              and{' '}
+              <Link to="/launch" className="text-accent hover:text-accent-strong">
+                Launch market
+              </Link>{' '}
+              are worth a look.
+            </Notice>
           )))}
     </>
   )
@@ -358,16 +368,33 @@ function movers(w: MissedWindow, up: boolean) {
     .sort((a, b) => (up ? b.change - a.change : a.change - b.change))
 }
 
+/** "this hour", or "in the last 3 hours" for a longer window. */
+const thisHour = (hours: number) => (hours === 1 ? 'this hour' : `in ${lastHours(hours)}`)
+
+/** Market Movers' one-line takeaway: the biggest rise and the biggest fall (either may be missing). */
+function moversTakeaway(rising: Mover[], falling: Mover[], hours: number) {
+  const [up] = rising
+  const [down] = falling
+  const parts = [
+    up && `Biggest rise ${thisHour(hours)}: ${signedPct(up.change, 0)} on ${up.name}.`,
+    down && (up ? `Biggest fall: ${signedPct(down.change, 0)} on ${down.name}.` : `Biggest fall ${thisHour(hours)}: ${signedPct(down.change, 0)} on ${down.name}.`),
+  ].filter(Boolean)
+  return parts.length ? parts.join(' ') : undefined
+}
+
 function MarketMovers({ w, money, href }: { w: MissedWindow; money: Money; href: ItemHref }) {
   const [all, setAll] = useState(false)
   const rising = movers(w, true)
   const falling = movers(w, false)
   const more = Math.max(rising.length, falling.length) > TOP
   const shown = (xs: Mover[]) => (all ? xs : xs.slice(0, TOP))
+  // Only when neither way moved: with one column empty the other still has moves.
+  const steady = rising.length || falling.length ? undefined : `Prices held steady ${thisHour(w.hours)}.`
   return (
     <Block
       title="Market Movers"
       icon={Waves}
+      takeaway={moversTakeaway(rising, falling, w.hours)}
       more={
         more && (
           <button type="button" onClick={() => {
@@ -381,10 +408,10 @@ function MarketMovers({ w, money, href }: { w: MissedWindow; money: Money; href:
     >
       <div className="grid gap-3 md:grid-cols-2">
         <Column title="Rising" hint={`Price now against ${w.hours}h before`}>
-          {rising.length ? shown(rising).map((m) => <MoverRow key={m.item_id} m={m} money={money} href={href(m.item_id)} />) : <Empty>Nothing liquid rose.</Empty>}
+          {rising.length ? shown(rising).map((m) => <MoverRow key={m.item_id} m={m} money={money} href={href(m.item_id)} />) : <Empty hint={steady}>Nothing liquid rose.</Empty>}
         </Column>
         <Column title="Falling" hint={`Price now against ${w.hours}h before`}>
-          {falling.length ? shown(falling).map((m) => <MoverRow key={m.item_id} m={m} money={money} href={href(m.item_id)} />) : <Empty>Nothing liquid fell.</Empty>}
+          {falling.length ? shown(falling).map((m) => <MoverRow key={m.item_id} m={m} money={money} href={href(m.item_id)} />) : <Empty hint={steady}>Nothing liquid fell.</Empty>}
         </Column>
       </div>
     </Block>
@@ -748,6 +775,15 @@ function Loops({ w, money, rate, href, play }: { w: MissedWindow; money: Money; 
   )
 }
 
+/** The card turn-ins' one-line takeaway: the best margin among cards whose orders went
+ *  through at least sometimes (the first card if none did); none when there are no cards. */
+function cardsTakeaway(cards: MissedCard[], money: Money, hours: number) {
+  const pool = cards.filter((c) => c.chance !== 0)
+  const best = pool.length ? pool.reduce((a, b) => (b.margin > a.margin ? b : a)) : cards[0]
+  if (!best) return undefined
+  return `Best turn-in ${thisHour(hours)}: +${money(best.margin)} a set on ${best.name}`
+}
+
 function Cards({ w, money, href, play }: { w: MissedWindow; money: Money; href: ItemHref; play: boolean }) {
   const [all, setAll] = useState(false)
   const shown = all ? w.cards : w.cards.slice(0, TOP)
@@ -756,12 +792,13 @@ function Cards({ w, money, href, play }: { w: MissedWindow; money: Money; href: 
       id="cards"
       title="Card turn-ins that paid"
       icon={Layers}
+      takeaway={cardsTakeaway(w.cards, money, w.hours)}
       lead="A full set of these cards cost less than what it turns into."
       method="cards"
       more={<ShowAll all={all} total={w.cards.length} onToggle={() => setAll(!all)} />}
     >
       {w.cards.length === 0 ? (
-        <Empty>No card turn-in paid in {lastHours(w.hours)}.</Empty>
+        <Empty hint="Try the loops and flips above, or check back after the next hour.">No card turn-in paid in {lastHours(w.hours)}.</Empty>
       ) : (
         <ol className="grid gap-3 md:grid-cols-3">
           {shown.map((c: MissedCard) => (
@@ -772,13 +809,16 @@ function Cards({ w, money, href, play }: { w: MissedWindow; money: Money; href: 
               muted={c.chance === 0}
               amount={`+${money(c.margin)}`}
               label={c.worst_roll ? 'a set, worst roll' : 'a set, average prices'}
-              footer={
+              footer={<span>set costs {money(c.set_cost)}</span>}
+              details={
                 <>
-                  <span>set costs {money(c.set_cost)}</span>
-                  <span>
-                    <span className="num text-text">{c.sets.toFixed(c.sets >= 10 ? 0 : 1)}</span> sets traded
-                  </span>
-                  <Steady paid={c.hours_paid} hours={w.hours} />
+                  <Chance tries={c.tries} through={c.through} chance={c.chance} />
+                  <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted">
+                    <span>
+                      <span className="num text-text">{c.sets.toFixed(c.sets >= 10 ? 0 : 1)}</span> sets traded
+                    </span>
+                    <Steady paid={c.hours_paid} hours={w.hours} />
+                  </div>
                 </>
               }
               actions={
@@ -806,7 +846,7 @@ function Cards({ w, money, href, play }: { w: MissedWindow; money: Money; href: 
                 a full set turns into <Pill accent>{c.reward}</Pill>
                 {c.worst_roll && <span>random: valued at the cheapest roll</span>}
               </div>
-              <Chance tries={c.tries} through={c.through} chance={c.chance} />
+              <NeverFilled chance={c.chance} />
             </Opportunity>
           ))}
         </ol>
