@@ -153,3 +153,46 @@ describe('clock', () => {
     expect(clock(-5)).toBe('00:00')
   })
 })
+
+describe('preview welcome', () => {
+  it('opens over the page on the first visit, naming the league and the time shown', async () => {
+    renderAt('/', previewStatus())
+    const dialog = await screen.findByRole('dialog', { name: 'Preview mode' })
+    expect(dialog).toHaveAttribute('aria-modal', 'true')
+    expect(dialog.textContent).toMatch(/The site is currently in preview mode\. You are seeing Mirage as of day 2 \(.+ UTC\)/)
+    const button = screen.getByRole('button', { name: 'Got it' })
+    expect(button).toHaveFocus()
+    expect(document.body.style.overflow).toBe('hidden')
+    fireEvent.click(button)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(localStorage.getItem('eb-preview-seen')).toBe('Mirage')
+    expect(document.body.style.overflow).toBe('')
+  })
+
+  it('follows the chosen day', async () => {
+    renderAt('/?day=3', previewStatus())
+    expect((await screen.findByRole('dialog')).textContent).toMatch(/as of day 3 /)
+  })
+
+  it('closes on Escape', async () => {
+    renderAt('/', previewStatus())
+    fireEvent.keyDown(await screen.findByRole('dialog'), { key: 'Escape' })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('stays closed once accepted, and asks again for another league', async () => {
+    localStorage.setItem('eb-preview-seen', 'Mirage')
+    renderAt('/', previewStatus())
+    expect(await screen.findByText('Preview')).toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    localStorage.setItem('eb-preview-seen', 'Settlers')
+    renderAt('/', previewStatus())
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+  })
+
+  it('never shows while the preview is off', async () => {
+    renderAt('/', liveStatus())
+    expect(await screen.findByText(/Allflame · data/)).toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+})
