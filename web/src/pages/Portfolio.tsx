@@ -6,6 +6,7 @@ import { useGameHour, useStatus } from '../api/queries'
 import { hourLabel, useGameClock } from '../lib/gameClock'
 import { Notice } from '../components/Notice'
 import { PageHeader, Section } from '../components/Section'
+import { HowItWorks } from '../components/HowItWorks'
 import { Stat } from '../components/Stat'
 import { price, signedPct } from '../lib/format'
 import { dumpNow, holding, hourRate, listingAt, profit, quickSell, setListing, startWorth, tally, total, worth } from '../lib/game'
@@ -35,11 +36,11 @@ export default function Portfolio() {
   const preview = usePreview()
   const header = (
     <PageHeader title="Portfolio">
-      Your trading game: the trades you made on the{' '}
+      The trades you made in the game on the{' '}
       <Link to="/" className="text-accent underline decoration-accent/40 underline-offset-2 hover:text-accent-strong">
         Market recap
       </Link>{' '}
-      and what each made or lost. Kept in this browser only.
+      and what each made or lost, kept in this browser only. <HowItWorks anchor="trading-game" />
     </PageHeader>
   )
   if (!preview.on)

@@ -428,6 +428,9 @@ describe('Market recap in the preview: the trading game', () => {
     // The preview's strip says when the next league launches, so the page doesn't.
     expect(screen.queryByText(/The next league launches/)).toBeNull()
     const loops = within(document.getElementById('loops')!)
+    // Marked for the first-visit tour (components/Tour.tsx).
+    expect(await loops.findByRole('button', { name: 'Trade this hour' })).toHaveAttribute('data-tour', 'trade')
+    expect(bar.getByRole('button', { name: 'Next hour' })).toHaveAttribute('data-tour', 'next-hour')
     fireEvent.click(await loops.findByRole('button', { name: 'Trade this hour' }))
     // Whole purchases at the real price: one is the order's smallest lot, 100c here.
     const buy = loops.getByLabelText(/Purchases/)

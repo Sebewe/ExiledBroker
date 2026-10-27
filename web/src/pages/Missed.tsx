@@ -5,6 +5,7 @@ import type { LiveLeague, MissedCard, MissedFlip, MissedLoop, MissedWindow, Move
 import { useGameHour, useLeagues, useMissed, useServerNow, useStatus } from '../api/queries'
 import { Select } from '../components/Controls'
 import { FreshnessBanner } from '../components/Freshness'
+import { HowItWorks } from '../components/HowItWorks'
 import { Notice } from '../components/Notice'
 import { PageHeader } from '../components/Section'
 import { ItemName } from '../components/ItemLink'
@@ -127,8 +128,7 @@ export default function Missed() {
 
   const header = (
     <PageHeader title="Market recap">
-      What traded on the exchange in the latest published hours, and a few things worth looking into. GGG publishes each hour just after it ends, so all of
-      this has already happened: use it to decide what to check in-game, not as a forecast.
+      What traded on the exchange in the latest published hours, and what's worth checking in-game. <HowItWorks anchor="prices" />
     </PageHeader>
   )
   const fallback = queryFallback(status)

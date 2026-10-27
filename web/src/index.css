@@ -39,6 +39,13 @@
      Used as motion-safe:animate-*, and the reduced-motion rule below stops it anyway. */
   --animate-nudge: nudge 1.6s ease-in-out infinite;
   --animate-nudge-slow: nudge 3.2s ease-in-out infinite;
+  /* The tour's pointers fade in (components/Tour.tsx). */
+  --animate-pop: pop 150ms ease-out;
+  @keyframes pop {
+    from {
+      opacity: 0;
+    }
+  }
   @keyframes nudge {
     0%,
     100% {

@@ -13,6 +13,7 @@ import { Empty } from '../components/Opportunity'
 import { Skeleton } from '../components/QueryState'
 import { ItemReveal } from '../components/RevealItem'
 import { PageHeader } from '../components/Section'
+import { HowItWorks } from '../components/HowItWorks'
 import { BestHours, Stack } from '../components/StackSeller'
 import { bandsOf } from '../lib/impact'
 import type { ChartTokens } from '../lib/chartOptions'
@@ -64,8 +65,7 @@ export default function PriceCheck() {
 
   const header = (
     <PageHeader title="Price check">
-      Look up an item to see how its price moves this league, in Chaos and in Divines, and what past leagues suggest it does next: sell now, hold, or no clear
-      signal. Then see how fast a stack of it sells, and when to list it.
+      Look up an item to see its price this league and whether to sell now or hold. <HowItWorks anchor="price-check" />
     </PageHeader>
   )
   const fallback = queryFallback(status)

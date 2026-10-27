@@ -24,6 +24,8 @@ export default function Method() {
             ['flips', 'Flips'],
             ['launch-picks', 'Launch picks'],
             ['price-check', 'Price check'],
+            ['trading-game', 'Trading game'],
+            ['backtest', 'Backtest'],
           ].map(([id, label]) => (
             <a key={id} href={`#${id}`} className="text-info hover:underline">
               {label}
@@ -39,7 +41,8 @@ export default function Method() {
           trading.
         </p>
         <p>
-          An hour is published a few minutes after it ends, so the newest data is about an hour old. Items traded only for Divines are priced in Chaos at
+          An hour is published a few minutes after it ends, so the newest data is about an hour old: everything the Market recap shows has already
+          happened, so use it to decide what to check in-game, not as a forecast. Items traded only for Divines are priced in Chaos at
           that hour's Divine rate (the last known one, if the Divine didn't trade). All times are UTC.
         </p>
         <p>
@@ -99,6 +102,9 @@ export default function Method() {
 
       <Part id="price-check" title="Price check" use={{ to: '/price-check', label: 'Price check' }} notes={[9, 6, 7]}>
         <p>
+          The chart shows the item's price this league in Chaos and in Divines.
+        </p>
+        <p>
           <strong className="text-text">Sell now or hold</strong> for the next 24 hours and the next 3 days, judged in Divines, since Chaos inflates over a
           league. It comes from what past leagues did from the same point in the league, so it needs at least two past leagues that traded the item
           then, and it's shown only where that beat "no change" in backtests. The range beside it is past leagues' range from this point.
@@ -106,6 +112,27 @@ export default function Method() {
         <p>
           <strong className="text-text">Selling a stack:</strong> a stack is shown as hours of the market's usual trading, since how far a big sale
           moves the price can't be measured from hourly data, and the best hours to list come from the hour-of-day pattern in the first week.
+        </p>
+      </Part>
+
+      <Part id="trading-game" title="Trading game" use={{ to: '/portfolio', label: 'Portfolio' }} notes={[4]}>
+        <p>
+          During the pre-launch preview you can trade a past league's early days hour by hour, starting with 10 Divines and 200 Chaos. Trades are
+          paid in Chaos, in whole purchases at the real price, and Divines are exchanged at the hour's average price when Chaos run short. Only
+          what the Market recap lists can be traded, and you can take at most a tenth of what traded in an hour.
+        </p>
+        <p>
+          Loops and card turn-ins fill by the Backtest's rules and pay the order's return once they sell. Flips are bid at the recap's price, then
+          listed at its ask, cut each hour unless you set a price, and sell when a trade goes over it; selling now takes the hour's lowest trade.
+          Your trades are kept in this browser only.
+        </p>
+      </Part>
+
+      <Part id="backtest" title="Backtest" use={{ to: '/research/backtest', label: 'Backtest' }} notes={[4, 5]}>
+        <p>
+          We replayed every hour of exchange data we have as a trader who does only what the site said at the time, an hour late, at fair prices and at
+          the worst prices traded. Predicting a market from hourly summaries is hard, and most of what looks like free money doesn't survive the test;
+          the Backtest page shows what does.
         </p>
       </Part>
     </>

@@ -85,6 +85,10 @@ disk stops the build (and the last snapshot stands).
   Accepting stores the snapshot's league and the time in localStorage (`eb-preview-seen`,
   `{league, at}`), so it comes back 4 hours later (the user, 2026-10-27; decided once per
   page load), at once for another league's preview, never when preview is off.
+- `components/Tour.tsx` (a lazy chunk; `lib/tour.ts` decides when): the trading game's
+  first-visit tour, three small pointers at Trade this hour, Next hour and Portfolio
+  (`data-tour` marks). It waits until the welcome is closed and the page shows a trade,
+  then never shows again once finished or skipped (`eb-tour-done`; the user, 2026-10-27).
 - `api/queries.ts` is the one switch: while the preview is on, `useMissed`,
   `usePriceCheck`, `usePriceCheckItem` and `useLaunchPicks` read `/api/preview/d{day}/…`
   keyed on the snapshot's version; `useLeagues()` returns the snapshot's league on the
