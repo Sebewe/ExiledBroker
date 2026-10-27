@@ -1,5 +1,5 @@
 import { Eye, Timer, Wallet } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router'
 import { useServerNow, useStatus } from '../api/queries'
 import type { Upcoming } from '../api/client'
@@ -7,6 +7,7 @@ import { clock, launchDay } from '../lib/countdown'
 import { utcHour } from '../lib/format'
 import { gameHour, START_CHAOS, START_DIV, useGame } from '../lib/gameStore'
 import { usePreview } from '../lib/preview'
+import { setWelcomeOpen } from '../lib/tour'
 import { trackFeature } from '../lib/usage'
 
 // The pre-launch preview's shell (docs/preview.md): the header's "Preview" pill, the strip
@@ -167,6 +168,12 @@ export function PreviewWelcome() {
   const button = useRef<HTMLButtonElement>(null)
   const at = seenAt(league)
   const open = preview.on && !!league && accepted !== league && (at == null || loadedAt - at >= SEEN_FOR)
+
+  // The game's tour waits until this is closed (lib/tour.ts).
+  useLayoutEffect(() => {
+    setWelcomeOpen(open)
+    return () => setWelcomeOpen(false)
+  }, [open])
 
   useEffect(() => {
     if (!open) return

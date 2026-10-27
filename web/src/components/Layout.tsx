@@ -1,5 +1,5 @@
 import { Book, BriefcaseBusiness, CandlestickChart, FlaskConical, Hourglass, Moon, Scale, Sun } from 'lucide-react'
-import { useEffect, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, type ReactNode } from 'react'
 import { markPortfolioSeen, useUnseenTrade } from '../lib/gameStore'
 import { Link, NavLink, useLocation } from 'react-router'
 import { useRememberedSettings } from '../lib/rememberSettings'
@@ -9,6 +9,7 @@ import { trackFeature, trackPage } from '../lib/usage'
 import { FreshnessBadge } from './Freshness'
 import { PreviewPill, PreviewStrip, PreviewWelcome } from './Preview'
 import { usePreview } from '../lib/preview'
+import { useTourPending } from '../lib/tour'
 import { RESEARCH } from '../lib/research'
 import { SocialLinks } from './Social'
 
@@ -28,6 +29,9 @@ const NAV: Nav[] = [
   { to: '/research', label: 'Research', icon: FlaskConical, proof: true, side: true, hint: 'The proof behind the tools: the journal, the Backtest and how the tools work' },
 ]
 
+// The trading game's first-visit tour: a lazy chunk, loaded only while it's due (lib/tour.ts).
+const Tour = lazy(() => import('./Tour'))
+
 /** The tab's title for a path: the page's name first, so tabs and bookmarks tell pages apart. */
 export function pageTitle(pathname: string): string {
   const note = /^\/research\/notes\/(\d+)$/.exec(pathname)
@@ -45,6 +49,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const { pathname } = useLocation()
   const preview = usePreview()
   const unseen = useUnseenTrade()
+  const tour = useTourPending() && preview.on && !!preview.manifest?.game
   useScrollOnNavigate()
   useEffect(() => {
     if (pathname === '/portfolio') markPortfolioSeen()
@@ -54,6 +59,7 @@ export function Layout({ children }: { children: ReactNode }) {
     <NavLink
       key={to}
       to={linkTo(to)}
+      data-tour={to === '/portfolio' ? 'portfolio' : undefined}
       end={end}
       title={hint}
       className={({ isActive }) =>
@@ -128,6 +134,11 @@ export function Layout({ children }: { children: ReactNode }) {
       </header>
       <PreviewStrip />
       <PreviewWelcome />
+      {tour && (
+        <Suspense fallback={null}>
+          <Tour />
+        </Suspense>
+      )}
       <main id="main" className="mx-auto flex max-w-7xl min-w-0 flex-col gap-8 px-4 py-6 *:min-w-0">
         {children}
       </main>
