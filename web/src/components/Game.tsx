@@ -101,6 +101,7 @@ export function GameTrade(props: TradeProps) {
       <>
         <button
           type="button"
+          data-tour="trade"
           onClick={() => {
             setOpen(true)
             setAmount('1')
@@ -306,6 +307,7 @@ export function GameBar({ here }: { here?: 'portfolio' } = {}) {
           )}
           <button
             type="button"
+            data-tour="next-hour"
             onClick={() => {
               setStepped(true)
               void next()
