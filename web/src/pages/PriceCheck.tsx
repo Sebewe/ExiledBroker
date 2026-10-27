@@ -273,7 +273,7 @@ function ItemView({
       </header>
       <VerdictCard item={item} />
       {/* The preview's reveal, closed again for another item or day. */}
-      {preview.on && <ItemReveal key={`${item.item_id}@${preview.day}`} item={item} />}
+      {preview.on && <ItemReveal key={`${item.item_id}@${preview.day}`} item={item} divineChaos={info.divine_chaos} />}
       <PriceChart item={item} info={info} />
       <Selling item={item} money={shown} divineChaos={info.divine_chaos} />
       {!chaosOnly && <LaunchPrices item={item} money={money} divineChaos={info.divine_chaos} />}

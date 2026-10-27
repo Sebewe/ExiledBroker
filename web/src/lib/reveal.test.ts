@@ -75,6 +75,35 @@ describe('revealChartOption', () => {
       ['What came next', 6],
     ])
   })
+
+  it("draws the chosen day's outlook band, unchanged, over what came next", () => {
+    const next = item(100, () => 1)
+    const at = START + 4 * HOUR
+    const band = [
+      { at, low: 1, high: 1, typical: 1 },
+      { at: at + 24 * HOUR, low: 0.8, high: 1.3, typical: 1.1 },
+    ]
+    type S = { name: string; yAxisIndex?: number; data: [string, number][] }
+    const option = revealChartOption(t, next, cutoffAt(4), 'Day 1', band) as { series: S[]; legend: { data: string[] } }
+    expect(option.series.map((s) => s.name)).toEqual(['Day 1', 'What came next', 'band-low', 'Outlook range', 'Outlook (typical)'])
+    expect(option.legend.data).toContain('Outlook range')
+    const byName = Object.fromEntries(option.series.map((s) => [s.name, s]))
+    // On the reveal's one axis; the range is stacked on its floor.
+    expect(byName['Outlook range']!.yAxisIndex).toBe(0)
+    expect(byName['band-low']!.data).toEqual([[iso(at), 1], [iso(at + 24 * HOUR), 0.8]])
+    expect(byName['Outlook range']!.data[1]![1]).toBeCloseTo(0.5)
+    expect(byName['Outlook (typical)']!.data).toEqual([[iso(at), 1], [iso(at + 24 * HOUR), 1.1]])
+  })
+
+  it('draws no band for an item priced in Chaos, nor without one', () => {
+    const band = [
+      { at: START, low: 1, high: 1, typical: 1 },
+      { at: START + 24 * HOUR, low: 0.8, high: 1.3, typical: null },
+    ]
+    const names = (o: unknown) => (o as { series: { name: string }[] }).series.map((s) => s.name)
+    expect(names(revealChartOption(t, item(10, () => 1, 'chaos'), cutoffAt(4), 'Day 1', band))).toEqual(['Day 1', 'What came next'])
+    expect(names(revealChartOption(t, item(10, () => 1), cutoffAt(4), 'Day 1', null))).toEqual(['Day 1', 'What came next'])
+  })
 })
 
 describe('recap trades', () => {

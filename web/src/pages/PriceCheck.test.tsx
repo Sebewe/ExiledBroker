@@ -440,6 +440,10 @@ describe('Price check in the preview', () => {
     expect(day.getByText('It fell: selling then paid. The call held.')).toBeInTheDocument()
     const days3 = within(screen.getByRole('group', { name: '3 days later' }))
     expect(days3.getByText('It fell: selling then would have paid. The call missed.')).toBeInTheDocument()
+    // The day's outlook band stays drawn over what came next: the cutoff, then 1 and 3 days on.
+    const chart = within(screen.getByRole('region', { name: 'What happened next' })).getByRole('img')
+    expect(chart.getAttribute('data-series')).toMatch(/,Outlook range:3,Outlook \(typical\):3$/)
+    expect(chart).toHaveAccessibleName(/under that day's outlook range/)
   })
 
   it('stakes the item in the paper portfolio', async () => {
