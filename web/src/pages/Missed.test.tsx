@@ -185,7 +185,11 @@ describe('Market recap', () => {
     fireEvent.pointerDown(document.body)
     expect(screen.getByText('+12%')).toBeInTheDocument() // the loop's edge, not a total
     expect(screen.queryByText(/likely one odd trade/)).not.toBeInTheDocument() // 12% isn't odd
-    expect(screen.getByText('20.0div')).toBeInTheDocument() // 4000c traded an hour, at 200c
+    const loops = screen.getByRole('heading', { level: 2, name: 'Loops that paid' }).closest('section')!
+    expect(within(loops).getByText('50.0c')).toBeInTheDocument() // the loop's price, on the card
+    expect(within(loops).queryByText('20.0div')).not.toBeInTheDocument() // its volume, behind Details
+    fireEvent.click(within(loops).getByRole('button', { name: 'Details' }))
+    expect(within(loops).getByText('20.0div')).toBeInTheDocument() // 4000c traded an hour, at 200c
     expect(screen.getByText('40.0c → 60.0c')).toBeInTheDocument() // under a Divine: Chaos
     // No scrolling ticker (the user, 2026-10-27): the movers are in Market Movers.
     expect(screen.queryByRole('region', { name: 'Price changes in the last published hour' })).not.toBeInTheDocument()

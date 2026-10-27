@@ -94,38 +94,75 @@ const section = async (name: string) => (await screen.findByRole('heading', { le
 afterEach(() => vi.unstubAllGlobals())
 
 describe('Market recap: loops and flips', () => {
-  it('opens each section with its best pick, skipping odd trades and orders that never filled', async () => {
+  it('opens each section with the first qualifying item in list order', async () => {
     const loops = [
       loop('Odd Item', { best_edge: 0.9 }), // above ODD_EDGE: likely one odd trade
       loop('Never Item', { best_edge: 0.3, chance: 0 }), // its orders never went through
+      loop('Skip Item', { best_edge: 0.2, order_ok: false }), // its orders are to be skipped this hour
       loop('Reverent Fragment', { best_edge: 0.06 }),
       loop('Small Item', { best_edge: 0.03 }),
+      loop('Later Item', { best_edge: 0.4 }), // beyond the top 3 and larger, but listed later
     ]
     const flips = [flip('Never Shard', 50, 100, { chance: 0 }), flip('Orb of Conflict', 100, 110), flip('Chaos Shard', 100, 118)]
     serve([window(loops, flips)])
     renderPage()
     const l = await section('Loops that paid')
-    expect(within(l).getByText('Best loop this hour: +6% on Reverent Fragment')).toBeInTheDocument()
+    expect(within(l).getByText('Best loop last hour: +6% on Reverent Fragment')).toBeInTheDocument()
     const f = await section('Volatile flips')
-    expect(within(f).getByText('Widest flip this hour: +18% on Chaos Shard')).toBeInTheDocument()
+    // The first listed that went through, not the widest.
+    expect(within(f).getByText('Top flip last hour: +10% on Orb of Conflict')).toBeInTheDocument()
   })
 
-  it('falls back to the first item when none qualifies', async () => {
-    serve([window([loop('Odd Item', { best_edge: 0.9 }), loop('Never Item', { best_edge: 0.3, chance: 0 })], [flip('Never Shard', 50, 100, { chance: 0 })])])
+  it('has no takeaway when none qualifies', async () => {
+    const loops = [loop('Odd Item', { best_edge: 0.9 }), loop('Never Item', { best_edge: 0.3, chance: 0 }), loop('Skip Item', { order_ok: false })]
+    serve([window(loops, [flip('Never Shard', 50, 100, { chance: 0 })])])
     renderPage()
-    expect(within(await section('Loops that paid')).getByText('Best loop this hour: +90% on Odd Item')).toBeInTheDocument()
-    expect(within(await section('Volatile flips')).getByText('Widest flip this hour: +100% on Never Shard')).toBeInTheDocument()
+    const l = await section('Loops that paid')
+    expect(within(l).getAllByText('Odd Item').length).toBeGreaterThan(0) // listed, but not named
+    expect(within(l).queryByText(/^Best loop/)).not.toBeInTheDocument()
+    const f = await section('Volatile flips')
+    expect(within(f).getAllByText('Never Shard').length).toBeGreaterThan(0)
+    expect(within(f).queryByText(/^Top flip/)).not.toBeInTheDocument()
+  })
+
+  it('opens Details on click, with nothing inside until then', async () => {
+    serve([window([loop('Reverent Fragment')], [])])
+    renderPage()
+    const l = await section('Loops that paid')
+    const details = within(l).getByRole('button', { name: 'Details' })
+    const content = document.getElementById(details.getAttribute('aria-controls')!)!
+    expect(details).toHaveAttribute('aria-expanded', 'false')
+    expect(content).toHaveAttribute('hidden')
+    expect(content).toBeEmptyDOMElement()
+    expect(within(l).queryByText(/15 of 20 tries/)).not.toBeInTheDocument()
+    fireEvent.click(details)
+    expect(details).toHaveAttribute('aria-expanded', 'true')
+    expect(content).not.toHaveAttribute('hidden')
+    expect(within(content).getByText(/15 of 20 tries/)).toBeInTheDocument()
+    fireEvent.click(details)
+    expect(details).toHaveAttribute('aria-expanded', 'false')
+    expect(content).toBeEmptyDOMElement()
+  })
+
+  it('shows the volume on the card when there is no price', async () => {
+    serve([window([loop('Reverent Fragment', { price: null })], [])])
+    renderPage()
+    const l = await section('Loops that paid')
+    expect(within(l).getByText(/traded through both markets an hour/)).toBeInTheDocument()
+    expect(within(l).queryByText(/^price/)).not.toBeInTheDocument()
   })
 
   it('keeps the odds behind Details, and the warnings on the card', async () => {
     serve([window([loop('Odd Item', { best_edge: 0.9 }), loop('Never Item', { chance: 0, through: 0 })], [flip('Orb of Conflict', 100, 110)])])
     renderPage()
     const l = await section('Loops that paid')
-    // By default: the headline, the route and the volume, plus the warnings.
+    // By default: the headline, the route and the price, plus the warnings; the volume
+    // sits behind Details.
     expect(within(l).getByText('+90%')).toBeInTheDocument()
     expect(within(l).getByText(/likely one odd trade/)).toBeInTheDocument()
     expect(within(l).getByText(/Its orders never went through lately/)).toBeInTheDocument()
-    expect(within(l).getAllByText(/traded through both markets an hour/)).toHaveLength(2)
+    expect(within(l).getAllByText(/^price/)).toHaveLength(2)
+    expect(within(l).queryByText(/traded through both markets an hour/)).not.toBeInTheDocument()
     expect(within(l).queryByText('Went through')).not.toBeInTheDocument()
     expect(within(l).queryByText(/tries in the last 3 days/)).not.toBeInTheDocument()
     const [odd] = within(l).getAllByRole('button', { name: 'Details' })
@@ -134,6 +171,7 @@ describe('Market recap: loops and flips', () => {
     expect(odd).toHaveAttribute('aria-expanded', 'true')
     expect(within(l).getByText('15 of 20 tries in the last 3 days, by the optimistic fill rule')).toBeInTheDocument()
     expect(within(l).getByText('75%')).toBeInTheDocument()
+    expect(within(l).getAllByText(/traded through both markets an hour/)).toHaveLength(1)
 
     const f = await section('Volatile flips')
     expect(within(f).getByText(/^average/)).toBeInTheDocument()
@@ -155,6 +193,6 @@ describe('Market recap: loops and flips', () => {
     const f = await section('Volatile flips')
     expect(within(f).getByText(/No liquid item traded across a wide enough range/)).toBeInTheDocument()
     expect(within(f).getByText('Loops and card turn-ins below may still have something.')).toBeInTheDocument()
-    expect(within(f).queryByText(/^Widest flip/)).not.toBeInTheDocument()
+    expect(within(f).queryByText(/^Top flip/)).not.toBeInTheDocument()
   })
 })

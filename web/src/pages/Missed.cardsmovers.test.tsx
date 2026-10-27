@@ -69,19 +69,27 @@ const section = async (name: string) => (await screen.findByRole('heading', { le
 afterEach(() => vi.unstubAllGlobals())
 
 describe('Market recap: card turn-ins', () => {
-  it('opens with the best turn-in, skipping one whose orders never went through', async () => {
-    const cards = [card('Small One', 5), card('Never Filled', 90, { through: 0, chance: 0 }), card('The Chains that Bind', 12)]
+  it('opens with the first card in list order that went through', async () => {
+    const cards = [
+      card('Never Filled', 90, { through: 0, chance: 0 }), // its orders never went through
+      card('Skip Card', 50, { order_ok: false }), // its orders are to be skipped this hour
+      card('The Chains that Bind', 12),
+      card('Small One', 5),
+      card('Later Card', 60), // beyond the top 3 and larger, but listed later
+    ]
     serve({ '/api/status': status, '/api/missed/Allflame': { body: [window({ cards })] } })
     renderPage()
     const cardsBlock = await section('Card turn-ins that paid')
-    expect(within(cardsBlock).getByText('Best turn-in this hour: +12.0c a set on The Chains that Bind')).toBeInTheDocument()
+    expect(within(cardsBlock).getByText('Best turn-in last hour: +12.0c a set on The Chains that Bind')).toBeInTheDocument()
   })
 
-  it('falls back to the first card when none went through', async () => {
-    const cards = [card('First Card', 3, { chance: 0, through: 0 }), card('Second Card', 8, { chance: 0, through: 0 })]
+  it('has no takeaway when no card qualifies', async () => {
+    const cards = [card('First Card', 3, { chance: 0, through: 0 }), card('Second Card', 8, { order_ok: false })]
     serve({ '/api/status': status, '/api/missed/Allflame': { body: [window({ cards })] } })
     renderPage()
-    expect(within(await section('Card turn-ins that paid')).getByText('Best turn-in this hour: +3.00c a set on First Card')).toBeInTheDocument()
+    const cardsBlock = await section('Card turn-ins that paid')
+    expect(within(cardsBlock).getAllByText('First Card').length).toBeGreaterThan(0) // listed, but not named
+    expect(within(cardsBlock).queryByText(/Best turn-in/)).not.toBeInTheDocument()
   })
 
   it('keeps the odds behind Details and the price on the card', async () => {
@@ -125,7 +133,7 @@ describe('Market recap: Market Movers', () => {
     serve({ '/api/status': status, '/api/missed/Allflame': { body: [window()] } })
     renderPage()
     const movers = await section('Market Movers')
-    expect(within(movers).getByText("Biggest rise this hour: +14% on Orb of Regret. Biggest fall: −9% on Gemcutter's Prism.")).toBeInTheDocument()
+    expect(within(movers).getByText("Biggest rise last hour: +14% on Orb of Regret; biggest fall: −9% on Gemcutter's Prism")).toBeInTheDocument()
     expect(within(movers).queryByText(/held steady/)).not.toBeInTheDocument()
   })
 
@@ -133,16 +141,18 @@ describe('Market recap: Market Movers', () => {
     serve({ '/api/status': status, '/api/missed/Allflame': { body: [window({ rising: [] })] } })
     renderPage()
     const movers = await section('Market Movers')
-    expect(within(movers).getByText("Biggest fall this hour: −9% on Gemcutter's Prism.")).toBeInTheDocument()
+    expect(within(movers).getByText("Biggest fall last hour: −9% on Gemcutter's Prism")).toBeInTheDocument()
     expect(within(movers).getByText('Nothing liquid rose.')).toBeInTheDocument()
     expect(within(movers).queryByText(/held steady/)).not.toBeInTheDocument() // the other side moved
   })
 
-  it('says prices held steady when nothing moved, with no takeaway', async () => {
+  it('says prices held steady when nothing moved, as its takeaway', async () => {
     serve({ '/api/status': status, '/api/missed/Allflame': { body: [window({ rising: [], falling: [] })] } })
     renderPage()
     const movers = await section('Market Movers')
-    expect(within(movers).getAllByText('Prices held steady this hour.')).toHaveLength(2)
+    expect(within(movers).getAllByText('Prices held steady last hour')).toHaveLength(1) // the takeaway; no hint in the boxes
+    expect(within(movers).getByText('Nothing liquid rose.')).toBeInTheDocument()
+    expect(within(movers).getByText('Nothing liquid fell.')).toBeInTheDocument()
     expect(within(movers).queryByText(/Biggest/)).not.toBeInTheDocument()
   })
 })

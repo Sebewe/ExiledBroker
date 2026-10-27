@@ -101,16 +101,14 @@ function Details({ children }: { children: ReactNode }) {
         aria-expanded={open}
         aria-controls={id}
         onClick={() => setOpen(!open)}
-        className="flex w-fit cursor-pointer items-center gap-1 text-xs text-muted hover:text-accent"
+        className="-my-1 flex min-h-8 w-fit cursor-pointer items-center gap-1 text-xs text-muted hover:text-accent"
       >
         Details
         <ChevronDown aria-hidden className={`size-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
-      {open && (
-        <div id={id} className="flex flex-col gap-2">
-          {children}
-        </div>
-      )}
+      <div id={id} hidden={!open} className="flex flex-col gap-2">
+        {open && children}
+      </div>
     </div>
   )
 }

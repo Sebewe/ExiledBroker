@@ -368,18 +368,25 @@ function movers(w: MissedWindow, up: boolean) {
     .sort((a, b) => (up ? b.change - a.change : a.change - b.change))
 }
 
-/** "this hour", or "in the last 3 hours" for a longer window. */
-const thisHour = (hours: number) => (hours === 1 ? 'this hour' : `in ${lastHours(hours)}`)
+/** "last hour", or "in the last 3 hours" for a longer window (it has already happened). */
+const thisHour = (hours: number) => (hours === 1 ? 'last hour' : `in ${lastHours(hours)}`)
+
+/** The item a section's takeaway names: the first one the page lists (the server sends
+ *  them likeliest to go through first) whose orders went through lately and aren't to be
+ *  skipped this hour (`ok` too). None if no item qualifies, rather than a doubtful one. */
+function pick<T extends { chance?: number | null; order_ok?: boolean | null }>(xs: T[], ok: (x: T) => boolean = () => true): T | undefined {
+  return xs.find((x) => x.chance !== 0 && x.order_ok !== false && ok(x))
+}
 
 /** Market Movers' one-line takeaway: the biggest rise and the biggest fall (either may be missing). */
 function moversTakeaway(rising: Mover[], falling: Mover[], hours: number) {
   const [up] = rising
   const [down] = falling
   const parts = [
-    up && `Biggest rise ${thisHour(hours)}: ${signedPct(up.change, 0)} on ${up.name}.`,
-    down && (up ? `Biggest fall: ${signedPct(down.change, 0)} on ${down.name}.` : `Biggest fall ${thisHour(hours)}: ${signedPct(down.change, 0)} on ${down.name}.`),
+    up && `Biggest rise ${thisHour(hours)}: ${signedPct(up.change, 0)} on ${up.name}`,
+    down && (up ? `biggest fall: ${signedPct(down.change, 0)} on ${down.name}` : `Biggest fall ${thisHour(hours)}: ${signedPct(down.change, 0)} on ${down.name}`),
   ].filter(Boolean)
-  return parts.length ? parts.join(' ') : undefined
+  return parts.length ? parts.join('; ') : `Prices held steady ${thisHour(hours)}`
 }
 
 function MarketMovers({ w, money, href }: { w: MissedWindow; money: Money; href: ItemHref }) {
@@ -388,8 +395,6 @@ function MarketMovers({ w, money, href }: { w: MissedWindow; money: Money; href:
   const falling = movers(w, false)
   const more = Math.max(rising.length, falling.length) > TOP
   const shown = (xs: Mover[]) => (all ? xs : xs.slice(0, TOP))
-  // Only when neither way moved: with one column empty the other still has moves.
-  const steady = rising.length || falling.length ? undefined : `Prices held steady ${thisHour(w.hours)}.`
   return (
     <Block
       title="Market Movers"
@@ -408,10 +413,10 @@ function MarketMovers({ w, money, href }: { w: MissedWindow; money: Money; href:
     >
       <div className="grid gap-3 md:grid-cols-2">
         <Column title="Rising" hint={`Price now against ${w.hours}h before`}>
-          {rising.length ? shown(rising).map((m) => <MoverRow key={m.item_id} m={m} money={money} href={href(m.item_id)} />) : <Empty hint={steady}>Nothing liquid rose.</Empty>}
+          {rising.length ? shown(rising).map((m) => <MoverRow key={m.item_id} m={m} money={money} href={href(m.item_id)} />) : <Empty>Nothing liquid rose.</Empty>}
         </Column>
         <Column title="Falling" hint={`Price now against ${w.hours}h before`}>
-          {falling.length ? shown(falling).map((m) => <MoverRow key={m.item_id} m={m} money={money} href={href(m.item_id)} />) : <Empty hint={steady}>Nothing liquid fell.</Empty>}
+          {falling.length ? shown(falling).map((m) => <MoverRow key={m.item_id} m={m} money={money} href={href(m.item_id)} />) : <Empty>Nothing liquid fell.</Empty>}
         </Column>
       </div>
     </Block>
@@ -701,19 +706,10 @@ function NeverFilled({ chance }: { chance?: number | null }) {
   return <span className="text-[11px] text-warning">Its orders never went through lately, so the profit above is unlikely to be yours.</span>
 }
 
-/** The section's pick for its takeaway: the largest headline among those whose orders went
- *  through lately (`ok` too), else the first listed; none for an empty list. */
-function bestOf<T extends { chance?: number | null }>(xs: T[], value: (x: T) => number, ok: (x: T) => boolean = () => true): T | undefined {
-  const fair = xs.filter((x) => x.chance !== 0 && ok(x))
-  return fair.reduce<T | undefined>((best, x) => (best === undefined || value(x) > value(best) ? x : best), undefined) ?? xs[0]
-}
-
-const thisWindow = (hours: number) => (hours === 1 ? 'this hour' : `in ${lastHours(hours)}`)
-
-/** "Best loop this hour: +6% on Reverent Fragment", skipping a likely odd trade. */
+/** "Best loop last hour: +6% on Reverent Fragment", skipping a likely odd trade. */
 function loopTakeaway(w: MissedWindow) {
-  const best = bestOf(w.loops, (l) => l.best_edge, (l) => l.best_edge <= ODD_EDGE)
-  return best && `Best loop ${thisWindow(w.hours)}: ${signedPct(best.best_edge, 0)} on ${best.name}`
+  const best = pick(w.loops, (l) => l.best_edge <= ODD_EDGE)
+  return best && `Best loop ${thisHour(w.hours)}: ${signedPct(best.best_edge, 0)} on ${best.name}`
 }
 
 function Loops({ w, money, rate, href, play }: { w: MissedWindow; money: Money; rate: number | null | undefined; href: ItemHref; play: boolean }) {
@@ -737,6 +733,11 @@ function Loops({ w, money, rate, href, play }: { w: MissedWindow; money: Money; 
         <ol className="grid gap-3 md:grid-cols-3">
           {shown.map((l) => {
             const chaosFirst = l.direction === 'chaos_first'
+            const volume = (
+              <span>
+                <span className="num text-text">{money(l.volume)}</span> traded through both markets an hour
+              </span>
+            )
             return (
               <Opportunity
                 key={l.item_id}
@@ -747,15 +748,20 @@ function Loops({ w, money, rate, href, play }: { w: MissedWindow; money: Money; 
                 label="best edge, worst prices"
                 footer={
                   <>
-                    <span>
-                      <span className="num text-text">{money(l.volume)}</span> traded through both markets an hour
-                    </span>
+                    {l.price != null ? (
+                      <span>
+                        price <span className="num text-text">{money(l.price)}</span>
+                      </span>
+                    ) : (
+                      volume
+                    )}
                     {l.best_edge > ODD_EDGE && <span className="text-warning">unusually large: likely one odd trade</span>}
                   </>
                 }
                 details={
                   <>
                     <Chance tries={l.tries} through={l.through} chance={l.chance} />
+                    {l.price != null && <span className="text-xs text-muted">{volume}</span>}
                     {w.hours > 1 && (
                       <span className="text-xs text-muted">
                         <Steady paid={l.hours_paid} hours={w.hours} />
@@ -802,11 +808,9 @@ function Loops({ w, money, rate, href, play }: { w: MissedWindow; money: Money; 
   )
 }
 
-/** The card turn-ins' one-line takeaway: the best margin among cards whose orders went
- *  through at least sometimes (the first card if none did); none when there are no cards. */
+/** The card turn-ins' one-line takeaway (see `pick`). */
 function cardsTakeaway(cards: MissedCard[], money: Money, hours: number) {
-  const pool = cards.filter((c) => c.chance !== 0)
-  const best = pool.length ? pool.reduce((a, b) => (b.margin > a.margin ? b : a)) : cards[0]
+  const best = pick(cards)
   if (!best) return undefined
   return `Best turn-in ${thisHour(hours)}: +${money(best.margin)} a set on ${best.name}`
 }
@@ -984,10 +988,10 @@ function flipSteps(f: MissedFlip): Step[] {
 /** What a flip makes if both orders fill at their first rates (before any cuts): its card's headline. */
 const flipMargin = (f: MissedFlip) => f.ask / f.bid - 1
 
-/** "Widest flip this hour: +18% on Chaos Shard". */
+/** "Top flip last hour: +18% on Chaos Shard". */
 function flipTakeaway(flips: MissedFlip[]) {
-  const best = bestOf(flips, flipMargin)
-  return best && `Widest flip this hour: ${signedPct(flipMargin(best), 0)} on ${best.name}`
+  const best = pick(flips)
+  return best && `Top flip last hour: ${signedPct(flipMargin(best), 0)} on ${best.name}`
 }
 
 /** The latest hour's flips: the same whatever the look-back (sent with the 1-hour one). */
