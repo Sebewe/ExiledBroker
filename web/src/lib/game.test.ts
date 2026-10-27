@@ -144,7 +144,7 @@ describe('loops and card turn-ins', () => {
     expect(s.done).toEqual([])
     expect(s.open[0]).toMatchObject({ state: 'held', left: 8, mark: 10 })
     expect(dumpNow(s.open[0]!, 26)).toBe(true)
-    expect(total(s, 100)).toBeCloseTo(11 + 0.8) // 9 div, 100c and 8 × 10c held
+    expect(total(s, 100)).toBeCloseTo(11 + 0.72) // 9 div, 100c and 8 held at the 9c Sell now gets
     expect(quickSell(s, hour(26), s.open[0]!.id)).toMatch(/didn’t trade/)
     s = ok(quickSell(s, hour(26, { prices: { 'currency:a': [9, 10, 11, 100] } }), s.open[0]!.id))
     expect(s.chaos).toBeCloseTo(100 + 72)

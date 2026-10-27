@@ -36,9 +36,11 @@ export type OrderTrade = {
   unsold?: boolean
   hold?: string | null
   units?: number | null
-  /** Items held once its sale didn't fill, and their last average price (Chaos each). */
+  /** Items held once its sale didn't fill, their last average price and last lowest
+   *  trade (Chaos each: what "Sell now" gets, which is what they're worth). */
   left?: number
   mark?: number | null
+  low?: number | null
   state: 'placed' | 'filled' | 'held'
 }
 
