@@ -2,6 +2,7 @@ import type { EChartsCoreOption } from 'echarts/core'
 import type { PreviewItemNext, SeriesPoint, Verdict } from '../api/client'
 import { alpha, axisStyle, baseOptions, HOUR, line, type ChartTokens } from './chartOptions'
 import { price } from './format'
+import { outlookBandSeries, type BandPoint } from './priceCheck'
 
 // The preview's "what happened next" on Price check (docs/preview.md): what the price did
 // 1 and 3 days after the chosen day against that day's call, and the chart. Pure parts.
@@ -63,8 +64,10 @@ export function outcome(next: PreviewItemNext, cutoff: string, hours: number, ve
 }
 
 /** The reveal's chart: the item's price from launch to the snapshot's end in its unit,
- *  the chosen day's hours in the accent and what came after greyed, split at the cutoff. */
-export function revealChartOption(t: ChartTokens, next: PreviewItemNext, cutoff: string, dayLabel: string): EChartsCoreOption {
+ *  the chosen day's hours in the accent and what came after greyed, split at the cutoff,
+ *  under the outlook band as it stood that day (`band`, in Divines: the item's chart's,
+ *  never recomputed from what came next), so the call can be judged by eye. */
+export function revealChartOption(t: ChartTokens, next: PreviewItemNext, cutoff: string, dayLabel: string, band: BandPoint[] | null = null): EChartsCoreOption {
   const at = Date.parse(cutoff)
   const points = next.series.map((p) => [p[0], value(next, p)] as [string, number | null])
   // The cutoff's hour is in both, so the two lines meet.
@@ -73,9 +76,11 @@ export function revealChartOption(t: ChartTokens, next: PreviewItemNext, cutoff:
   const unit = next.unit === 'chaos' ? 'chaos' : 'divine'
   const fmt = (v: number | null) => price(v, unit)
   const axis = axisStyle(t)
+  // The band is in Divines: an item priced in Chaos (Divine Orb) has none.
+  const shown = unit === 'divine' ? band : null
   return {
     ...baseOptions(t),
-    legend: { ...(baseOptions(t).legend as object), data: [dayLabel, 'What came next'] },
+    legend: { ...(baseOptions(t).legend as object), data: shown ? [dayLabel, 'What came next', 'Outlook range'] : [dayLabel, 'What came next'] },
     grid: { left: 8, right: 8, top: 40, bottom: 8, containLabel: true },
     xAxis: {
       type: 'time',
@@ -100,6 +105,7 @@ export function revealChartOption(t: ChartTokens, next: PreviewItemNext, cutoff:
         },
       },
       { ...line('What came next', after), color: alpha(t.muted, 0.9), lineStyle: { width: 2, type: 'dashed' }, tooltip: { valueFormatter: fmt } },
+      ...(shown ? outlookBandSeries(t, shown, 0) : []),
     ],
   }
 }

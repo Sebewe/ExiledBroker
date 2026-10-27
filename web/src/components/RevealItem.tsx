@@ -1,9 +1,9 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import type { PriceCheckItem, Verdict } from '../api/client'
 import { usePreviewItemNext } from '../api/queries'
 import type { ChartTokens } from '../lib/chartOptions'
 import { pctTone, price, signedPct } from '../lib/format'
-import { hasHistory, VERDICT_SHORT } from '../lib/priceCheck'
+import { hasHistory, outlookBand, VERDICT_SHORT } from '../lib/priceCheck'
 import { usePreview } from '../lib/preview'
 import { outcome, revealChartOption, type Outcome } from '../lib/revealItem'
 import { LazyChart } from './LazyChart'
@@ -14,7 +14,7 @@ import { RevealPanel } from './Reveal'
 // chosen day against that day's calls, and its path on a chart, greyed past the day.
 
 /** Price check's reveal: the price 1 and 3 days after the chosen day, against its calls. */
-export function ItemReveal({ item }: { item: PriceCheckItem }) {
+export function ItemReveal({ item, divineChaos }: { item: PriceCheckItem; divineChaos: number | null | undefined }) {
   const [open, setOpen] = useState(false)
   const preview = usePreview()
   return (
@@ -23,18 +23,20 @@ export function ItemReveal({ item }: { item: PriceCheckItem }) {
       onToggle={() => setOpen(!open)}
       prompt={`This is ${item.name} as it stood at the end of day ${preview.day}. Make your call, then see what its price did next.`}
     >
-      <ItemNext item={item} />
+      <ItemNext item={item} divineChaos={divineChaos} />
     </RevealPanel>
   )
 }
 
-function ItemNext({ item }: { item: PriceCheckItem }) {
+function ItemNext({ item, divineChaos }: { item: PriceCheckItem; divineChaos: number | null | undefined }) {
   const preview = usePreview()
   const q = usePreviewItemNext(item.item_id)
   const cutoff = preview.hour
   const dayLabel = `Day ${preview.day}`
   const next = q.data
-  const build = useCallback((t: ChartTokens) => revealChartOption(t, next!, cutoff!, dayLabel), [next, cutoff, dayLabel])
+  // The prediction as of the chosen day: the item here is that day's snapshot.
+  const band = useMemo(() => outlookBand(item.series, item.outlook, divineChaos), [item, divineChaos])
+  const build = useCallback((t: ChartTokens) => revealChartOption(t, next!, cutoff!, dayLabel, band), [next, cutoff, dayLabel, band])
   if (q.error) return <p className="text-sm text-muted">What came next isn't in the preview for this item.</p>
   if (!next || !cutoff) return <Skeleton rows={4} />
   const call = (h: 'h24' | 'd3'): Verdict => (item.outlook && hasHistory(item.outlook[h]) ? item.outlook[h].verdict : 'none')
@@ -51,11 +53,16 @@ function ItemNext({ item }: { item: PriceCheckItem }) {
         ))}
       </div>
       <div className="rounded-lg border border-border bg-bg/40 p-3">
-        <LazyChart build={build} height={260} label={`${next.name}: price in ${unit === 'chaos' ? 'Chaos' : 'Divines'} up to day ${preview.day}, then what came next`} />
+        <LazyChart
+          build={build}
+          height={260}
+          label={`${next.name}: price in ${unit === 'chaos' ? 'Chaos' : 'Divines'} up to day ${preview.day}, then what came next${band && unit === 'divine' ? ", under that day's outlook range" : ''}`}
+        />
       </div>
       <p className="text-xs text-faint">
         Typical prices: the median of the 6 hours before each point, in {unit === 'chaos' ? 'Chaos' : 'Divines, as the calls are judged'}. A Sell call held if the price fell, a Hold call
         if it didn't.
+        {band && unit === 'divine' && ` The shaded range is the outlook as it stood on day ${preview.day}: what past leagues did from there, with the typical path dashed.`}
       </p>
     </>
   )

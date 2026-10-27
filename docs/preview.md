@@ -86,7 +86,9 @@ disk stops the build (and the last snapshot stands).
   `lib/revealItem.ts`) sits behind a button and fetches nothing until opened. Price check: the
   typical price (median of 6 hours, in Divines; Chaos for the Divine Orb) 1 and 3 days after
   the day's last hour, against that day's calls (Sell held if it fell, Hold if it didn't),
-  and the path to `next_until` greyed past the day. Market recap: a tally of the page's
+  and the path to `next_until` greyed past the day, under the day's outlook band (the item
+  chart's `outlookBand` from that day's snapshot, never recomputed from what came next; the
+  user, 2026-10-27: to see how the prediction held up). Market recap: a tally of the page's
   trades and what following their orders made, and on each card its next hours (paid / lost /
   didn't fill / no order), what the recap's own order did the next hour and whether it still
   paid a day later.

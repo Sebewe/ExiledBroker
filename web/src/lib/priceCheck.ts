@@ -105,38 +105,42 @@ function withoutDivine(option: EChartsCoreOption): EChartsCoreOption {
   return { ...option, legend: { ...(option.legend as object), data: ['Chaos'] }, yAxis: [(option.yAxis as unknown[])[0]], series }
 }
 
+/** The outlook band's series, in Divines on axis `yAxisIndex`: the range shaded, and the
+ *  typical path dashed. Also drawn over the preview's reveal, to set the call against what came next. */
+export function outlookBandSeries(t: ChartTokens, band: BandPoint[], yAxisIndex: number) {
+  const iso = (ms: number) => new Date(ms).toISOString()
+  return [
+    // Stacked: an invisible floor at the low edge, then the range on top of it, shaded.
+    { name: 'band-low', type: 'line', stack: 'outlook', yAxisIndex, symbol: 'none', lineStyle: { opacity: 0 }, tooltip: { show: false }, data: band.map((b) => [iso(b.at), b.low]) },
+    {
+      name: 'Outlook range',
+      type: 'line',
+      stack: 'outlook',
+      yAxisIndex,
+      symbol: 'none',
+      color: t.info,
+      lineStyle: { opacity: 0 },
+      areaStyle: { color: alpha(t.info, 0.18) },
+      tooltip: { show: false },
+      data: band.map((b) => [iso(b.at), b.high - b.low]),
+    },
+    {
+      name: 'Outlook (typical)',
+      type: 'line',
+      yAxisIndex,
+      symbol: 'none',
+      color: t.info,
+      lineStyle: { type: 'dashed', width: 1.5 },
+      tooltip: { valueFormatter: (v: number | null) => price(v, 'divine') },
+      data: band.filter((b) => b.typical != null).map((b) => [iso(b.at), b.typical]),
+    },
+  ]
+}
+
 function chartOption(t: ChartTokens, points: SeriesPoint[], bounds: [number, number], band: BandPoint[] | null, launchAt?: number | null): EChartsCoreOption {
   const chaos = { ...line('Chaos', points.map(([at, c]) => [at, c])), yAxisIndex: 0, color: t.accent, lineStyle: { width: 2 }, tooltip: { valueFormatter: (v: number | null) => price(v, 'chaos') } }
   const divine = { ...line('Divine', points.map(([at, , d]) => [at, d])), yAxisIndex: 1, color: t.info, lineStyle: { width: 2 }, tooltip: { valueFormatter: (v: number | null) => price(v, 'divine') } }
-  const iso = (ms: number) => new Date(ms).toISOString()
-  const bandSeries = band
-    ? [
-        // Stacked: an invisible floor at the low edge, then the range on top of it, shaded.
-        { name: 'band-low', type: 'line', stack: 'outlook', yAxisIndex: 1, symbol: 'none', lineStyle: { opacity: 0 }, tooltip: { show: false }, data: band.map((b) => [iso(b.at), b.low]) },
-        {
-          name: 'Outlook range',
-          type: 'line',
-          stack: 'outlook',
-          yAxisIndex: 1,
-          symbol: 'none',
-          color: t.info,
-          lineStyle: { opacity: 0 },
-          areaStyle: { color: alpha(t.info, 0.18) },
-          tooltip: { show: false },
-          data: band.map((b) => [iso(b.at), b.high - b.low]),
-        },
-        {
-          name: 'Outlook (typical)',
-          type: 'line',
-          yAxisIndex: 1,
-          symbol: 'none',
-          color: t.info,
-          lineStyle: { type: 'dashed', width: 1.5 },
-          tooltip: { valueFormatter: (v: number | null) => price(v, 'divine') },
-          data: band.filter((b) => b.typical != null).map((b) => [iso(b.at), b.typical]),
-        },
-      ]
-    : []
+  const bandSeries = band ? outlookBandSeries(t, band, 1) : []
   const axis = axisStyle(t)
   if (launchAt != null) return sinceLaunch(t, { chaos, divine, bandSeries, axis, bounds, band, launchAt, first: latestFirst(points) })
   return {
