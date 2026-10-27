@@ -17,6 +17,7 @@ from exiledbroker.api.deps import Payload
 from exiledbroker.api.models import (
     LaunchWindow,
     MissedWindow,
+    PreviewGameHour,
     PreviewItemNext,
     PreviewManifest,
     PreviewRecapNext,
@@ -36,6 +37,7 @@ PreviewDocument = (
     PreviewManifest
     | PreviewRecapNext
     | PreviewItemNext
+    | PreviewGameHour
     | PriceCheckIndex
     | PriceCheckItem
     | list[MissedWindow]

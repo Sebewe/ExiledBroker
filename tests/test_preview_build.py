@@ -16,7 +16,7 @@ from test_live_pipeline import LAUNCH, PAGES, store_reference_data
 
 LEAGUE = "Mirage"
 # The replay is 30 hours long: "days" of 6 hours (1, 3 and 5 are 6, 18 and 30 hours in).
-SHORT = {"days": (1, 3, 5), "default_day": 3, "next_day": 5, "day_hours": 6}
+SHORT = {"days": (1, 3, 5), "default_day": 3, "next_day": 5, "day_hours": 6, "game": False}
 
 
 @pytest.fixture(scope="module")
@@ -49,7 +49,7 @@ def research(tmp_path_factory):
 
 
 def test_build_writes_every_key_offline(research):
-    result = pb.build(research, LEAGUE, **SHORT)
+    result = pb.build(research, LEAGUE, **{**SHORT, "game": True})
     assert result.requests == 0
     with db.session(research.db_path, read_only=True) as con:
         keys = snapshot.keys(con)
@@ -69,13 +69,29 @@ def test_build_writes_every_key_offline(research):
         for x in index["items"]:  # every listed item, and its reveal series
             assert snapshot.day_key(day, "price-check", x["item_id"]) in keys
             assert snapshot.next_key(x["item_id"]) in keys
+    # The trading game: every hour from day 1's end to the reveal's last, each with
+    # its recap, the orders it'd take and the flip items' prices.
+    assert manifest["game"] == {"first": 6, "last": 29}
+    games = [docs[snapshot.game_key(n)] for n in range(6, 30)]
+    flipped_ever = {x["item_id"] for g in games for w in g["recap"] for x in w["flips"]}
+    hours = [datetime.fromisoformat(g["latest_hour"]) for g in games]
+    assert [(h - hours[0]).total_seconds() / 3600 for h in hours] == list(range(24))
+    assert hours[0] == latest[0]
+    for g in games:
+        for o in g["orders"]:
+            assert o["kind"] in ("loop", "card")
+            assert (o["spent"] is not None) == bool(o["filled"])
+            if o["settle_at"]:
+                assert o["settle_at"] > g["latest_hour"]
+        assert set(g["prices"]) <= flipped_ever
     # The recap finds trades only late in the replay: day 5's are judged on 0 known hours.
     recaps = [k for k in keys if k.endswith("/recap-next")]
     assert recaps
     for key in recaps:
         assert docs[key]["hours"] <= pb.NEXT_HOURS
         for t in docs[key]["trades"]:  # the Backtest's fills, one per known hour
-            assert len(t["paid"]) == len(t["filled"]) == len(t["pnl"]) == docs[key]["hours"]
+            n = docs[key]["hours"]
+            assert len(t["paid"]) == len(t["filled"]) == len(t["pnl"]) == len(t["spent"]) == n
             assert t["paid_hours"] <= t["traded_hours"] <= t["orders"]
             assert t["fills"] <= t["orders"]
     # The reveal's series run to the last loaded hour.

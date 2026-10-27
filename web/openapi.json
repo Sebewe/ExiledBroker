@@ -2006,6 +2006,168 @@
         "title": "PreviewDay",
         "type": "object"
       },
+      "PreviewGameHour": {
+        "description": "`game/{n}`: the trading game's hour, n hours after launch (lib/game.ts): the\nMarket recap then, the orders a player could take, and the Chaos prices (low,\naverage, high, items traded) of the items the game lists to flip, which the browser\nfills and sells against.",
+        "properties": {
+          "divine_chaos": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Divine Chaos"
+          },
+          "latest_hour": {
+            "format": "date-time",
+            "title": "Latest Hour",
+            "type": "string"
+          },
+          "orders": {
+            "items": {
+              "$ref": "#/components/schemas/PreviewGameOrder"
+            },
+            "title": "Orders",
+            "type": "array"
+          },
+          "prices": {
+            "additionalProperties": {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            "title": "Prices",
+            "type": "object"
+          },
+          "recap": {
+            "items": {
+              "$ref": "#/components/schemas/MissedWindow"
+            },
+            "title": "Recap",
+            "type": "array"
+          }
+        },
+        "required": [
+          "latest_hour",
+          "divine_chaos",
+          "recap",
+          "orders",
+          "prices"
+        ],
+        "title": "PreviewGameHour",
+        "type": "object"
+      },
+      "PreviewGameOrder": {
+        "description": "A loop or card turn-in a player can take in one of the game's hours: the recap's\nown order that hour, filled by the Backtest's rules (as PreviewTradeNext's hours).\nA player's stake fills up to `spent` and earns `pnl / spent` on it; it's tied up\nuntil `settle_at`.",
+        "properties": {
+          "direction": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Direction"
+          },
+          "filled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filled"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "loop",
+              "card"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "pnl": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pnl"
+          },
+          "settle_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Settle At"
+          },
+          "spent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spent"
+          }
+        },
+        "required": [
+          "kind",
+          "item_id",
+          "filled",
+          "spent",
+          "pnl",
+          "settle_at"
+        ],
+        "title": "PreviewGameOrder",
+        "type": "object"
+      },
+      "PreviewGameRange": {
+        "properties": {
+          "first": {
+            "title": "First",
+            "type": "integer"
+          },
+          "last": {
+            "title": "Last",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "first",
+          "last"
+        ],
+        "title": "PreviewGameRange",
+        "type": "object"
+      },
       "PreviewItemNext": {
         "description": "An item's whole series in the preview's league, from launch to `next_until`\n(day 10's end), for \"what happened next\" after the chosen day. Same points as\nPriceCheckItem.series: [hour, Chaos, Divines at that hour's rate].",
         "properties": {
@@ -2071,7 +2233,7 @@
         "type": "object"
       },
       "PreviewManifest": {
-        "description": "The pre-launch preview's snapshot (docs/preview.md, `eb preview build`): a past\nleague's early days, served from /api/preview/{key}. Keys: `manifest` (this),\n`d{day}/missed`, `d{day}/price-check`, `d{day}/price-check/{item_id}`,\n`d{day}/launch-picks`, `d{day}/recap-next` and `next/price-check/{item_id}`.",
+        "description": "The pre-launch preview's snapshot (docs/preview.md, `eb preview build`): a past\nleague's early days, served from /api/preview/{key}. Keys: `manifest` (this),\n`d{day}/missed`, `d{day}/price-check`, `d{day}/price-check/{item_id}`,\n`d{day}/launch-picks`, `d{day}/recap-next` and `next/price-check/{item_id}`; and the\ntrading game's `game/{n}`.",
         "properties": {
           "built_at": {
             "format": "date-time",
@@ -2088,6 +2250,16 @@
           "default_day": {
             "title": "Default Day",
             "type": "integer"
+          },
+          "game": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PreviewGameRange"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "launched_at": {
             "anyOf": [
@@ -2262,6 +2434,21 @@
             "default": 0.0,
             "title": "Profit",
             "type": "number"
+          },
+          "spent": {
+            "default": [],
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Spent",
+            "type": "array"
           },
           "still_paid": {
             "anyOf": [
@@ -3653,6 +3840,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/PreviewItemNext"
+                    },
+                    {
+                      "$ref": "#/components/schemas/PreviewGameHour"
                     },
                     {
                       "$ref": "#/components/schemas/PriceCheckIndex"

@@ -872,6 +872,63 @@ export interface components {
             league: components["schemas"]["LiveLeague"];
         };
         /**
+         * PreviewGameHour
+         * @description `game/{n}`: the trading game's hour, n hours after launch (lib/game.ts): the
+         *     Market recap then, the orders a player could take, and the Chaos prices (low,
+         *     average, high, items traded) of the items the game lists to flip, which the browser
+         *     fills and sells against.
+         */
+        PreviewGameHour: {
+            /** Divine Chaos */
+            divine_chaos: number | null;
+            /**
+             * Latest Hour
+             * Format: date-time
+             */
+            latest_hour: string;
+            /** Orders */
+            orders: components["schemas"]["PreviewGameOrder"][];
+            /** Prices */
+            prices: {
+                [key: string]: (number | null)[];
+            };
+            /** Recap */
+            recap: components["schemas"]["MissedWindow"][];
+        };
+        /**
+         * PreviewGameOrder
+         * @description A loop or card turn-in a player can take in one of the game's hours: the recap's
+         *     own order that hour, filled by the Backtest's rules (as PreviewTradeNext's hours).
+         *     A player's stake fills up to `spent` and earns `pnl / spent` on it; it's tied up
+         *     until `settle_at`.
+         */
+        PreviewGameOrder: {
+            /** Direction */
+            direction?: string | null;
+            /** Filled */
+            filled: boolean | null;
+            /** Item Id */
+            item_id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "loop" | "card";
+            /** Pnl */
+            pnl: number | null;
+            /** Settle At */
+            settle_at: string | null;
+            /** Spent */
+            spent: number | null;
+        };
+        /** PreviewGameRange */
+        PreviewGameRange: {
+            /** First */
+            first: number;
+            /** Last */
+            last: number;
+        };
+        /**
          * PreviewItemNext
          * @description An item's whole series in the preview's league, from launch to `next_until`
          *     (day 10's end), for "what happened next" after the chosen day. Same points as
@@ -899,7 +956,8 @@ export interface components {
          * @description The pre-launch preview's snapshot (docs/preview.md, `eb preview build`): a past
          *     league's early days, served from /api/preview/{key}. Keys: `manifest` (this),
          *     `d{day}/missed`, `d{day}/price-check`, `d{day}/price-check/{item_id}`,
-         *     `d{day}/launch-picks`, `d{day}/recap-next` and `next/price-check/{item_id}`.
+         *     `d{day}/launch-picks`, `d{day}/recap-next` and `next/price-check/{item_id}`; and the
+         *     trading game's `game/{n}`.
          */
         PreviewManifest: {
             /**
@@ -911,6 +969,7 @@ export interface components {
             days: components["schemas"]["PreviewDay"][];
             /** Default Day */
             default_day: number;
+            game?: components["schemas"]["PreviewGameRange"] | null;
             /** Launched At */
             launched_at: string | null;
             /** League */
@@ -986,6 +1045,11 @@ export interface components {
              * @default 0
              */
             profit: number;
+            /**
+             * Spent
+             * @default []
+             */
+            spent: (number | null)[];
             /** Still Paid */
             still_paid: boolean | null;
             /** Traded Hours */
@@ -1522,7 +1586,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PreviewManifest"] | components["schemas"]["PreviewRecapNext"] | components["schemas"]["PreviewItemNext"] | components["schemas"]["PriceCheckIndex"] | components["schemas"]["PriceCheckItem"] | components["schemas"]["MissedWindow"][] | components["schemas"]["LaunchWindow"][];
+                    "application/json": components["schemas"]["PreviewManifest"] | components["schemas"]["PreviewRecapNext"] | components["schemas"]["PreviewItemNext"] | components["schemas"]["PreviewGameHour"] | components["schemas"]["PriceCheckIndex"] | components["schemas"]["PriceCheckItem"] | components["schemas"]["MissedWindow"][] | components["schemas"]["LaunchWindow"][];
                 };
             };
             /** @description Validation Error */

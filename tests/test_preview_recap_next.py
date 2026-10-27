@@ -87,6 +87,9 @@ def test_the_order_is_bought_with_10_divines_at_most_and_sold_at_the_ask(market)
     # Bid 10c (whole Chaos), ask 0.125 div: the exchange takes 1 Divine for 8 items.
     # 90 items for 10 Divines at the buy hour's 11c high, sold at 100c a Divine.
     assert loop["pnl"][0] == pytest.approx(88 * (100 / 8 - 10))
+    # What it spent, for the trading game's return: 88 items at the 10c bid; nothing
+    # where it didn't fill.
+    assert loop["spent"] == [pytest.approx(880.0), None, None, pytest.approx(880.0)]
 
 
 def test_nothing_is_judged_without_hours_after(market):
