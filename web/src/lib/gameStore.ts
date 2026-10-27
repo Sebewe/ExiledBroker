@@ -95,13 +95,15 @@ export function parse(raw: string | null): GameState {
     const v = JSON.parse(raw ?? 'null') as Partial<GameState> | null
     if (!v || typeof v.league !== 'string' || !finite(v.n) || !finite(v.cash) || !Array.isArray(v.open) || !Array.isArray(v.done)) return EMPTY
     const ok = (t: unknown) => !!t && typeof t === 'object' && typeof (t as Trade).id === 'string' && finite((t as Trade).stake) && finite((t as Trade).at)
+    // A closed trade has no stake: what went in and came back.
+    const closed = (t: unknown) => !!t && typeof t === 'object' && typeof (t as Done).id === 'string' && finite((t as Done).at) && finite((t as Done).cost) && finite((t as Done).back)
     return {
       league: v.league,
       n: Math.max(0, Math.round(v.n)),
       start: finite(v.start) ? v.start : 0,
       cash: v.cash,
       open: v.open.filter(ok) as Trade[],
-      done: v.done.filter(ok as (t: unknown) => boolean).slice(-500) as Done[],
+      done: v.done.filter(closed).slice(-500) as Done[],
     }
   } catch {
     return EMPTY

@@ -153,4 +153,10 @@ describe('the stored game', () => {
     expect(s).toMatchObject({ league: 'Mirage', n: 30, cash: 7 })
     expect(s.open).toHaveLength(1)
   })
+
+  it('keeps the closed trades across a reload', () => {
+    const done = { id: 'b', kind: 'loop', item_id: 'currency:x', name: 'X', at: 24, closed: 26, cost: 1, back: 1.4, outcome: 'sold' }
+    const s = parse(JSON.stringify({ league: 'Mirage', n: 30, start: 24, cash: 7, open: [], done: [done, { id: 'c', at: 25 }] }))
+    expect(s.done).toEqual([done])
+  })
 })
