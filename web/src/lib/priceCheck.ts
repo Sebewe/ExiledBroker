@@ -32,7 +32,10 @@ export function rangeBounds(series: SeriesPoint[], range: Range, launchedAt?: st
     return [from, Math.min(latest, from + 14 * DAY - HOUR)]
   }
   const days = range === '3d' ? 3 : 14
-  return [latest - days * DAY + HOUR, latest]
+  const from = latest - days * DAY + HOUR
+  // Never before the league launched: early on, most of the range would be empty.
+  const launch = launchedAt ? Math.floor(Date.parse(launchedAt) / HOUR) * HOUR : -Infinity
+  return [Math.min(latest, Math.max(from, launch)), latest]
 }
 
 export function inRange(series: SeriesPoint[], [from, to]: [number, number]): SeriesPoint[] {

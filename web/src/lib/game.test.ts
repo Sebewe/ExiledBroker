@@ -121,6 +121,9 @@ describe('loops and card turn-ins', () => {
     expect(placeOrder(s, hour(24), loop({ filled: null }), 'X', 1)).toMatch(/No order/)
     expect(placeOrder(s, hour(24), loop(), 'X', 11)).toMatch(/10 Divines/)
     expect(placeOrder(s, hour(24), loop({ lot: 120 }), 'X', 11)).toMatch(/Not enough Chaos and Divines/)
+    // 1,100c: the wallet has 1,200c, but a trade takes 10 Divines' worth at most.
+    expect(placeOrder(s, hour(24), loop({ lot: 1100 }), 'X', 1)).toMatch(/more than the 10 Divines a single trade can take/)
+    expect(placeOrder(s, hour(24), loop({ lot: 1300 }), 'X', 1)).toMatch(/more than your Chaos and Divines can pay/)
     expect(placeOrder(s, hour(24), loop(), 'X', 0)).toMatch(/at least one/)
     expect(placeOrder(s, hour(24), loop(), 'X', 1.5)).toMatch(/at least one/)
     const once = ok(placeOrder(s, hour(24), loop(), 'X', 1))

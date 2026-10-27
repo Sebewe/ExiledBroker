@@ -6,7 +6,7 @@ import type { MissedFlip, PreviewGameHour } from '../api/client'
 import { useGameHour } from '../api/queries'
 import { price } from '../lib/format'
 import { hourLabel, useGameClock } from '../lib/gameClock'
-import { buyIn, exchange, hourRate, orderIn, orderLot, placeFlip, placeOrder, placedNow, profit, startGame, step, tally, total } from '../lib/game'
+import { buyIn, exchange, hourRate, orderIn, orderLot, placeFlip, placeOrder, placedNow, profit, spendable, startGame, step, tally, total, TRADE_DIVINES } from '../lib/game'
 import { getGame, setGame, START_CHAOS, START_DIV, type GameState } from '../lib/gameStore'
 import { fetchPreview, previewKey } from '../lib/preview'
 import { trackFeature } from '../lib/usage'
@@ -18,7 +18,8 @@ import { trackFeature } from '../lib/usage'
 
 const div = (v: number) => price(v, 'divine')
 const chaos = (v: number) => price(v)
-const signed = (v: number) => `${v < -0.005 ? '−' : '+'}${div(Math.abs(v))}`
+// Under half a hundredth of a Divine is no change: ±0.00div.
+const signed = (v: number) => (Math.abs(v) < 0.005 ? `±${div(0)}` : `${v < 0 ? '−' : '+'}${div(Math.abs(v))}`)
 
 type TradeProps = { kind: 'loop' | 'card'; itemId: string; name: string; direction?: string | null } | { kind: 'flip'; flip: MissedFlip }
 
@@ -84,7 +85,11 @@ export function GameTrade(props: TradeProps) {
   if (buy.max < 1)
     return (
       <div className="flex flex-wrap items-center justify-between gap-2">
-        {hint(`One purchase costs ${chaos(buy.chaos)}: more than your ${chaos(base.chaos)} and ${div(base.div)} can pay.`)}
+        {hint(
+          spendable(base, doc) >= buy.chaos
+            ? `One purchase costs ${chaos(buy.chaos)}: more than the ${div(TRADE_DIVINES)} a single trade can take.`
+            : `One purchase costs ${chaos(buy.chaos)}: more than your ${chaos(base.chaos)} and ${div(base.div)} can pay.`,
+        )}
         {holding}
       </div>
     )
@@ -201,6 +206,7 @@ export function GameBar({ here }: { here?: 'portfolio' } = {}) {
   const worth = s ? total(s, rate) : null
   const gain = s ? profit(s, rate) : 0
   const atEnd = !!clock.range && clock.n >= clock.range.last
+  const gainTone = gain > 0.005 ? 'text-positive' : gain < -0.005 ? 'text-negative' : 'text-muted'
 
   const next = async () => {
     const cur = getGame()
@@ -246,7 +252,7 @@ export function GameBar({ here }: { here?: 'portfolio' } = {}) {
                 {div(wallet.div)} · {chaos(wallet.chaos)}
               </span>
               {s && worth != null && rate && (
-                <span className={`num hidden text-xs font-semibold whitespace-nowrap sm:inline ${gain > 0.005 ? 'text-positive' : gain < -0.005 ? 'text-negative' : 'text-muted'}`} title="All you have, open trades included, in Divines at this hour's price">
+                <span className={`num hidden text-xs font-semibold whitespace-nowrap sm:inline ${gainTone}`} title="All you have, open trades included, in Divines at this hour's price">
                   ≈ {div(worth)} {signed(gain)}
                 </span>
               )}
@@ -258,6 +264,8 @@ export function GameBar({ here }: { here?: 'portfolio' } = {}) {
                 news.text
               ) : s ? (
                 <>
+                  {/* On a phone the gain moves down here, next to the hour. */}
+                  {worth != null && rate && <span className={`num font-semibold sm:hidden ${gainTone}`}>{signed(gain)} · </span>}
                   {hourLabel(clock.launched, clock.n)}
                   {s.open.length > 0 && ` · ${s.open.length} open`}
                 </>

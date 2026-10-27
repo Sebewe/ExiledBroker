@@ -26,7 +26,7 @@
   --color-border: #3a404e;
   --color-text: #e8eaf0;
   --color-muted: #a9afbd;
-  --color-faint: #7c8293;
+  --color-faint: #8b91a2; /* 4.5:1 on the cards (surface): small hints stay readable */
   --color-accent: #e3ac72;
   --color-accent-strong: #f0c393;
   --color-positive: #82d8ad;
@@ -43,14 +43,15 @@
   --color-surface-2: #f1ebdf;
   --color-border: #e3d9c6;
   --color-text: #2b2620;
-  --color-muted: #6f6556;
-  --color-faint: #9a8f7e;
-  --color-accent: #b4651f;
-  --color-accent-strong: #8f4c12;
-  --color-positive: #2f855a;
+  /* Text, faint, the copper accent, green, amber and blue all reach 4.5:1 on bg (WCAG AA). */
+  --color-muted: #5f564a;
+  --color-faint: #766b5a;
+  --color-accent: #9c5515;
+  --color-accent-strong: #7d420f;
+  --color-positive: #28744e;
   --color-negative: #c0392b;
-  --color-warning: #a8661a;
-  --color-info: #2b6cb0;
+  --color-warning: #94591a;
+  --color-info: #245d99;
   --color-shadow: #5a4630;
   color-scheme: light;
 }

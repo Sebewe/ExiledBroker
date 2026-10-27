@@ -12,6 +12,8 @@ export function inUnit(chaos: number | null | undefined, unit: Unit, divineChaos
 /** A price with sensible precision: 12,345 / 123.4 / 1.23 / 0.0123. */
 export function price(value: number | null | undefined, unit: Unit = 'chaos'): string {
   if (value === null || value === undefined) return '–'
+  // Floating-point dust (a sum of trades that cancel out) prints as 0, never 1.78e-15.
+  if (Math.abs(value) < 1e-9) value = 0
   const abs = Math.abs(value)
   const text =
     abs >= 999.95 // the tiers' bounds as rounded, so 999.96 prints 1,000, not 1000.0
@@ -61,11 +63,12 @@ export function utcHour(iso: string | null | undefined): string {
   return iso ? `${UTC_HOUR.format(new Date(iso))} UTC` : '–'
 }
 
-/** "2h 05m" */
+/** "2h 05m"; past two days, "3d 4h". */
 export function duration(ms: number): string {
   const minutes = Math.max(0, Math.round(ms / 60_000))
   const h = Math.floor(minutes / 60)
   const m = minutes % 60
+  if (h >= 48) return `${Math.floor(h / 24)}d ${h % 24}h`
   return h ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}m`
 }
 

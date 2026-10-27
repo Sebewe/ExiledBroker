@@ -35,6 +35,14 @@ describe('ranges', () => {
     for (const r of ['3d', '14d', 'launch'] as const) expect(inRange(s, rangeBounds(s, r, at(0))!)).toHaveLength(1)
     expect(rangeBounds([], '3d')).toBeNull()
   })
+
+  it("never starts before the league's launch, so a young league's chart isn't mostly empty", () => {
+    const s = series(30)
+    expect(rangeBounds(s, '3d', at(0))).toEqual([T0, T0 + 29 * H])
+    expect(rangeBounds(s, '14d', at(0))).toEqual([T0, T0 + 29 * H])
+    // Three days in, the latest 72 hours as before.
+    expect(rangeBounds(series(100), '3d', at(0))![0]).toBe(T0 + 28 * H)
+  })
 })
 
 describe('outlookBand', () => {

@@ -1,7 +1,7 @@
 import { PageHeader, Section } from '../components/Section'
 import { usePreview } from '../lib/preview'
 
-const LINK = 'text-accent underline-offset-2 hover:underline'
+const LINK = 'text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent'
 
 export default function About() {
   const preview = usePreview()

@@ -104,7 +104,10 @@ function check(s: GameState, doc: PreviewGameHour, chaos: number, lots: number):
   const b = buyIn(s, doc, chaos)
   if (!b) return 'No price for this trade.'
   if (!(lots >= 1) || !Number.isInteger(lots)) return 'Buy at least one whole purchase.'
-  if (b.max < 1) return `One purchase costs ${chaos.toFixed(0)}c: more than your Chaos and Divines can pay.`
+  if (b.max < 1)
+    return chaos <= spendable(s, doc) + 1e-9
+      ? `One purchase costs ${chaos.toFixed(0)}c: more than the ${TRADE_DIVINES} Divines a single trade can take.`
+      : `One purchase costs ${chaos.toFixed(0)}c: more than your Chaos and Divines can pay.`
   if (lots > b.max) return lots * chaos > spendable(s, doc) + 1e-9 ? 'Not enough Chaos and Divines for that.' : `${TRADE_DIVINES} Divines' worth at most in one trade.`
   return null
 }

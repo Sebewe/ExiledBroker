@@ -34,7 +34,7 @@ export function PreviewPill() {
   if (!preview.on) return null
   return (
     <span
-      className="inline-flex items-center gap-1.5 rounded-full border border-accent/50 bg-accent/10 px-2.5 py-0.5 text-xs font-semibold tracking-wide text-accent uppercase"
+      className="inline-flex items-center gap-1.5 rounded-full border border-accent/50 bg-accent/10 px-2.5 py-0.5 text-xs font-semibold tracking-wide text-accent-strong uppercase"
       title={`A preview: ${preview.manifest?.league} as it stood on day ${preview.day}`}
     >
       <Eye aria-hidden className="size-3.5" />
@@ -213,11 +213,19 @@ export function PreviewWelcome() {
               <Wallet aria-hidden className="size-4 text-accent" /> Paper trading
             </p>
             <p className="mt-1">
-              Try the trades on the Market recap with {START_DIV} pretend Divines and {START_CHAOS} Chaos. Press <span className="text-text">Trade this hour</span> on one and choose how
-              many to buy: purchases are whole, at the real price that hour, so a trade costs at least its smallest buy-in. Then press{' '}
-              <span className="text-text">Next hour</span> in the bar at the bottom: orders fill only as far as the market really traded, and sell when it did. Trades are paid in Chaos: when you run short, Divines are exchanged at that hour's average price, or exchange them yourself from the bar.
-              Your trades and what each made are on the Portfolio page, kept in this browser only.
+              Try the Market recap's trades with {START_DIV} pretend Divines and {START_CHAOS} Chaos.
             </p>
+            <ol className="mt-2 flex list-decimal flex-col gap-1 pl-5 marker:text-faint">
+              <li>
+                Press <span className="text-text">Trade this hour</span> on a loop, card or flip, and choose how many to buy: purchases are whole, at the real price that hour.
+              </li>
+              <li>
+                Press <span className="text-text">Next hour</span> in the bar at the bottom. Orders fill only as far as the market really traded.
+              </li>
+              <li>
+                See what each trade made on the <span className="text-text">Portfolio</span> page, kept in this browser only.
+              </li>
+            </ol>
           </div>
         )}
         <button

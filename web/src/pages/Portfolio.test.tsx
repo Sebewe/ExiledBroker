@@ -92,6 +92,8 @@ describe('Portfolio (the trading game)', () => {
     // What it was bought at, and the wallet: 2 loop purchases and 5 bids took the 200c and 4 div exchanged.
     expect(screen.getByText('80.0c each')).toBeInTheDocument()
     expect(screen.getAllByText('6.00div · 220.0c')).toHaveLength(2) // the Wallet stat and the bar
+    // Divines were exchanged, so the gain's dependence on the Divine's price is explained.
+    expect(screen.getByText(/Divines you exchanged for Chaos count against you if the Divine has risen since/)).toBeInTheDocument()
     // The bar steps the clock from here too.
     const bar = within(screen.getByRole('region', { name: 'Trading game' }))
     expect(bar.getByRole('button', { name: 'Next hour' })).toBeEnabled()
