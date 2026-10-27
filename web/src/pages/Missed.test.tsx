@@ -4,7 +4,8 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { MissedLoop, MissedWindow } from '../api/client'
 import Missed from './Missed'
-import { previewRoutes, previewStatus } from '../test/preview'
+import { reloadGame } from '../lib/gameStore'
+import { gameHourDoc, previewRoutes, previewStatus } from '../test/preview'
 
 // The landing page against a fake API: no data, a league waiting for its first trades,
 // a stale feed, and a normal recap.
@@ -391,40 +392,61 @@ describe('Market recap', () => {
     expect(await screen.findByText('200.0c → 196.0c')).toBeInTheDocument()
   })
 
-  it('shows no reveal outside the preview', async () => {
+  it('offers no trading game outside the preview', async () => {
     serve({ '/api/status': status('2026-10-22T08:00:00Z'), '/api/missed/Allflame': { body: [recap(1, 1)] } })
     renderPage()
     expect(await screen.findByText('Loops that paid')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Show what happened next' })).toBeNull()
-    expect(document.body).not.toHaveClass('has-reveal-bar')
+    expect(screen.queryByRole('button', { name: 'Trade this hour' })).toBeNull()
+    expect(screen.queryByRole('region', { name: 'Trading game' })).toBeNull()
+    expect(document.body).not.toHaveClass('has-game-bar')
   })
 })
 
-describe('Market recap in the preview', () => {
-  const routes = () => ({ ...previewRoutes(), '/api/status': { body: previewStatus() } })
+describe('Market recap in the preview: the trading game', () => {
+  // The sample's day 2 ends at game hour 28. Its recap here lists a loop whose order that
+  // hour filled 5 Divines' worth (500c) and made 10%, sold the next hour.
+  const windows = (n: number) => RECAP.map((w) => ({ ...w, latest_hour: gameHourDoc(n).latest_hour }))
+  const order = { kind: 'loop' as const, item_id: 'currency:d', direction: 'chaos_first', filled: true, spent: 500, pnl: 50, settle_at: gameHourDoc(29).latest_hour }
+  const routes = () => ({
+    ...previewRoutes(),
+    '/api/status': { body: previewStatus() },
+    '/api/preview/d2/missed': { body: windows(28) },
+    '/api/preview/game/28': { body: gameHourDoc(28, { recap: windows(28), orders: [order] }) },
+    '/api/preview/game/29': { body: gameHourDoc(29, { recap: windows(29) }) },
+  })
+  afterEach(() => {
+    localStorage.clear()
+    reloadGame()
+  })
 
-  it("hides whether the day's trades kept paying until asked", async () => {
-    const fetch = vi.fn()
+  it('trades a loop for the hour, steps to the next and settles it', async () => {
     serve(routes())
-    fetch.mockImplementation(globalThis.fetch)
-    vi.stubGlobal('fetch', fetch)
+    const fetch = globalThis.fetch as ReturnType<typeof vi.fn>
     renderPage()
-    // The toggle is the bar fixed to the bottom of the screen, and the page is padded for it.
-    const bar = within(await screen.findByRole('region', { name: 'Preview reveal' }))
-    const button = bar.getByRole('button', { name: 'Show what happened next' })
-    expect(document.body).toHaveClass('has-reveal-bar')
-    const paths = () => fetch.mock.calls.map(([input]) => new URL(typeof input === 'string' ? input : input.url, 'http://test').pathname)
-    expect(paths()).not.toContain('/api/preview/d2/recap-next')
+    // The bar fixed to the bottom of the screen: 10 Divines to start, and the page padded for it.
+    const bar = within(await screen.findByRole('region', { name: 'Trading game' }))
+    expect(bar.getByLabelText('Your Divines')).toHaveTextContent('10.0div')
+    expect(document.body).toHaveClass('has-game-bar')
     // The preview's strip says when the next league launches, so the page doesn't.
     expect(screen.queryByText(/The next league launches/)).toBeNull()
-    expect(screen.queryByRole('group', { name: 'What happened next' })).toBeNull()
-    fireEvent.click(button)
-    // The sample's day 2 recap has one card turn-in: its order was placed in both hours
-    // known after, and neither filled.
-    const card = within(await screen.findByRole('group', { name: 'What happened next' }))
-    expect(card.getByText(/^Next 2 hours:/)).toHaveTextContent('Next 2 hours: 0 of 2 orders filled, 0 paid.')
-    expect(card.getByText(/^Next hour:/)).toHaveTextContent("Next hour: the order didn't fill · A day later: not known")
-    expect(screen.getByText(/^Of the 1 trade in this recap/)).toHaveTextContent('Of the 1 trade in this recap, 0 paid the very next hour.')
-    expect(screen.getByText(/^Placing the recap's order/)).toHaveTextContent("Placing the recap's order every hour it listed one: 0 of 2 orders filled over the next 2 hours.")
+    const loops = within(document.getElementById('loops')!)
+    fireEvent.click(await loops.findByRole('button', { name: 'Trade this hour' }))
+    fireEvent.change(loops.getByLabelText(/Divines to put in/), { target: { value: '8' } })
+    fireEvent.click(loops.getByRole('button', { name: 'Place it' }))
+    expect(await loops.findByText('Placed this hour')).toBeInTheDocument()
+    expect(JSON.parse(localStorage.getItem('eb-game')!)).toMatchObject({ league: 'Mirage', n: 28, cash: 2 })
+    const paths = () => fetch.mock.calls.map(([input]) => new URL(typeof input === 'string' ? input : input.url, 'http://test').pathname)
+    expect(paths()).not.toContain('/api/preview/game/29')
+    // The flips and the card offer their own trades.
+    expect(within(document.getElementById('flips')!).getAllByRole('button', { name: 'Trade this hour' }).length).toBeGreaterThan(0)
+    expect(within(document.getElementById('cards')!).getByText("No order this hour: it didn't pay from the bid.")).toBeInTheDocument()
+
+    fireEvent.click(bar.getByRole('button', { name: 'Next hour' }))
+    // 5 of the 8 filled and sold at +10%; the 3 that didn't came back.
+    expect(await bar.findByText('1 closed, +0.500div')).toBeInTheDocument()
+    expect(bar.getByLabelText('Your Divines')).toHaveTextContent('10.5div')
+    expect(JSON.parse(localStorage.getItem('eb-game')!)).toMatchObject({ n: 29, open: [] })
+    // Hour 29 is the sample's last: the clock stops there.
+    expect(bar.getByRole('button', { name: 'End of the data' })).toBeDisabled()
   })
 })

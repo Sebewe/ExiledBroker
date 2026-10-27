@@ -7,7 +7,8 @@ preview's streams to build against before the real snapshot exists.
 It replays Mirage's first 30 hours (mirage_launch.json.gz) through the live loader
 with the test's fake exchange (no network), and records what the site's API answered
 at three points it calls days 1, 2 and 3 (24, 28 and 30 hours in: the replay is
-short, and its recap only finds trades late). Price check's items are limited to a handful (the movers and Divine Orb), and
+short, and its recap only finds trades late), and every hour from 24 to 29 for the
+trading game. Price check's items are limited to a handful (the movers and Divine Orb), and
 the reveal's documents are computed from the replay's last hours. The real snapshot
 (`eb preview build`) has days 1, 3, 5 and 7 and every item."""
 
@@ -32,7 +33,7 @@ from exiledbroker.config import Settings
 from exiledbroker.ingest import currency_exchange as cx
 from exiledbroker.ingest.live import sync_live
 from exiledbroker.preview import snapshot
-from exiledbroker.preview.build import recap_next  # the snapshot's own, on the replay
+from exiledbroker.preview.build import game_hours  # the snapshot's own
 from exiledbroker.storage import db
 from test_currency_exchange import FakeExchange, client_for
 from test_live_pipeline import LAUNCH, PAGES, store_reference_data
@@ -63,15 +64,23 @@ def main() -> None:
     store_reference_data(s)
     server = FakeExchange(PAGES, now=LAUNCH)
     docs: dict[str, object] = {}
-    days, missed, items = [], {}, set()
-    for day, hours_in in DAYS.items():
+    days, items, games = [], set(), {}
+    at_day = {h: d for d, h in DAYS.items()}
+    for hours_in in range(min(DAYS.values()), max(DAYS.values()) + 1):
         load(s, server, hours_in)
         deps.reset()
         client = TestClient(create_app())
         league = next(lg for lg in get(client, "/api/status")["leagues"] if lg["name"] == LEAGUE)
+        if hours_in < max(DAYS.values()):  # the trading game's hours: those with one after
+            games[hours_in] = {
+                "latest_hour": league["latest_hour"],
+                "divine_chaos": league["divine_chaos"],
+                "recap": get(client, f"/api/missed/{LEAGUE}"),
+            }
+        if (day := at_day.get(hours_in)) is None:
+            continue
         days.append({"day": day, "league": league})
-        missed[day] = get(client, f"/api/missed/{LEAGUE}")
-        docs[snapshot.day_key(day, "missed")] = missed[day]
+        docs[snapshot.day_key(day, "missed")] = get(client, f"/api/missed/{LEAGUE}")
         index = get(client, f"/api/price-check/{LEAGUE}")
         listed = {x["item_id"] for x in index["items"]}
         # A handful of items: the movers (up to 4) and Divine Orb (judged in Chaos).
@@ -96,15 +105,15 @@ def main() -> None:
         }
     end = cx.from_ts(LAUNCH + (max(DAYS.values()) - 1) * 3600).replace(tzinfo=None)
     with db.session(s.db_path, read_only=True) as con:
-        for day in DAYS:
-            if (doc := recap_next(con, LEAGUE, missed[day], end)) is not None:
-                docs[snapshot.day_key(day, "recap-next")] = doc
+        for n, doc in game_hours(con, LEAGUE, games, end).items():
+            docs[snapshot.game_key(n)] = doc
 
     launched = days[0]["league"]["launched_at"]
     docs[snapshot.MANIFEST] = {
         "league": LEAGUE,
         "launched_at": launched,
         "days": days,
+        "game": {"first": min(games), "last": max(games)},
         "default_day": DEFAULT_DAY,
         "next_until": f"{end:%Y-%m-%dT%H:%M:%S}Z",
         "built_at": "2026-10-27T00:00:00Z",

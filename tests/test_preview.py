@@ -49,7 +49,7 @@ def test_the_sample_holds_every_kind_of_key_and_matches_its_models():
     days = [d["day"] for d in manifest["days"]]
     assert manifest["default_day"] in days
     for day in days:
-        for what in ("missed", "price-check", "launch-picks", "recap-next"):
+        for what in ("missed", "price-check", "launch-picks"):
             assert snapshot.day_key(day, what) in DOCS
         listed = DOCS[snapshot.day_key(day, "price-check")]["items"]
         for item in listed:
@@ -238,5 +238,6 @@ def test_the_pipeline_switches_only_with_a_name_and_a_time(tmp_path):
 
 def test_the_sample_is_small():
     """It's committed, and the frontend's tests import it."""
-    assert SAMPLE.stat().st_size < 150_000
-    assert len(gzip.compress(SAMPLE.read_bytes())) < 40_000
+    # The trading game's six hours (each with its recap) are most of it.
+    assert SAMPLE.stat().st_size < 200_000
+    assert len(gzip.compress(SAMPLE.read_bytes())) < 50_000

@@ -21,7 +21,7 @@ const NAV: Nav[] = [
   { to: '/', label: 'Market recap', icon: Hourglass, end: true, featured: true },
   { to: '/price-check', label: 'Price check', icon: Scale, featured: true },
   { to: '/launch', label: 'Launch market', icon: CandlestickChart },
-  { to: '/portfolio', label: 'Paper portfolio', icon: BriefcaseBusiness, featured: true, preview: true, hint: 'Stake Divines on a few items, step the clock forward and see what they would be worth' },
+  { to: '/portfolio', label: 'Portfolio', icon: BriefcaseBusiness, featured: true, preview: true, hint: 'The trading game: your trades on the recap, and what each made or lost' },
   { to: '/research', label: 'Research', icon: FlaskConical, proof: true, hint: 'The proof behind the tools: the journal, the Backtest and how the tools work' },
 ]
 

@@ -9,8 +9,8 @@ keys are fixed, so the route is bounded: it answers only keys the table holds.
     d{day}/price-check            PriceCheckIndex: Price check's list on that day
     d{day}/price-check/{item_id}  PriceCheckItem: one item on that day
     d{day}/launch-picks           list[LaunchWindow]: the Launch market on that day
-    d{day}/recap-next             PreviewRecapNext: did the recap's trades keep paying
     next/price-check/{item_id}    PreviewItemNext: the item's series to day 10
+    game/{n}                      PreviewGameHour: the trading game, n hours after launch
 
 `day` is the launch day (1-based): the site as it stood at the end of that day. Every
 document is checked against its model when it's written, so the route never has to."""
@@ -41,8 +41,8 @@ KINDS: list[tuple[re.Pattern, Any]] = [
     (re.compile(rf"{_DAY}/price-check"), m.PriceCheckIndex),
     (re.compile(rf"{_DAY}/price-check/{_ITEM}"), m.PriceCheckItem),
     (re.compile(rf"{_DAY}/launch-picks"), list[m.LaunchWindow]),
-    (re.compile(rf"{_DAY}/recap-next"), m.PreviewRecapNext),
     (re.compile(rf"next/price-check/{_ITEM}"), m.PreviewItemNext),
+    (re.compile(r"game/[1-9][0-9]{0,3}"), m.PreviewGameHour),
 ]
 MAX_KEY = 160
 
@@ -50,8 +50,12 @@ _adapters: dict[Any, TypeAdapter] = {}
 
 
 def day_key(day: int, what: str, item_id: str | None = None) -> str:
-    """`d{day}/{what}` (missed, price-check, launch-picks, recap-next), or an item's."""
+    """`d{day}/{what}` (missed, price-check, launch-picks), or an item's."""
     return f"d{day}/{what}" + (f"/{item_id}" if item_id else "")
+
+
+def game_key(n: int) -> str:
+    return f"game/{n}"
 
 
 def next_key(item_id: str) -> str:

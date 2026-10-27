@@ -2006,6 +2006,168 @@
         "title": "PreviewDay",
         "type": "object"
       },
+      "PreviewGameHour": {
+        "description": "`game/{n}`: the trading game's hour, n hours after launch (lib/game.ts): the\nMarket recap then, the orders a player could take, and the Chaos prices (low,\naverage, high, items traded) of the items the game lists to flip, which the browser\nfills and sells against.",
+        "properties": {
+          "divine_chaos": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Divine Chaos"
+          },
+          "latest_hour": {
+            "format": "date-time",
+            "title": "Latest Hour",
+            "type": "string"
+          },
+          "orders": {
+            "items": {
+              "$ref": "#/components/schemas/PreviewGameOrder"
+            },
+            "title": "Orders",
+            "type": "array"
+          },
+          "prices": {
+            "additionalProperties": {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            "title": "Prices",
+            "type": "object"
+          },
+          "recap": {
+            "items": {
+              "$ref": "#/components/schemas/MissedWindow"
+            },
+            "title": "Recap",
+            "type": "array"
+          }
+        },
+        "required": [
+          "latest_hour",
+          "divine_chaos",
+          "recap",
+          "orders",
+          "prices"
+        ],
+        "title": "PreviewGameHour",
+        "type": "object"
+      },
+      "PreviewGameOrder": {
+        "description": "A loop or card turn-in a player can take in one of the game's hours: the recap's\nown order that hour, filled by the Backtest's rules (analysis/backtest.py). A fill\ncounts when some trade that hour went past the order, at most a tenth of what traded\nand 10 Divines an order.\nA player's stake fills up to `spent` and earns `pnl / spent` on it; it's tied up\nuntil `settle_at`.",
+        "properties": {
+          "direction": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Direction"
+          },
+          "filled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filled"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "loop",
+              "card"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "pnl": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pnl"
+          },
+          "settle_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Settle At"
+          },
+          "spent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spent"
+          }
+        },
+        "required": [
+          "kind",
+          "item_id",
+          "filled",
+          "spent",
+          "pnl",
+          "settle_at"
+        ],
+        "title": "PreviewGameOrder",
+        "type": "object"
+      },
+      "PreviewGameRange": {
+        "properties": {
+          "first": {
+            "title": "First",
+            "type": "integer"
+          },
+          "last": {
+            "title": "Last",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "first",
+          "last"
+        ],
+        "title": "PreviewGameRange",
+        "type": "object"
+      },
       "PreviewItemNext": {
         "description": "An item's whole series in the preview's league, from launch to `next_until`\n(day 10's end), for \"what happened next\" after the chosen day. Same points as\nPriceCheckItem.series: [hour, Chaos, Divines at that hour's rate].",
         "properties": {
@@ -2071,7 +2233,7 @@
         "type": "object"
       },
       "PreviewManifest": {
-        "description": "The pre-launch preview's snapshot (docs/preview.md, `eb preview build`): a past\nleague's early days, served from /api/preview/{key}. Keys: `manifest` (this),\n`d{day}/missed`, `d{day}/price-check`, `d{day}/price-check/{item_id}`,\n`d{day}/launch-picks`, `d{day}/recap-next` and `next/price-check/{item_id}`.",
+        "description": "The pre-launch preview's snapshot (docs/preview.md, `eb preview build`): a past\nleague's early days, served from /api/preview/{key}. Keys: `manifest` (this),\n`d{day}/missed`, `d{day}/price-check`, `d{day}/price-check/{item_id}`,\n`d{day}/launch-picks`, `next/price-check/{item_id}` and the trading game's\n`game/{n}`.",
         "properties": {
           "built_at": {
             "format": "date-time",
@@ -2088,6 +2250,16 @@
           "default_day": {
             "title": "Default Day",
             "type": "integer"
+          },
+          "game": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PreviewGameRange"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "launched_at": {
             "anyOf": [
@@ -2132,163 +2304,6 @@
           "version"
         ],
         "title": "PreviewManifest",
-        "type": "object"
-      },
-      "PreviewRecapNext": {
-        "description": "`d{day}/recap-next`: every loop, card turn-in and flip in that day's recap\n(`d{day}/missed`, all look-backs), and whether it kept paying.",
-        "properties": {
-          "hours": {
-            "title": "Hours",
-            "type": "integer"
-          },
-          "latest_hour": {
-            "format": "date-time",
-            "title": "Latest Hour",
-            "type": "string"
-          },
-          "trades": {
-            "items": {
-              "$ref": "#/components/schemas/PreviewTradeNext"
-            },
-            "title": "Trades",
-            "type": "array"
-          }
-        },
-        "required": [
-          "latest_hour",
-          "hours",
-          "trades"
-        ],
-        "title": "PreviewRecapNext",
-        "type": "object"
-      },
-      "PreviewTradeNext": {
-        "description": "What one of the recap's trades did in the 24 hours after the chosen day's last\nhour, if a player had followed it: each hour, the recap's own order for it, priced\nfrom the hour before (the first is the very order the recap showed), and filled by\nthe Backtest's rules (analysis/backtest.py, preview/build.recap_next). A fill counts\nwhen some trade that hour went past the order (the optimistic way, as the recap's\nchances count it), at most a tenth of what traded and 10 Divines an order.",
-        "properties": {
-          "direction": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Direction"
-          },
-          "filled": {
-            "default": [],
-            "items": {
-              "anyOf": [
-                {
-                  "type": "boolean"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "title": "Filled",
-            "type": "array"
-          },
-          "fills": {
-            "default": 0,
-            "title": "Fills",
-            "type": "integer"
-          },
-          "item_id": {
-            "title": "Item Id",
-            "type": "string"
-          },
-          "kind": {
-            "enum": [
-              "loop",
-              "card",
-              "flip"
-            ],
-            "title": "Kind",
-            "type": "string"
-          },
-          "next_hour_paid": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Next Hour Paid"
-          },
-          "orders": {
-            "default": 0,
-            "title": "Orders",
-            "type": "integer"
-          },
-          "paid": {
-            "items": {
-              "anyOf": [
-                {
-                  "type": "boolean"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "title": "Paid",
-            "type": "array"
-          },
-          "paid_hours": {
-            "title": "Paid Hours",
-            "type": "integer"
-          },
-          "pnl": {
-            "default": [],
-            "items": {
-              "anyOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "title": "Pnl",
-            "type": "array"
-          },
-          "profit": {
-            "default": 0.0,
-            "title": "Profit",
-            "type": "number"
-          },
-          "still_paid": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Still Paid"
-          },
-          "traded_hours": {
-            "title": "Traded Hours",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "kind",
-          "item_id",
-          "paid",
-          "paid_hours",
-          "traded_hours",
-          "next_hour_paid",
-          "still_paid"
-        ],
-        "title": "PreviewTradeNext",
         "type": "object"
       },
       "PriceCheckIndex": {
@@ -3608,12 +3623,12 @@
         "operationId": "preview_document_api_preview__key__get",
         "parameters": [
           {
-            "description": "`manifest`, `d{day}/missed`, `d{day}/price-check`, `d{day}/price-check/{item_id}`, `d{day}/launch-picks`, `d{day}/recap-next` or `next/price-check/{item_id}`; 404 unless the snapshot holds it.",
+            "description": "`manifest`, `d{day}/missed`, `d{day}/price-check`, `d{day}/price-check/{item_id}`, `d{day}/launch-picks`, `next/price-check/{item_id}` or `game/{n}`; 404 unless the snapshot holds it.",
             "in": "path",
             "name": "key",
             "required": true,
             "schema": {
-              "description": "`manifest`, `d{day}/missed`, `d{day}/price-check`, `d{day}/price-check/{item_id}`, `d{day}/launch-picks`, `d{day}/recap-next` or `next/price-check/{item_id}`; 404 unless the snapshot holds it.",
+              "description": "`manifest`, `d{day}/missed`, `d{day}/price-check`, `d{day}/price-check/{item_id}`, `d{day}/launch-picks`, `next/price-check/{item_id}` or `game/{n}`; 404 unless the snapshot holds it.",
               "maxLength": 160,
               "title": "Key",
               "type": "string"
@@ -3649,10 +3664,10 @@
                       "$ref": "#/components/schemas/PreviewManifest"
                     },
                     {
-                      "$ref": "#/components/schemas/PreviewRecapNext"
+                      "$ref": "#/components/schemas/PreviewItemNext"
                     },
                     {
-                      "$ref": "#/components/schemas/PreviewItemNext"
+                      "$ref": "#/components/schemas/PreviewGameHour"
                     },
                     {
                       "$ref": "#/components/schemas/PriceCheckIndex"

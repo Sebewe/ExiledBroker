@@ -1,12 +1,11 @@
 import { Activity, AlertTriangle, ArrowDown, ArrowDownRight, ArrowRight, ArrowUpRight, CandlestickChart, FlaskConical, Layers, Repeat, Tag, Timer, Waves, X } from 'lucide-react'
-import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Link } from 'react-router'
-import type { LiveLeague, MissedCard, MissedFlip, MissedLoop, MissedWindow, Mover, PreviewTradeNext, Upcoming } from '../api/client'
-import { useLeagues, useMissed, usePreviewRecapNext, useServerNow, useStatus } from '../api/queries'
+import type { LiveLeague, MissedCard, MissedFlip, MissedLoop, MissedWindow, Mover, Upcoming } from '../api/client'
+import { useGameHour, useLeagues, useMissed, useServerNow, useStatus } from '../api/queries'
 import { Select } from '../components/Controls'
 import { FreshnessBanner } from '../components/Freshness'
 import { Notice } from '../components/Notice'
-import { RecapReveal, TradeNext } from '../components/Reveal'
 import { PageHeader } from '../components/Section'
 import { ItemName } from '../components/ItemLink'
 import { useItemHref, type ItemHref } from '../lib/itemHref'
@@ -16,7 +15,7 @@ import { makeMoney, type Money } from '../lib/money'
 import { eachText, lotText, whole, type Currency } from '../lib/lots'
 import { usePreview } from '../lib/preview'
 import { queryFallback } from '../lib/queryFallback'
-import { tradeKey, tradesByKey } from '../lib/reveal'
+import { gameHour, useGame } from '../lib/gameStore'
 import { useLeague } from '../lib/useLeague'
 import { trackFeature } from '../lib/usage'
 
@@ -113,19 +112,18 @@ export default function Missed() {
   const leagues = useLeagues() // the live leagues, or the preview's on the chosen day
   const names = leagues.map((l) => l.name)
   const [league, setLeague] = useLeague(names)
-  const info = leagues.find((l) => l.name === league)
+  // The preview's trading game (components/Game.tsx): while one runs, the recap is its
+  // hour's, with that hour's Divine price.
+  const preview = usePreview()
+  const game = gameHour(useGame(), preview.on ? preview.manifest?.league : undefined)
+  const hourDoc = useGameHour(game || undefined).data
+  const found = leagues.find((l) => l.name === league)
+  const info = found && hourDoc ? { ...found, latest_hour: hourDoc.latest_hour, divine_chaos: hourDoc.divine_chaos } : found
   const summary = useMissed(info?.latest_hour ? league : undefined)
   const w = summary.data?.find((x) => x.hours === 1)
   const money = makeMoney(info?.divine_chaos)
   const href = useItemHref(info?.latest_hour ? league : undefined)
-  // The preview's reveal: fetched once opened, closed again on another day.
-  const preview = usePreview()
-  const [revealedDay, setRevealedDay] = useState<number | null>(null)
-  const revealed = preview.on && revealedDay === preview.day
-  const recapNext = usePreviewRecapNext(revealed)
-  // No hours known after the day (the snapshot's last): nothing to put on the cards.
-  const next: Next | undefined =
-    revealed && recapNext.data && recapNext.data.hours > 0 ? { byKey: tradesByKey(recapNext.data), hours: recapNext.data.hours } : undefined
+  const play = preview.on && !!preview.manifest?.game
 
   const header = (
     <PageHeader title="Market recap">
@@ -188,20 +186,15 @@ export default function Missed() {
           (w ? (
             <>
               <InvestmentOptions w={w} flips={lastHour?.flips ?? []} />
-              {preview.on && w.flips.length + w.loops.length + w.cards.length > 0 && (
-                <RecapReveal
-                  open={revealed}
-                  onToggle={() => setRevealedDay(revealed ? null : preview.day)}
-                  trades={next ? shownTrades(w, next) : []}
-                  hours={recapNext.data?.hours}
-                  loading={revealed && !recapNext.data && !recapNext.error}
-                  money={money}
-                />
-              )}
-              <Flips flips={lastHour?.flips ?? []} money={money} href={href} next={next} />
-              <Loops w={w} money={money} rate={info.divine_chaos} href={href} next={next} />
-              <Cards w={w} money={money} href={href} next={next} />
+              <Flips flips={lastHour?.flips ?? []} money={money} href={href} play={play} />
+              <Loops w={w} money={money} rate={info.divine_chaos} href={href} play={play} />
+              <Cards w={w} money={money} href={href} play={play} />
               <MarketMovers w={w} money={money} href={href} />
+              {play && (
+                <Suspense fallback={null}>
+                  <GameBar />
+                </Suspense>
+              )}
             </>
           ) : (
             <Notice kind="info">Nothing to recap yet.</Notice>
@@ -210,19 +203,9 @@ export default function Missed() {
   )
 }
 
-/** The preview's reveal, once opened: each recap trade's next hours (lib/reveal). */
-type Next = { byKey: Map<string, PreviewTradeNext>; hours: number }
-
-/** The reveal's answers for every trade on the page: its flips, loops and cards, in the
- *  look-back shown. d{day}/recap-next holds every look-back's, so it has more trades. */
-function shownTrades(w: MissedWindow, next: Next): PreviewTradeNext[] {
-  const keys = [
-    ...w.flips.map((f) => tradeKey('flip', f.item_id)),
-    ...w.loops.map((l) => tradeKey('loop', l.item_id, l.direction)),
-    ...w.cards.map((c) => tradeKey('card', c.item_id)),
-  ]
-  return keys.map((k) => next.byKey.get(k)).filter((x): x is PreviewTradeNext => !!x)
-}
+// The trading game's parts, a lazy chunk loaded only in the preview.
+const GameBar = lazy(() => import('../components/Game').then((m) => ({ default: m.GameBar })))
+const GameTrade = lazy(() => import('../components/Game').then((m) => ({ default: m.GameTrade })))
 
 const lastHours = (n: number) => (n === 1 ? 'the last hour' : `the last ${n} hours`)
 
@@ -721,7 +704,7 @@ function Chance({
   )
 }
 
-function Loops({ w, money, rate, href, next }: { w: MissedWindow; money: Money; rate: number | null | undefined; href: ItemHref; next?: Next }) {
+function Loops({ w, money, rate, href, play }: { w: MissedWindow; money: Money; rate: number | null | undefined; href: ItemHref; play: boolean }) {
   const [all, setAll] = useState(false)
   const shown = all ? w.loops : w.loops.slice(0, TOP)
   return (
@@ -759,7 +742,11 @@ function Loops({ w, money, rate, href, next }: { w: MissedWindow; money: Money; 
               >
                 <Route steps={loopRoute(l.name, l.direction)} item={l.name} />
                 <Chance tries={l.tries} through={l.through} chance={l.chance} />
-                {next && <TradeNext t={next.byKey.get(tradeKey('loop', l.item_id, l.direction))} hours={next.hours} money={money} />}
+                {play && (
+                  <Suspense fallback={null}>
+                    <GameTrade kind="loop" itemId={l.item_id} name={l.name} direction={l.direction} />
+                  </Suspense>
+                )}
                 <Rates label={`Rates for ${l.name}`} title={l.name}>
                   <Orders
                     missing={l.bid == null}
@@ -787,7 +774,7 @@ function Loops({ w, money, rate, href, next }: { w: MissedWindow; money: Money; 
   )
 }
 
-function Cards({ w, money, href, next }: { w: MissedWindow; money: Money; href: ItemHref; next?: Next }) {
+function Cards({ w, money, href, play }: { w: MissedWindow; money: Money; href: ItemHref; play: boolean }) {
   const [all, setAll] = useState(false)
   const shown = all ? w.cards : w.cards.slice(0, TOP)
   return (
@@ -826,7 +813,12 @@ function Cards({ w, money, href, next }: { w: MissedWindow; money: Money; href: 
                 {c.worst_roll && <span>random: valued at the cheapest roll</span>}
               </div>
               <Chance tries={c.tries} through={c.through} chance={c.chance} />
-              {next && <TradeNext t={next.byKey.get(tradeKey('card', c.item_id))} hours={next.hours} money={money} />}
+              {/* A random reward can't be priced in the game (nor by the Backtest). */}
+              {play && !c.worst_roll && (
+                <Suspense fallback={null}>
+                  <GameTrade kind="card" itemId={c.item_id} name={c.name} />
+                </Suspense>
+              )}
               <Rates label={`Rates for ${c.name}`} title={c.name}>
                 <Orders
                   missing={c.bid == null}
@@ -945,7 +937,7 @@ function flipSteps(f: MissedFlip): Step[] {
 }
 
 /** The latest hour's flips: the same whatever the look-back (sent with the 1-hour one). */
-function Flips({ flips, money, href, next }: { flips: MissedFlip[]; money: Money; href: ItemHref; next?: Next }) {
+function Flips({ flips, money, href, play }: { flips: MissedFlip[]; money: Money; href: ItemHref; play: boolean }) {
   const [all, setAll] = useState(false)
   const shown = all ? flips : flips.slice(0, TOP)
   return (
@@ -982,7 +974,11 @@ function Flips({ flips, money, href, next }: { flips: MissedFlip[]; money: Money
               }
             >
               <Chance tries={f.tries} through={f.through} chance={f.chance} sell="sold within 6 hours at the ask" />
-              {next && <TradeNext t={next.byKey.get(tradeKey('flip', f.item_id))} hours={next.hours} money={money} />}
+              {play && (
+                <Suspense fallback={null}>
+                  <GameTrade kind="flip" flip={f} />
+                </Suspense>
+              )}
               <Rates label={`Rates for ${f.name}`} title={f.name}>
                 <Orders
                   missing={false}

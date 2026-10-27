@@ -21,8 +21,8 @@ checked against its model when written (`snapshot.put`), so the route never has 
 | `d{day}/price-check` | `PriceCheckIndex` | Price check's list |
 | `d{day}/price-check/{item_id}` | `PriceCheckItem` | one item, for every listed item |
 | `d{day}/launch-picks` | `list[LaunchWindow]` | the Launch market |
-| `d{day}/recap-next` | `PreviewRecapNext` | each of that day's recap trades (loops, cards, flips): in each of the next 24 hours, did the recap's order fill and pay ([below](#did-it-pay-the-next-hour)) |
 | `next/price-check/{item_id}` | `PreviewItemNext` | the item's series from launch to day 10, for the reveal |
+| `game/{n}` | `PreviewGameHour` | the trading game's hour `n` (hours since launch, from the first day's end to `next_until`): the recap then, the orders a player can take and the flip items' prices ([below](#the-trading-game)) |
 
 `day` is the launch day, 1-based: the site as it stood at the end of that day
 (`launch + day × 24 h`). The Backtest page stays live. `version` must change with
@@ -43,8 +43,10 @@ disk stops the build (and the last snapshot stands).
 - It replays the league into a throwaway DuckDB beside the research one
   (`data/preview-build.duckdb`, deleted afterwards) with the live loader, as the worker
   would have run at the end of each day (`sync_live(now = launch + day × 24 h)`), and
-  stores what the services answered then. A last load to `--next-day` gives the
-  reveal's documents (`next/…`, `d{day}/recap-next`).
+  stores what the services answered then. In between, it loads one hour at a time and
+  stores each hour's recap for the trading game. A last load to `--next-day` gives the
+  reveal's documents (`next/…`) and the game's orders (`game/{n}`). The hourly loads
+  make the build longer (some 200 loads from day 1 to day 10); it still makes no request.
 - What the services read besides the league's hours is copied from the research
   database, **rewound**: the Launch history and Price check's per-league paths without
   the replayed league or any later one, then the picks and the medians rebuilt from the
@@ -85,55 +87,59 @@ disk stops the build (and the last snapshot stands).
 - `api/queries.ts` is the one switch: while the preview is on, `useMissed`,
   `usePriceCheck`, `usePriceCheckItem` and `useLaunchPicks` read `/api/preview/d{day}/…`
   keyed on the snapshot's version; `useLeagues()` returns the snapshot's league on the
-  chosen day (the pages use it instead of `status.leagues`). The reveal's data:
-  `usePreviewItemNext(itemId)` and `usePreviewRecapNext()`.
-- The reveal ("what happened next", `components/Reveal.tsx`, `RevealItem.tsx`, `lib/reveal.ts`,
-  `lib/revealItem.ts`) sits behind a button and fetches nothing until opened. On the recap the button is a
-  bar fixed to the bottom of the screen (z-20, under popups; the body gets `has-reveal-bar`
-  padding while it's shown), so it can be flipped from anywhere on the page; on Price check
-  it's in the reveal's box, which sits right under the price chart. Price check: the
-  typical price (median of 6 hours, in Divines; Chaos for the Divine Orb) 1 and 3 days after
-  the day's last hour, against that day's calls (Sell held if it fell, Hold if it didn't),
-  and the path to `next_until` greyed past the day (the chart starts 2 days before the day's end, so the launch spike doesn't set its scale), under the day's outlook band (the item
-  chart's `outlookBand` from that day's snapshot, never recomputed from what came next; the
-  user, 2026-10-27: to see how the prediction held up). Market recap: a tally of the page's
-  trades and what following their orders made, and on each card its next hours (paid / lost /
-  didn't fill / no order), what the recap's own order did the next hour and whether it still
-  paid a day later.
-- The paper portfolio (`/portfolio`, `pages/Portfolio.tsx`, `lib/portfolio.ts`; in the menu
-  only while the preview is on): stake Divines (10 each by default, up to 8 items) on items
-  as they stood at the end of the chosen day, step the clock forward an hour or a day (or
-  drag it) to `next_until`, and see the worth against keeping the Divines, or Chaos (the
-  Divine Orb's path). Prices are the reveal's typical ones (median of 6 hours), carried
-  through hours without trades; an item that hadn't traded by the day's end buys nothing.
-  The chart is drawn only up to the clock. It reads only `next/price-check/{item}`
-  documents (one per staked item, plus the Divine Orb's) and keeps its stakes in this
-  browser (`eb-portfolio` in localStorage, in memory where storage is blocked): no
-  accounts, nothing sent. Items are added from its own search (the day's Price check
-  list), the day's Launch picks, or the "Add to paper portfolio" button on Price check
-  and the Launch market (`components/PortfolioAdd.tsx`). The page is a lazy chunk; the
-  first visit carries only the menu entry and the route (~0.4 kB).
+  chosen day (the pages use it instead of `status.leagues`). While a trading game runs,
+  `useMissed` reads the game's hour instead (`useGameHour(n)`, `game/{n}`). The reveal's
+  data: `usePreviewItemNext(itemId)`.
+- The reveal ("what happened next", `components/Reveal.tsx`, `RevealItem.tsx`,
+  `lib/revealItem.ts`, Price check only) sits behind a button in its box, right under the
+  price chart, and fetches nothing until opened: the typical price (median of 6 hours, in
+  Divines; Chaos for the Divine Orb) 1 and 3 days after the day's last hour, against that
+  day's calls (Sell held if it fell, Hold if it didn't), and the path to `next_until`
+  greyed past the day (the chart starts 2 days before the day's end, so the launch spike
+  doesn't set its scale), under the day's outlook band (the item chart's `outlookBand` from
+  that day's snapshot, never recomputed from what came next; the user, 2026-10-27: to see
+  how the prediction held up). The recap has the trading game instead.
+- The trading game ([below](#the-trading-game)): "Trade this hour" on the recap's loops,
+  cards and flips, and a bar fixed to the bottom of the recap with the player's Divines
+  and "Next hour" (`components/Game.tsx`, a lazy chunk; z-20, under popups, and the body
+  gets `has-game-bar` padding while it's shown). The Portfolio page (`/portfolio`,
+  `pages/Portfolio.tsx`, in the menu only while the preview is on) lists the open trades
+  (a held flip's listing can be changed, or it can be sold now) and the history of closed
+  ones with what each made or lost, and starts over.
 - Usage events for the preview (`api/usage.py` FEATURES, `lib/usage.ts`):
   `trackFeature('preview-day')` when a visitor picks a day, `'preview-reveal'` when they
-  open "what happened next", `'preview-cta'` for its call to action, and v2's
-  `'portfolio-add'` / `'portfolio-step'` ([usage.md](usage.md#the-preview)).
+  open "what happened next", `'preview-cta'` for its call to action, and the trading
+  game's `'game-trade'` / `'game-step'` ([usage.md](usage.md#the-preview)).
 
-### Did it pay the next hour?
+### The trading game
 
-`d{day}/recap-next` replays each recap trade with the Backtest's fill code
-(`analysis/backtest.loop_order_fills` / `card_order_fills`, `analysis/flips.hold`), fed by
-`preview/build.recap_next`. Each of the 24 hours after the day's last hour, the recap's own
-order is priced from the hour before, as the recap prices it (the first is the very order the
-recap showed), and placed when the recap would call it ok: a loop or a card set that still pays
-from the bid at that hour's worst prices, an item still liquid and volatile enough to flip.
-Loops and cards are ordered as the Market recap orders them (whole lots), flips listed and cut
-1% an hour for 24 hours, then dumped at the low (the Backtest holds 72). A fill counts when a
-trade that hour went past the order (`touch`, the recap's chances count the same way), at most
-a tenth of what traded and 10 Divines an order. Per hour: `paid` (filled and made money; false:
-didn't fill or lost; null: no order, or the sale isn't known by `next_until`), `filled`, `pnl`
-(Chaos); per trade the counts and `profit`. Random-reward cards aren't replayed (the Backtest
-can't price their reward), so they have no entry. A snapshot built before 2026-10-27 has only
-`paid` (the recap's own test each hour); the page reads it that way until it's rebuilt.
+The user's design (2026-10-27): players start with 10 Divines at the end of the chosen
+day and play the rewound league hour by hour, trading only what the Market recap lists,
+so the only way up is trading. The rules are `lib/game.ts`; the state is `eb-game` in
+localStorage (in memory where storage is blocked): no accounts, nothing sent.
+
+- **Hours.** `game/{n}` is the site `n` hours after launch (its latest hour is
+  `launch + n − 1 h`), for every `n` from the first day's end to `next_until`
+  (`manifest.game`: `first`, `last`). A game starts at the chosen day's end; while it runs,
+  the recap shows its hour (the strip says so and hides the day picker there). "Next hour"
+  loads one document (cached a day by the browser and Cloudflare under the snapshot's
+  version); a full game from day 1 to day 10 is about 216 requests, no database read.
+- **Loops and card turn-ins.** Each hour's document carries the recap's own order for each
+  (`preview/build.game_hours`), filled by the Backtest's rules (`loop_order_fills` /
+  `card_order_fills`, a fill when a trade went past the order, at most a tenth of what
+  traded and 10 Divines an order): `filled` (null: no order, it didn't pay from the bid),
+  `spent` and `pnl` (Chaos) and `settle_at` (the hour it sold). A player's stake fills up to
+  `spent`, the rest comes back the next hour, and what filled earns `pnl / spent` and is
+  tied up until `settle_at`. A sale not known by `next_until` stays open at what it cost.
+  Random-reward cards aren't offered (the Backtest can't price them).
+- **Flips** are held positions, played in the browser from each hour's Chaos prices (low,
+  average, high, items traded) of every item the game lists to flip. The bid (the recap's)
+  fills the next hour if a trade went under it, up to a tenth of the hour's trades and 10
+  Divines; then the items are listed from the hour after at the recap's ask, cut by its
+  `cut` each hour, unless the player sets a price, and sell when a trade goes over the
+  listing, a tenth of the hour's trades at most. "Sell now" takes the hour's lowest trade.
+  A held item counts at its latest average price.
+- One order a trade an hour (the market's share can't be taken twice).
 
 ## Operations
 

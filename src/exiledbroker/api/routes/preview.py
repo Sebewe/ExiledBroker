@@ -17,9 +17,9 @@ from exiledbroker.api.deps import Payload
 from exiledbroker.api.models import (
     LaunchWindow,
     MissedWindow,
+    PreviewGameHour,
     PreviewItemNext,
     PreviewManifest,
-    PreviewRecapNext,
     PriceCheckIndex,
     PriceCheckItem,
 )
@@ -34,8 +34,8 @@ PREVIEW_CACHE_CONTROL = "public, max-age=86400"
 # What /api/preview/{key} can send, by key (preview/snapshot.py): typed for the frontend.
 PreviewDocument = (
     PreviewManifest
-    | PreviewRecapNext
     | PreviewItemNext
+    | PreviewGameHour
     | PriceCheckIndex
     | PriceCheckItem
     | list[MissedWindow]
@@ -77,8 +77,8 @@ Key = Annotated[
     PathParam(
         max_length=snapshot.MAX_KEY,
         description="`manifest`, `d{day}/missed`, `d{day}/price-check`, "
-        "`d{day}/price-check/{item_id}`, `d{day}/launch-picks`, `d{day}/recap-next` or "
-        "`next/price-check/{item_id}`; 404 unless the snapshot holds it.",
+        "`d{day}/price-check/{item_id}`, `d{day}/launch-picks`, "
+        "`next/price-check/{item_id}` or `game/{n}`; 404 unless the snapshot holds it.",
     ),
 ]
 

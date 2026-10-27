@@ -43,7 +43,7 @@ PAGES = [
     "/",
     "/launch",
     "/price-check",
-    "/portfolio",  # the pre-launch preview's paper portfolio
+    "/portfolio",  # the pre-launch preview's trading game: the player's trades
     "/research",
     "/research/notes",
     "/research/method",
@@ -65,8 +65,8 @@ FEATURES = [
     "preview-day",  # picked another day of the rewound league
     "preview-reveal",  # opened "what happened next"
     "preview-cta",  # followed the preview's call to action (the countdown, the live site)
-    "portfolio-add",  # paper portfolio (v2): staked an item
-    "portfolio-step",  # paper portfolio (v2): stepped forward a day
+    "game-trade",  # trading game: placed a trade
+    "game-step",  # trading game: stepped to the next hour
 ]
 SITE = "site"  # every page view, also counted on its own: the site's visitors
 EVENTS = frozenset([*(f"page:{p}" for p in PAGES), *(f"feature:{f}" for f in FEATURES)])

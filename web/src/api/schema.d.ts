@@ -872,6 +872,65 @@ export interface components {
             league: components["schemas"]["LiveLeague"];
         };
         /**
+         * PreviewGameHour
+         * @description `game/{n}`: the trading game's hour, n hours after launch (lib/game.ts): the
+         *     Market recap then, the orders a player could take, and the Chaos prices (low,
+         *     average, high, items traded) of the items the game lists to flip, which the browser
+         *     fills and sells against.
+         */
+        PreviewGameHour: {
+            /** Divine Chaos */
+            divine_chaos: number | null;
+            /**
+             * Latest Hour
+             * Format: date-time
+             */
+            latest_hour: string;
+            /** Orders */
+            orders: components["schemas"]["PreviewGameOrder"][];
+            /** Prices */
+            prices: {
+                [key: string]: (number | null)[];
+            };
+            /** Recap */
+            recap: components["schemas"]["MissedWindow"][];
+        };
+        /**
+         * PreviewGameOrder
+         * @description A loop or card turn-in a player can take in one of the game's hours: the recap's
+         *     own order that hour, filled by the Backtest's rules (analysis/backtest.py). A fill
+         *     counts when some trade that hour went past the order, at most a tenth of what traded
+         *     and 10 Divines an order.
+         *     A player's stake fills up to `spent` and earns `pnl / spent` on it; it's tied up
+         *     until `settle_at`.
+         */
+        PreviewGameOrder: {
+            /** Direction */
+            direction?: string | null;
+            /** Filled */
+            filled: boolean | null;
+            /** Item Id */
+            item_id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "loop" | "card";
+            /** Pnl */
+            pnl: number | null;
+            /** Settle At */
+            settle_at: string | null;
+            /** Spent */
+            spent: number | null;
+        };
+        /** PreviewGameRange */
+        PreviewGameRange: {
+            /** First */
+            first: number;
+            /** Last */
+            last: number;
+        };
+        /**
          * PreviewItemNext
          * @description An item's whole series in the preview's league, from launch to `next_until`
          *     (day 10's end), for "what happened next" after the chosen day. Same points as
@@ -899,7 +958,8 @@ export interface components {
          * @description The pre-launch preview's snapshot (docs/preview.md, `eb preview build`): a past
          *     league's early days, served from /api/preview/{key}. Keys: `manifest` (this),
          *     `d{day}/missed`, `d{day}/price-check`, `d{day}/price-check/{item_id}`,
-         *     `d{day}/launch-picks`, `d{day}/recap-next` and `next/price-check/{item_id}`.
+         *     `d{day}/launch-picks`, `next/price-check/{item_id}` and the trading game's
+         *     `game/{n}`.
          */
         PreviewManifest: {
             /**
@@ -911,6 +971,7 @@ export interface components {
             days: components["schemas"]["PreviewDay"][];
             /** Default Day */
             default_day: number;
+            game?: components["schemas"]["PreviewGameRange"] | null;
             /** Launched At */
             launched_at: string | null;
             /** League */
@@ -919,77 +980,6 @@ export interface components {
             next_until: string | null;
             /** Version */
             version: string;
-        };
-        /**
-         * PreviewRecapNext
-         * @description `d{day}/recap-next`: every loop, card turn-in and flip in that day's recap
-         *     (`d{day}/missed`, all look-backs), and whether it kept paying.
-         */
-        PreviewRecapNext: {
-            /** Hours */
-            hours: number;
-            /**
-             * Latest Hour
-             * Format: date-time
-             */
-            latest_hour: string;
-            /** Trades */
-            trades: components["schemas"]["PreviewTradeNext"][];
-        };
-        /**
-         * PreviewTradeNext
-         * @description What one of the recap's trades did in the 24 hours after the chosen day's last
-         *     hour, if a player had followed it: each hour, the recap's own order for it, priced
-         *     from the hour before (the first is the very order the recap showed), and filled by
-         *     the Backtest's rules (analysis/backtest.py, preview/build.recap_next). A fill counts
-         *     when some trade that hour went past the order (the optimistic way, as the recap's
-         *     chances count it), at most a tenth of what traded and 10 Divines an order.
-         */
-        PreviewTradeNext: {
-            /** Direction */
-            direction?: string | null;
-            /**
-             * Filled
-             * @default []
-             */
-            filled: (boolean | null)[];
-            /**
-             * Fills
-             * @default 0
-             */
-            fills: number;
-            /** Item Id */
-            item_id: string;
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "loop" | "card" | "flip";
-            /** Next Hour Paid */
-            next_hour_paid: boolean | null;
-            /**
-             * Orders
-             * @default 0
-             */
-            orders: number;
-            /** Paid */
-            paid: (boolean | null)[];
-            /** Paid Hours */
-            paid_hours: number;
-            /**
-             * Pnl
-             * @default []
-             */
-            pnl: (number | null)[];
-            /**
-             * Profit
-             * @default 0
-             */
-            profit: number;
-            /** Still Paid */
-            still_paid: boolean | null;
-            /** Traded Hours */
-            traded_hours: number;
         };
         /**
          * PriceCheckIndex
@@ -1509,7 +1499,7 @@ export interface operations {
             };
             header?: never;
             path: {
-                /** @description `manifest`, `d{day}/missed`, `d{day}/price-check`, `d{day}/price-check/{item_id}`, `d{day}/launch-picks`, `d{day}/recap-next` or `next/price-check/{item_id}`; 404 unless the snapshot holds it. */
+                /** @description `manifest`, `d{day}/missed`, `d{day}/price-check`, `d{day}/price-check/{item_id}`, `d{day}/launch-picks`, `next/price-check/{item_id}` or `game/{n}`; 404 unless the snapshot holds it. */
                 key: string;
             };
             cookie?: never;
@@ -1522,7 +1512,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PreviewManifest"] | components["schemas"]["PreviewRecapNext"] | components["schemas"]["PreviewItemNext"] | components["schemas"]["PriceCheckIndex"] | components["schemas"]["PriceCheckItem"] | components["schemas"]["MissedWindow"][] | components["schemas"]["LaunchWindow"][];
+                    "application/json": components["schemas"]["PreviewManifest"] | components["schemas"]["PreviewItemNext"] | components["schemas"]["PreviewGameHour"] | components["schemas"]["PriceCheckIndex"] | components["schemas"]["PriceCheckItem"] | components["schemas"]["MissedWindow"][] | components["schemas"]["LaunchWindow"][];
                 };
             };
             /** @description Validation Error */

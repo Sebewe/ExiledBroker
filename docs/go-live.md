@@ -143,7 +143,7 @@ Before the launch the site is a **preview** ([preview.md](preview.md)): Allflame
 
 **Turning it off by hand** (a broken snapshot, or to stop it early): `EB_PREVIEW=off` on the web service and redeploy. The pages fall back to the live league (Allflame, shown as ended, with the next league's date).
 
-**Usage counts.** The preview's own events (`feature:preview-day`, `feature:preview-reveal`, `feature:preview-cta`, and v2's `portfolio-add` / `portfolio-step`) show on `/admin` with the rest ([usage.md](usage.md#the-preview)). Whether to reset the counts at launch is left for then; `usage_daily` is per day, so the launch's numbers can be read from Nov 13 on either way.
+**Usage counts.** The preview's own events (`feature:preview-day`, `feature:preview-reveal`, `feature:preview-cta`, and the trading game's `game-trade` / `game-step`) show on `/admin` with the rest ([usage.md](usage.md#the-preview)). Whether to reset the counts at launch is left for then; `usage_daily` is per day, so the launch's numbers can be read from Nov 13 on either way.
 
 **Spike readiness before posting** (an earlier screenshot post got ~6k views; a link brings visitors in a burst over a few hours, all on the same few URLs):
 

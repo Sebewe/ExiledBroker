@@ -5,6 +5,7 @@ import { useServerNow, useStatus } from '../api/queries'
 import type { Upcoming } from '../api/client'
 import { clock, launchDay } from '../lib/countdown'
 import { utcHour } from '../lib/format'
+import { gameHour, useGame } from '../lib/gameStore'
 import { usePreview } from '../lib/preview'
 import { trackFeature } from '../lib/usage'
 
@@ -103,17 +104,33 @@ export function DayPicker() {
 /** Under the header while the preview is on: what's shown, the next launch, the picker. */
 export function PreviewStrip() {
   const preview = usePreview()
+  const s = useGame()
   const upcoming = useStatus().data?.upcoming
   const { pathname } = useLocation()
   if (!preview.on) return null
-  const picker = PICKER_PAGES.some((re) => re.test(pathname))
+  // On the recap while a trading game runs, the game's clock sets the hour (Game.tsx):
+  // the picker comes back once it's started over.
+  const game = pathname === '/' ? gameHour(s, preview.manifest?.league) : 0
+  const picker = !game && PICKER_PAGES.some((re) => re.test(pathname))
+  const launched = preview.manifest?.launched_at
   return (
     <div role="region" aria-label="Preview" className="border-b border-accent/25 bg-accent/5">
       <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2 text-sm text-muted">
         <p className="min-w-0 flex-1 basis-72 leading-relaxed">
-          You're looking at <strong className="font-semibold text-text">{preview.manifest?.league}</strong> on{' '}
-          <strong className="font-semibold text-text">day {preview.day}</strong>
-          {preview.hour && <> ({utcHour(preview.hour)})</>}, real data rewound. <NextLeague upcoming={upcoming} />
+          {game && launched ? (
+            <>
+              You're trading <strong className="font-semibold text-text">{preview.manifest?.league}</strong> on{' '}
+              <strong className="font-semibold text-text">day {Math.max(1, Math.ceil(game / 24))}</strong> ({utcHour(new Date(Date.parse(launched) + (game - 1) * 3_600_000).toISOString())}), real
+              data rewound.
+            </>
+          ) : (
+            <>
+              You're looking at <strong className="font-semibold text-text">{preview.manifest?.league}</strong> on{' '}
+              <strong className="font-semibold text-text">day {preview.day}</strong>
+              {preview.hour && <> ({utcHour(preview.hour)})</>}, real data rewound.
+            </>
+          )}{' '}
+          <NextLeague upcoming={upcoming} />
         </p>
         {picker && <DayPicker />}
       </div>

@@ -36,16 +36,25 @@ class PreviewDay(BaseModel):
     league: LiveLeague  # latest_hour: the day's last loaded hour; divine_chaos: its rate
 
 
+class PreviewGameRange(BaseModel):
+    first: int  # hours since launch: the first day's end
+    last: int
+
+
 class PreviewManifest(BaseModel):
     """The pre-launch preview's snapshot (docs/preview.md, `eb preview build`): a past
     league's early days, served from /api/preview/{key}. Keys: `manifest` (this),
     `d{day}/missed`, `d{day}/price-check`, `d{day}/price-check/{item_id}`,
-    `d{day}/launch-picks`, `d{day}/recap-next` and `next/price-check/{item_id}`."""
+    `d{day}/launch-picks`, `next/price-check/{item_id}` and the trading game's
+    `game/{n}`."""
 
     league: str
     launched_at: datetime | None
     days: list[PreviewDay]  # in order
     default_day: int  # one of `days`
+    # The trading game's hours since launch (lib/game.ts): `game/{n}` for every n from
+    # `first` to `last`. Null in a snapshot built before 2026-10-27: no game.
+    game: PreviewGameRange | None = None
     next_until: datetime | None  # the next/price-check series' last hour (day 10's last)
     built_at: datetime
     # Changes with every build: the pages send it as `v` and key their caches on it.
@@ -597,40 +606,31 @@ class PreviewItemNext(BaseModel):
     series: list[tuple[datetime, float | None, float | None]]
 
 
-class PreviewTradeNext(BaseModel):
-    """What one of the recap's trades did in the 24 hours after the chosen day's last
-    hour, if a player had followed it: each hour, the recap's own order for it, priced
-    from the hour before (the first is the very order the recap showed), and filled by
-    the Backtest's rules (analysis/backtest.py, preview/build.recap_next). A fill counts
-    when some trade that hour went past the order (the optimistic way, as the recap's
-    chances count it), at most a tenth of what traded and 10 Divines an order."""
+class PreviewGameOrder(BaseModel):
+    """A loop or card turn-in a player can take in one of the game's hours: the recap's
+    own order that hour, filled by the Backtest's rules (analysis/backtest.py). A fill
+    counts when some trade that hour went past the order, at most a tenth of what traded
+    and 10 Divines an order.
+    A player's stake fills up to `spent` and earns `pnl / spent` on it; it's tied up
+    until `settle_at`."""
 
-    kind: Literal["loop", "card", "flip"]
-    item_id: str  # with `kind` (and `direction` for loops), matches the recap's row
-    direction: str | None = None  # loops: chaos_first | divine_first
-    # Each known hour after, in order (PreviewRecapNext.hours of them): true, the order
-    # filled and made money once sold; false, it didn't fill or lost; null, no order that
-    # hour (the trade didn't pay, or didn't from the bid), or the sale isn't known yet.
-    paid: list[bool | None]
-    paid_hours: int
-    traded_hours: int  # hours an order was placed, with its outcome known
-    next_hour_paid: bool | None  # the recap's own order; null: it wasn't placed, or unknown
-    # Paid in any of hours 19–24 after: a day later it still worked. Null with fewer
-    # than 24 hours known.
-    still_paid: bool | None
-    # Per hour, as `paid`: did the order fill (null: none placed), and what it made in
-    # Chaos once sold (null: no fill, or the sale isn't known).
-    filled: list[bool | None] = []
-    pnl: list[float | None] = []
-    orders: int = 0  # hours an order was placed
-    fills: int = 0  # of them, filled
-    profit: float = 0.0  # Chaos, summed over the known fills
+    kind: Literal["loop", "card"]
+    item_id: str
+    direction: str | None = None
+    filled: bool | None  # null: no order that hour (it didn't pay from the bid)
+    spent: float | None  # Chaos the filled order spent
+    pnl: float | None  # Chaos it made once sold; null: unfilled, or not sold by the end
+    settle_at: datetime | None  # the hour it sold
 
 
-class PreviewRecapNext(BaseModel):
-    """`d{day}/recap-next`: every loop, card turn-in and flip in that day's recap
-    (`d{day}/missed`, all look-backs), and whether it kept paying."""
+class PreviewGameHour(BaseModel):
+    """`game/{n}`: the trading game's hour, n hours after launch (lib/game.ts): the
+    Market recap then, the orders a player could take, and the Chaos prices (low,
+    average, high, items traded) of the items the game lists to flip, which the browser
+    fills and sells against."""
 
-    latest_hour: datetime  # the chosen day's last hour, as in d{day}/missed
-    hours: int  # hours known after it: 24, fewer near the snapshot's end
-    trades: list[PreviewTradeNext]
+    latest_hour: datetime
+    divine_chaos: float | None
+    recap: list[MissedWindow]
+    orders: list[PreviewGameOrder]
+    prices: dict[str, list[float | None]]
