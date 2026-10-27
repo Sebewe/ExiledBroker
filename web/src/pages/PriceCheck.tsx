@@ -26,6 +26,8 @@ import {
   inRange,
   isLater,
   outlookBand,
+  pathLabel,
+  type PathPoint,
   priceChartOption,
   RANGES,
   rangeBounds,
@@ -33,6 +35,7 @@ import {
   VERDICT_SHORT,
   VERDICT_WORD,
   type Range,
+  typicalPath,
 } from '../lib/priceCheck'
 import { usePreview } from '../lib/preview'
 import { queryFallback } from '../lib/queryFallback'
@@ -298,11 +301,15 @@ function VerdictCard({ item }: { item: PriceCheckItem }) {
       </section>
     )
   const noHistory = !hasHistory(o.h24) && !hasHistory(o.d3)
+  const path = typicalPath(o)
   return (
     <section aria-label="Verdict" className="flex flex-col gap-3 rounded-xl border border-accent/30 bg-surface p-4 sm:p-5">
-      <h3 className="flex items-center gap-2 font-semibold">
-        <Scale aria-hidden className="size-4 text-accent" /> Sell now or hold?
-      </h3>
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="flex items-center gap-2 font-semibold">
+          <Scale aria-hidden className="size-4 text-accent" /> Sell now or hold?
+        </h3>
+        {path && <PathSpark path={path} />}
+      </div>
       <div className="grid gap-3 sm:grid-cols-2">
         <HorizonCard title="Next 24 hours" h={o.h24} horizon="h24" />
         <HorizonCard title="Next 3 days" h={o.d3} horizon="d3" />
@@ -331,6 +338,47 @@ function HorizonCard({ title, h, horizon }: { title: string; h: Horizon; horizon
       <p className={`text-xl font-semibold ${verdict === 'sell' ? 'text-accent-strong' : verdict === 'hold' ? 'text-text' : 'text-muted'}`}>{VERDICT_WORD[verdict]}</p>
       <p className="text-sm text-muted">{reason(h, horizon)}</p>
     </div>
+  )
+}
+
+const SPARK = { w: 132, h: 44, pad: 4, labels: 10 }
+
+/** The typical path past leagues took from this point, at a glance: a dashed line at
+ *  today's price, the range as a faint band, the typical change as a line through now, 24
+ *  hours and 3 days (spaced by time). An inline SVG, so it costs the bundle nothing. */
+function PathSpark({ path }: { path: PathPoint[] }) {
+  const { w, h, pad, labels } = SPARK
+  const values = path.flatMap((p) => [p.typical, p.low ?? p.typical, p.high ?? p.typical])
+  // At least ±2% tall, so a flat path stays flat rather than filling the box with noise.
+  let lo = Math.min(0, ...values)
+  let hi = Math.max(0, ...values)
+  const short = 0.04 - (hi - lo)
+  if (short > 0) [lo, hi] = [lo - short / 2, hi + short / 2]
+  const x = (hours: number) => pad + (hours / 72) * (w - 2 * pad)
+  const y = (v: number) => pad + ((hi - v) / (hi - lo)) * (h - labels - 2 * pad)
+  const pts = (get: (p: PathPoint) => number) => path.map((p) => `${x(p.hours).toFixed(1)},${y(get(p)).toFixed(1)}`)
+  const band = [...pts((p) => p.high ?? p.typical), ...pts((p) => p.low ?? p.typical).reverse()].join(' ')
+  const label = pathLabel(path)
+  const last = path[path.length - 1]!
+  return (
+    <svg role="img" aria-label={label} viewBox={`0 0 ${w} ${h}`} width={w} height={h} className="shrink-0 overflow-visible">
+      <title>{label}</title>
+      <polygon points={band} className="fill-accent/15" />
+      <line x1={x(0)} x2={x(72)} y1={y(0)} y2={y(0)} strokeDasharray="2 3" className="stroke-faint" strokeWidth={1} />
+      <polyline points={pts((p) => p.typical).join(' ')} fill="none" className="stroke-accent" strokeWidth={1.75} strokeLinejoin="round" strokeLinecap="round" />
+      {path.map((p) => (
+        <circle key={p.hours} cx={x(p.hours)} cy={y(p.typical)} r={p === last ? 2.5 : 1.75} className="fill-accent" />
+      ))}
+      {[
+        [0, 'now', 'start'],
+        [24, '24h', 'middle'],
+        [72, '3d', 'end'],
+      ].map(([hours, text, anchor]) => (
+        <text key={text} x={x(hours as number)} y={h - 1} textAnchor={anchor as 'start' | 'middle' | 'end'} className="fill-faint" fontSize={9}>
+          {text}
+        </text>
+      ))}
+    </svg>
   )
 }
 

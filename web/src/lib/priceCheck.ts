@@ -285,3 +285,29 @@ export function reason(h: Horizon | null | undefined, horizon: keyof typeof HORI
     return `Past leagues don't agree: over ${HORIZON_TEXT[horizon]} from this point ${who} moved ${range.replace(/, $/, '')}${range ? ', ' : ''}typically ${signedPct(typical, 0)} in Divines (${leagues}).`
   return `In past leagues ${who} ${move} in Divines over ${HORIZON_TEXT[horizon]} from this point (${range}${leagues}).`
 }
+
+// --- The verdict's sparkline ----------------------------------------------------------
+
+/** One point of the typical path: hours from now, and the change from today's price. */
+export type PathPoint = { hours: number; typical: number; low: number | null; high: number | null }
+
+/** The typical path past leagues took from this point, for the verdict's sparkline: today's
+ *  price (no change), then each judged horizon's typical change, with its range. Null when
+ *  no horizon was judged, since a line from one point says nothing. */
+export function typicalPath(o: Outlook | null | undefined): PathPoint[] | null {
+  if (!o) return null
+  const points: PathPoint[] = [{ hours: 0, typical: 0, low: 0, high: 0 }]
+  for (const [h, hours] of [
+    [o.h24, 24],
+    [o.d3, 72],
+  ] as const)
+    if (hasHistory(h)) points.push({ hours, typical: h.typical!, low: h.low, high: h.high })
+  return points.length > 1 ? points : null
+}
+
+/** The sparkline's words, for screen readers and the tooltip: "Typically −3% after 24 hours
+ *  and +4% after 3 days in past leagues, in Divines." */
+export function pathLabel(path: PathPoint[]): string {
+  const at = (p: PathPoint) => `${signedPct(p.typical, 0)} after ${p.hours === 24 ? '24 hours' : '3 days'}`
+  return `Typically ${path.slice(1).map(at).join(' and ')} in past leagues, in Divines.`
+}
