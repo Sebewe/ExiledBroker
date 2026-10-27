@@ -70,6 +70,11 @@
     font-weight: 600;
     letter-spacing: -0.01em;
   }
+  /* The preview's reveal bar (components/Reveal.tsx) is fixed to the bottom: keep the
+     page's end clear of it. */
+  body.has-reveal-bar {
+    padding-bottom: calc(3.5rem + env(safe-area-inset-bottom));
+  }
   /* Numbers line up in columns. */
   table,
   .num {

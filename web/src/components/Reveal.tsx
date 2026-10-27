@@ -1,5 +1,5 @@
 import { Eye, EyeOff, History } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { type ReactNode, useEffect } from 'react'
 import type { PreviewTradeNext } from '../api/client'
 import { usePreview } from '../lib/preview'
 import type { Money } from '../lib/money'
@@ -12,30 +12,50 @@ import { Skeleton } from './QueryState'
 // preview shows it, and nothing is fetched until it's opened. Price check's part is in
 // RevealItem.tsx, so the recap (the first page a visitor sees) doesn't load it.
 
-/** The closed reveal: a prompt and a button. Open, `children` and a way to hide them. */
+/** The reveal: its prompt and, open, `children`, in the page; the toggle is a bar fixed to
+ *  the bottom of the screen, so a visitor can flip it from anywhere on the page (the
+ *  user's choice). The bar sits under the page's popups (z-20, like the header), and the
+ *  body is padded by its height while it's shown (`has-reveal-bar` in index.css). */
 export function RevealPanel({ open, onToggle, prompt, children }: { open: boolean; onToggle: () => void; prompt: ReactNode; children?: ReactNode }) {
+  const preview = usePreview()
+  useEffect(() => {
+    document.body.classList.add('has-reveal-bar')
+    return () => document.body.classList.remove('has-reveal-bar')
+  }, [])
   return (
-    <section aria-label="What happened next" className="flex flex-col gap-3 rounded-xl border border-dashed border-accent/40 bg-surface p-4 sm:p-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <>
+      <section aria-label="What happened next" className="flex flex-col gap-3 rounded-xl border border-dashed border-accent/40 bg-surface p-4 sm:p-5">
         <p className="flex min-w-0 items-start gap-2 text-sm text-muted">
           <History aria-hidden className="mt-0.5 size-4 shrink-0 text-accent" />
           <span>{prompt}</span>
         </p>
-        <button
-          type="button"
-          aria-expanded={open}
-          onClick={() => {
-            if (!open) trackFeature('preview-reveal')
-            onToggle()
-          }}
-          className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-accent/50 bg-accent/15 px-3 py-1.5 text-sm font-semibold text-accent-strong hover:bg-accent/25"
-        >
-          {open ? <EyeOff aria-hidden className="size-4" /> : <Eye aria-hidden className="size-4" />}
-          {open ? 'Hide what happened' : 'Show what happened next'}
-        </button>
+        {open && children}
+      </section>
+      <div role="region" aria-label="Preview reveal" className="fixed inset-x-0 bottom-0 z-20 border-t border-accent/40 bg-bg/90 pb-[env(safe-area-inset-bottom)] shadow-lg shadow-shadow/40 backdrop-blur">
+        <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-3 px-4">
+          <p className="flex min-w-0 items-center gap-2 text-sm text-muted">
+            <History aria-hidden className="size-4 shrink-0 text-accent" />
+            {/* On a phone the button needs the room: just the day. */}
+            <span className="truncate">
+              Day {preview.day}
+              <span className="hidden sm:inline">{open ? ': showing what happened after it' : ': make your call, then check it'}</span>
+            </span>
+          </p>
+          <button
+            type="button"
+            aria-expanded={open}
+            onClick={() => {
+              if (!open) trackFeature('preview-reveal')
+              onToggle()
+            }}
+            className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-accent/50 bg-accent/15 px-3 py-1.5 text-sm font-semibold text-accent-strong hover:bg-accent/25"
+          >
+            {open ? <EyeOff aria-hidden className="size-4" /> : <Eye aria-hidden className="size-4" />}
+            {open ? 'Hide what happened' : 'Show what happened next'}
+          </button>
+        </div>
       </div>
-      {open && children}
-    </section>
+    </>
   )
 }
 
