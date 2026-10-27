@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo } from 'react'
 import type { PriceCheckItem, Verdict } from '../api/client'
 import { usePreviewItemNext } from '../api/queries'
 import type { ChartTokens } from '../lib/chartOptions'
@@ -13,14 +13,14 @@ import { RevealPanel } from './Reveal'
 // The preview's reveal on Price check (docs/preview.md): the price 1 and 3 days after the
 // chosen day against that day's calls, and its path on a chart, greyed past the day.
 
-/** Price check's reveal: the price 1 and 3 days after the chosen day, against its calls. */
-export function ItemReveal({ item, divineChaos }: { item: PriceCheckItem; divineChaos: number | null | undefined }) {
-  const [open, setOpen] = useState(false)
+/** Price check's reveal: the price 1 and 3 days after the chosen day, against its calls.
+ *  Open, its chart takes the place of the item's (the user: one chart, not two). */
+export function ItemReveal({ item, divineChaos, open, onToggle }: { item: PriceCheckItem; divineChaos: number | null | undefined; open: boolean; onToggle: () => void }) {
   const preview = usePreview()
   return (
     <RevealPanel
       open={open}
-      onToggle={() => setOpen(!open)}
+      onToggle={onToggle}
       prompt={`This is ${item.name} as it stood at the end of day ${preview.day}. Make your call, then see what its price did next.`}
     >
       <ItemNext item={item} divineChaos={divineChaos} />
@@ -56,13 +56,13 @@ function ItemNext({ item, divineChaos }: { item: PriceCheckItem; divineChaos: nu
         <LazyChart
           build={build}
           height={260}
-          label={`${next.name}: price in ${unit === 'chaos' ? 'Chaos' : 'Divines'} up to day ${preview.day}, then what came next${band && unit === 'divine' ? ", under that day's outlook range" : ''}`}
+          label={`${next.name}: price in ${unit === 'chaos' ? 'Chaos' : 'Divines'} up to day ${preview.day}, then what came next${band ? ", under that day's outlook range" : ''}`}
         />
       </div>
       <p className="text-xs text-faint">
         Typical prices: the median of the 6 hours before each point, in {unit === 'chaos' ? 'Chaos' : 'Divines, as the calls are judged'}. A Sell call held if the price fell, a Hold call
         if it didn't.
-        {band && unit === 'divine' && ` The shaded range is the outlook as it stood on day ${preview.day}: what past leagues did from there, with the typical path dashed.`}
+        {band && ` The shaded range is the outlook as it stood on day ${preview.day}: what past leagues did from there, with the typical path dashed.`}
       </p>
     </>
   )

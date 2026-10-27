@@ -2,8 +2,8 @@ import { ArrowRight } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { ItemName } from './ItemLink'
 
-// The trading cards on the Market recap: the key
-// item top left, one headline amount top right, a route, and a few facts below.
+// The trading cards on the Market recap: the key item top left, one headline amount top
+// right, a route, a few facts below, and the card's buttons in a bar along the bottom.
 
 export function Pill({ children, accent = false }: { children: ReactNode; accent?: boolean }) {
   return (
@@ -42,6 +42,7 @@ export function Opportunity({
   muted = false,
   children,
   footer,
+  actions,
 }: {
   title: string
   href?: string // the item's Price check
@@ -50,9 +51,10 @@ export function Opportunity({
   muted?: boolean // nothing to gain at the viewer's settings, or its orders never went through
   children: ReactNode
   footer: ReactNode
+  actions?: ReactNode // the card's buttons, in a bar along its bottom edge
 }) {
   return (
-    <li className="flex min-w-0 flex-col gap-3 rounded-lg border border-border bg-surface p-4">
+    <li className="flex min-w-0 flex-col gap-3 rounded-lg border border-border bg-surface p-4 transition-colors duration-150 hover:border-accent/30">
       <div className="flex items-start justify-between gap-3">
         <h3 className="min-w-0 truncate pt-1 font-semibold" title={title}>
           <ItemName name={title} href={href} />
@@ -64,6 +66,8 @@ export function Opportunity({
       </div>
       {children}
       <div className="mt-auto flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted">{footer}</div>
+      {/* Full-width buttons that share the bar, so they line up across a row of cards. */}
+      {actions && <div className="-mx-4 -mb-4 flex flex-wrap items-center gap-2 rounded-b-lg border-t border-border bg-surface-2/40 px-4 py-3">{actions}</div>}
     </li>
   )
 }

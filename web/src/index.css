@@ -34,6 +34,20 @@
   --color-warning: #f0c674;
   --color-info: #93b8f5;
   --color-shadow: #000000;
+
+  /* A gentle glow to draw the eye (the game: Portfolio after a trade, "Next hour" there).
+     Used as motion-safe:animate-*, and the reduced-motion rule below stops it anyway. */
+  --animate-nudge: nudge 1.6s ease-in-out infinite;
+  --animate-nudge-slow: nudge 3.2s ease-in-out infinite;
+  @keyframes nudge {
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 transparent;
+    }
+    50% {
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 40%, transparent);
+    }
+  }
 }
 
 /* Parchment */
@@ -94,37 +108,6 @@
     }
   }
 }
-
-/* The Market recap's ticker: two copies of the row slide left by one copy's width, so
-   the loop is seamless. Paused on hover or focus; still (and scrollable) for anyone
-   who prefers reduced motion. */
-@keyframes ticker {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(-50%);
-  }
-}
-.ticker {
-  mask-image: linear-gradient(to right, transparent, black 2rem, black calc(100% - 2rem), transparent);
-}
-.ticker-track {
-  animation: ticker var(--ticker-duration, 60s) linear infinite;
-}
-.ticker:hover .ticker-track,
-.ticker:focus-within .ticker-track {
-  animation-play-state: paused;
-}
-@media (prefers-reduced-motion: reduce) {
-  .ticker {
-    overflow-x: auto;
-  }
-  .ticker-track {
-    animation: none;
-  }
-}
-
 
 /* A Research note's body (pages/research/Note.tsx): Markdown rendered at build time from
    docs/findings.md, styled here since it isn't JSX. Tokens only, so both themes work. */

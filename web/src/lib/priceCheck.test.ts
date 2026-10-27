@@ -62,6 +62,13 @@ describe('outlookBand', () => {
     expect(outlookBand(s, OUTLOOK, null)).toBeNull()
   })
 
+  it("moves Divine Orb's latest Chaos price by an outlook in Chaos", () => {
+    const s: SeriesPoint[] = series(5).map(([t, c]) => [t, c, null])
+    const band = outlookBand(s, { ...OUTLOOK, unit: 'chaos' }, null)!
+    expect(band[0]!.low).toBe(14)
+    expect(band[2]!.high).toBeCloseTo(14 * 1.02)
+  })
+
   it('is missing without an outlook or a range', () => {
     expect(outlookBand(series(5), null, 200)).toBeNull()
     expect(outlookBand(series(5), { ...OUTLOOK, h24: horizon({ low: null, high: null }), d3: horizon({ low: null, high: null }) }, 200)).toBeNull()
@@ -80,6 +87,8 @@ describe('priceChartOption', () => {
     expect(option.xAxis.name).toBe('Days since league start')
     expect(option.xAxis.min).toBe(0)
     expect(option.xAxis.axisLabel.formatter(3)).toBe('Day 3')
+    // The axis ends at the latest hour: no "Day 7.958333" label there.
+    expect(option.xAxis.axisLabel.formatter(7 + 23 / 24)).toBe('')
     expect(option.series[0]!.data[0]).toEqual([30 / 24, 10])
     expect(option.series[0]!.markArea!.data).toEqual([[{ xAxis: 0 }, { xAxis: 30 / 24 }]])
     // Traded from the first hours: nothing to shade.
@@ -113,6 +122,19 @@ describe('priceChartOption', () => {
     const hexes = JSON.stringify(option).match(/#[0-9a-f]{6}/gi) ?? []
     expect(hexes.filter((h) => !Object.values(TOKENS).includes(h))).toEqual([])
     expect(JSON.stringify(option)).toContain(alpha(TOKENS.info, 0.18))
+  })
+
+  it("draws Divine Orb's band in Chaos, on its one axis", () => {
+    const s: SeriesPoint[] = series(10).map(([t, c]) => [t, c, null])
+    const band = outlookBand(s, { ...OUTLOOK, unit: 'chaos' }, null)
+    const option = priceChartOption(TOKENS, s, rangeBounds(s, '3d')!, band, null, true) as { series: { name: string; yAxisIndex: number }[]; yAxis: unknown[] }
+    expect(option.yAxis).toHaveLength(1)
+    expect(option.series.map((x) => [x.name, x.yAxisIndex])).toEqual([
+      ['Chaos', 0],
+      ['band-low', 0],
+      ['Outlook range', 0],
+      ['Outlook (typical)', 0],
+    ])
   })
 
   it('has no band series without a band', () => {

@@ -47,14 +47,15 @@ export function inRange(series: SeriesPoint[], [from, to]: [number, number]): Se
 
 export type BandPoint = { at: number; low: number; high: number; typical: number | null }
 
-/** The outlook as a band in Divines past the latest hour: the item's latest Divine price
- *  (its own Divine leg, else its latest Chaos price at the league's Divine rate) moved by
- *  each horizon's low, high and typical change. Null without an outlook, a price to start
- *  from, or any horizon with a range. */
+/** The outlook as a band past the latest hour, in the outlook's unit: the item's latest
+ *  Divine price (its own Divine leg, else its latest Chaos price at the league's Divine
+ *  rate), or for Divine Orb (an outlook in Chaos) its latest Chaos price, moved by each
+ *  horizon's low, high and typical change. Null without an outlook, a price to start from,
+ *  or any horizon with a range. */
 export function outlookBand(series: SeriesPoint[], outlook: Outlook | null | undefined, divineChaos: number | null | undefined): BandPoint[] | null {
   const latest = latestHour(series)
   if (!outlook || latest == null) return null
-  const start = anchorDivine(series, divineChaos)
+  const start = outlook.unit === 'chaos' ? anchorChaos(series) : anchorDivine(series, divineChaos)
   if (start == null) return null
   const points: BandPoint[] = [{ at: latest, low: start, high: start, typical: start }]
   for (const [h, hours] of [
@@ -84,12 +85,23 @@ function anchorDivine(series: SeriesPoint[], divineChaos: number | null | undefi
   return null
 }
 
+/** The latest Chaos price in the last day. */
+function anchorChaos(series: SeriesPoint[]): number | null {
+  const latest = latestHour(series)!
+  for (let i = series.length - 1; i >= 0 && Date.parse(series[i]![0]) >= latest - DAY; i--) {
+    const c = series[i]![1]
+    if (c != null) return c
+  }
+  return null
+}
+
 /** Whether a series has any price in Divines. */
 export const hasDivine = (series: SeriesPoint[]) => series.some(([, , d]) => d != null)
 
 /** The chart: Chaos on the left axis, Divines on the right (decided with the user: one
  *  chart shows when an item "rose" in Chaos only because the Divine moved), linear, UTC,
- *  lines broken at missing hours, and the outlook band (in Divines) past the latest hour. */
+ *  lines broken at missing hours, and the outlook band (in Divines, on the right axis)
+ *  past the latest hour. `chaosOnly` (Divine Orb): its Chaos line alone, the band in Chaos. */
 export function priceChartOption(
   t: ChartTokens,
   points: SeriesPoint[],
@@ -98,7 +110,7 @@ export function priceChartOption(
   launchAt?: number | null,
   chaosOnly = false,
 ): EChartsCoreOption {
-  const option = chartOption(t, points, bounds, band, launchAt)
+  const option = chartOption(t, points, bounds, band, launchAt, chaosOnly)
   return chaosOnly ? withoutDivine(option) : option
 }
 
@@ -108,9 +120,9 @@ function withoutDivine(option: EChartsCoreOption): EChartsCoreOption {
   return { ...option, legend: { ...(option.legend as object), data: ['Chaos'] }, yAxis: [(option.yAxis as unknown[])[0]], series }
 }
 
-/** The outlook band's series, in Divines on axis `yAxisIndex`: the range shaded, and the
+/** The outlook band's series, in `unit` on axis `yAxisIndex`: the range shaded, and the
  *  typical path dashed. Also drawn over the preview's reveal, to set the call against what came next. */
-export function outlookBandSeries(t: ChartTokens, band: BandPoint[], yAxisIndex: number) {
+export function outlookBandSeries(t: ChartTokens, band: BandPoint[], yAxisIndex: number, unit: 'chaos' | 'divine' = 'divine') {
   const iso = (ms: number) => new Date(ms).toISOString()
   return [
     // Stacked: an invisible floor at the low edge, then the range on top of it, shaded.
@@ -134,16 +146,16 @@ export function outlookBandSeries(t: ChartTokens, band: BandPoint[], yAxisIndex:
       symbol: 'none',
       color: t.info,
       lineStyle: { type: 'dashed', width: 1.5 },
-      tooltip: { valueFormatter: (v: number | null) => price(v, 'divine') },
+      tooltip: { valueFormatter: (v: number | null) => price(v, unit) },
       data: band.filter((b) => b.typical != null).map((b) => [iso(b.at), b.typical]),
     },
   ]
 }
 
-function chartOption(t: ChartTokens, points: SeriesPoint[], bounds: [number, number], band: BandPoint[] | null, launchAt?: number | null): EChartsCoreOption {
+function chartOption(t: ChartTokens, points: SeriesPoint[], bounds: [number, number], band: BandPoint[] | null, launchAt: number | null | undefined, chaosOnly: boolean): EChartsCoreOption {
   const chaos = { ...line('Chaos', points.map(([at, c]) => [at, c])), yAxisIndex: 0, color: t.accent, lineStyle: { width: 2 }, tooltip: { valueFormatter: (v: number | null) => price(v, 'chaos') } }
   const divine = { ...line('Divine', points.map(([at, , d]) => [at, d])), yAxisIndex: 1, color: t.info, lineStyle: { width: 2 }, tooltip: { valueFormatter: (v: number | null) => price(v, 'divine') } }
-  const bandSeries = band ? outlookBandSeries(t, band, 1) : []
+  const bandSeries = band ? (chaosOnly ? outlookBandSeries(t, band, 0, 'chaos') : outlookBandSeries(t, band, 1)) : []
   const axis = axisStyle(t)
   if (launchAt != null) return sinceLaunch(t, { chaos, divine, bandSeries, axis, bounds, band, launchAt, first: latestFirst(points) })
   return {
@@ -230,7 +242,8 @@ function sinceLaunch(t: ChartTokens, { chaos, divine, bandSeries, axis, bounds, 
       interval: 1,
       ...axis,
       splitLine: { show: false },
-      axisLabel: { ...axis.axisLabel, formatter: (v: number) => `Day ${v}` },
+      // Whole days only: ECharts also labels the axis's end, the latest hour (day 7.958…).
+      axisLabel: { ...axis.axisLabel, formatter: (v: number) => (Math.abs(v - Math.round(v)) < 1e-6 ? `Day ${Math.round(v)}` : '') },
       axisPointer: { label: { formatter: ({ value }: { value: number }) => dayLabel(value) } },
     },
     yAxis: [

@@ -185,10 +185,8 @@ describe('Market recap', () => {
     expect(screen.queryByText(/likely one odd trade/)).not.toBeInTheDocument() // 12% isn't odd
     expect(screen.getByText('20.0div')).toBeInTheDocument() // 4000c traded an hour, at 200c
     expect(screen.getByText('40.0c → 60.0c')).toBeInTheDocument() // under a Divine: Chaos
-    // The ticker scrolls the last hour's movers; its second copy is for the loop only.
-    const ticker = screen.getByRole('region', { name: 'Price changes in the last published hour' })
-    expect(within(ticker).getAllByText('Ancient Orb')).toHaveLength(2)
-    expect(within(ticker).getAllByText('▼ −10%')).toHaveLength(2)
+    // No scrolling ticker (the user, 2026-10-27): the movers are in Market Movers.
+    expect(screen.queryByRole('region', { name: 'Price changes in the last published hour' })).not.toBeInTheDocument()
     expect(screen.getByText('10× Divine Orb')).toBeInTheDocument()
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
   })
@@ -355,8 +353,8 @@ describe('Market recap', () => {
     renderPage()
     const card = await screen.findByRole('link', { name: 'The Sephirot' })
     expect(card).toHaveAttribute('href', '/price-check?league=Allflame&item=currency%3Ae')
-    // In the movers, and once in the ticker (its second copy is for the loop, without links).
-    expect(screen.getAllByRole('link', { name: 'Domination Scarab' })).toHaveLength(2)
+    // In the movers (the ticker that also linked it is gone).
+    expect(screen.getAllByRole('link', { name: 'Domination Scarab' })).toHaveLength(1)
     // Not priced there: plain text, not a link to a dead end.
     expect(screen.getByText('Essence of Horror')).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Essence of Horror' })).not.toBeInTheDocument()

@@ -252,7 +252,7 @@ describe('Price check', () => {
     expect(v(itemPath(SPLINTER))).toEqual(['v1'])
   })
 
-  it('leads the item with the verdict for 24 hours and 3 days, then the chart, the stack seller and the launch premium', async () => {
+  it('shows the chart, then the verdict for 24 hours and 3 days, the stack seller and the launch premium', async () => {
     serve(live())
     renderPage(`/price-check?item=${SPLINTER}&qty=10`)
     const verdict = within(await screen.findByRole('region', { name: 'Verdict' }))
@@ -261,7 +261,9 @@ describe('Price check', () => {
     expect(day.getByText('In past leagues it fell 3% in Divines over the next 24 hours from this point (−9% to +2%, 4 leagues).')).toBeInTheDocument()
     expect(within(verdict.getByRole('group', { name: 'Next 3 days' })).getByText('No clear signal')).toBeInTheDocument()
     expect(verdict.getByText(/Judged in Divines/)).toBeInTheDocument()
-    // The order of the page: verdict, chart, selling, launch.
+    // The order of the page: chart, verdict (under the chart: the user), selling, launch.
+    const chartBlock = screen.getByRole('region', { name: 'Price this league' })
+    expect(chartBlock.compareDocumentPosition(screen.getByRole('region', { name: 'Verdict' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
       'Splinter of Xoph',
       'Price this league',
@@ -429,8 +431,13 @@ describe('Price check in the preview', () => {
     expect(await panel.findAllByText("The preview's data ends before then.")).toHaveLength(2)
     expect(paths()).toContain(`/api/preview/next/price-check/${EXALT}`)
     expect(panel.getByRole('img')).toHaveAttribute('data-series', 'Day 2:27,What came next:3')
+    // Its chart takes the item chart's place (the user: one chart, not two).
+    const block = within(screen.getByRole('region', { name: 'Price this league' }))
+    expect(block.getAllByRole('img')).toHaveLength(1)
+    expect(block.queryByRole('radiogroup', { name: 'Range' })).toBeNull()
     fireEvent.click(panel.getByRole('button', { name: 'Hide what happened' }))
     expect(screen.queryByRole('group', { name: '1 day later' })).toBeNull()
+    expect(await block.findByRole('img', { name: /hourly price in Chaos/ })).toBeInTheDocument()
   })
 
   it("judges the day's calls against what the price did", async () => {

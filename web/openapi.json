@@ -2750,7 +2750,10 @@
             "$ref": "#/components/schemas/PriceHorizon"
           },
           "unit": {
-            "const": "divine",
+            "enum": [
+              "divine",
+              "chaos"
+            ],
             "title": "Unit",
             "type": "string"
           }
