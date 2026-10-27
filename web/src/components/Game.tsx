@@ -148,11 +148,13 @@ export function GameBar() {
   const [busy, setBusy] = useState(false)
   const [news, setNews] = useState<{ n: number; text: string } | null>(null)
   const [error, setError] = useState(false)
+  const shown = clock.playable || !!clock.running
   useEffect(() => {
+    if (!shown) return
     document.body.classList.add('has-game-bar')
     return () => document.body.classList.remove('has-game-bar')
-  }, [])
-  if (!clock.playable && !clock.running) return null
+  }, [shown])
+  if (!shown) return null
   const s = clock.running ? clock.s : null
   const worth = s ? total(s, doc?.divine_chaos) : START_CASH
   const gain = worth - START_CASH

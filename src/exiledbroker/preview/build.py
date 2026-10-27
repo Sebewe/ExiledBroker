@@ -239,6 +239,12 @@ def _orders(
     }
 
 
+def _settled() -> pl.Expr:
+    """The hour an order's sale settled: when it sold, or for one that never did (lost
+    whole), when the Backtest gave up waiting."""
+    return pl.coalesce(pl.col("sell_at"), pl.col("observed_at") + 2 * bt.H + bt.SELL_WITHIN)
+
+
 def _loop_orders(con, league: str, items: list[str], since, until, last_hour) -> dict:
     cross = bt._cross_hours(con, league, items, since)
     hours = cross.filter(pl.col("observed_at") < until).select("observed_at", "item_id")
@@ -251,7 +257,7 @@ def _loop_orders(con, league: str, items: list[str], since, until, last_hour) ->
     # Chaos first spends `buy` Chaos an item; Divines first, `buy` Divines at the hour's rate.
     each = pl.when(pl.col("direction") == "chaos_first").then(pl.col("buy"))
     spent = pl.col("k") * each.otherwise(pl.col("buy") * pl.col("rate"))
-    return _orders(t, ["item_id", "direction"], unknown, spent, pl.col("sell_at"))
+    return _orders(t, ["item_id", "direction"], unknown, spent, _settled())
 
 
 def _card_orders(con, league: str, cards: list[str], since, until, last_hour) -> dict:
@@ -277,7 +283,7 @@ def _card_orders(con, league: str, cards: list[str], since, until, last_hour) ->
     sale_open = pl.col("observed_at") + 2 * bt.H + bt.SELL_WITHIN > last_hour
     unknown = pl.col("filled") & pl.col("sell_at").is_null() & sale_open
     spent = pl.col("k") * pl.col("n") * pl.col("buy")
-    return _orders(t, ["item_id"], unknown, spent, pl.col("sell_at"))
+    return _orders(t, ["item_id"], unknown, spent, _settled())
 
 
 def game_hours(con, league: str, games: dict[int, dict], last_hour: datetime) -> dict:
