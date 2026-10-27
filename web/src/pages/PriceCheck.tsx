@@ -1,5 +1,5 @@
 import { ArrowLeft, Coins, LineChart, Rocket, Scale, TrendingUp } from 'lucide-react'
-import { useCallback, useMemo, type ReactNode } from 'react'
+import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { ApiError, type LiveLeague } from '../api/client'
 import type { Horizon, PriceCheckIndex, PriceCheckItem, PriceCheckListItem, Verdict } from '../api/client'
@@ -267,13 +267,9 @@ function ItemView({
         </h2>
         {item.label && <span className="text-sm text-faint">{item.label}</span>}
       </header>
+      {/* Keyed so the preview's reveal closes again for another item or day. */}
+      <PriceChart key={preview.on ? `${item.item_id}@${preview.day}` : item.item_id} item={item} info={info} reveal={preview.on} />
       <VerdictCard item={item} />
-      <PriceChart
-        item={item}
-        info={info}
-        // The preview's reveal, right under the chart; closed again for another item or day.
-        reveal={preview.on && <ItemReveal key={`${item.item_id}@${preview.day}`} item={item} divineChaos={info.divine_chaos} />}
-      />
       <Selling item={item} money={shown} divineChaos={info.divine_chaos} />
       {!chaosOnly && <LaunchPrices item={item} money={money} divineChaos={info.divine_chaos} />}
     </>
@@ -283,13 +279,13 @@ function ItemView({
 function VerdictCard({ item }: { item: PriceCheckItem }) {
   const o = item.outlook
   // Divine Orb: calls are judged in Divines, and a Divine is always worth one.
-  if (!o)
+  if (!o || item.unit === 'chaos')
     return (
       <section aria-label="Verdict" className="flex items-start gap-2 rounded-xl border border-border bg-surface p-4 text-sm text-muted sm:p-5">
         <Scale aria-hidden className="mt-0.5 size-4 shrink-0 text-accent" />
         <p>
           Every other price on the site is quoted against {item.name}, and Sell or Hold calls are judged in Divines, so it has no call of its own. Its chart is its
-          price in Chaos.
+          price in Chaos{o && (hasHistory(o.h24) || hasHistory(o.d3)) ? ", with the range past leagues' Divine moved in Chaos from this point" : ''}.
         </p>
       </section>
     )
@@ -338,7 +334,9 @@ function HorizonCard({ title, h, horizon }: { title: string; h: Horizon; horizon
   )
 }
 
-function PriceChart({ item, info, reveal }: { item: PriceCheckItem; info: LiveLeague; reveal?: ReactNode }) {
+/** The item's chart; in the preview, with the reveal under it, whose chart replaces it while open. */
+function PriceChart({ item, info, reveal }: { item: PriceCheckItem; info: LiveLeague; reveal: boolean }) {
+  const [revealed, setRevealed] = useState(false)
   const [rangeParam, setRange] = useParam<Range>('range', '3d')
   const range: Range = rangeParam in RANGES ? rangeParam : '3d'
   const { bounds, points, band } = useMemo(() => {
@@ -355,6 +353,15 @@ function PriceChart({ item, info, reveal }: { item: PriceCheckItem; info: LiveLe
     [points, bounds, band, range, chaosOnly],
   )
   const priced = points.filter(([, c, d]) => c != null || d != null).length
+  const panel = reveal && (
+    <ItemReveal item={item} divineChaos={info.divine_chaos} open={revealed} onToggle={() => setRevealed(!revealed)} />
+  )
+  if (revealed)
+    return (
+      <Block id="chart" title="Price this league" icon={LineChart}>
+        {panel}
+      </Block>
+    )
   return (
     <Block id="chart" title="Price this league" icon={LineChart}>
       <div className="flex">
@@ -374,12 +381,17 @@ function PriceChart({ item, info, reveal }: { item: PriceCheckItem; info: LiveLe
           />
         </div>
       )}
-      {reveal}
+      {panel}
       <ul className="flex max-w-3xl flex-col gap-1 text-xs text-faint">
         {priced === 1 && <li>Only one hour has traded so far: the lines start as the next hours are published.</li>}
         {chaosOnly && <li>Its own market's price: how many Chaos a Divine Orb traded for each hour, the rate the site converts every price with.</li>}
         {!chaosOnly && !hasDivine(item.series) && <li>No Divine rate for these hours yet, so there's no Divine line: only its Chaos price.</li>}
-        {band && <li>The shaded range past the latest hour is what past leagues did from this point, in Divines (right axis); the dashed line is the typical path.</li>}
+        {band && (
+          <li>
+            The shaded range past the latest hour is what past leagues did from this point, {chaosOnly ? 'in Chaos' : 'in Divines (right axis)'}; the dashed line is the typical
+            path.
+          </li>
+        )}
         <li>Hourly, UTC. Lines break at hours with no trades.</li>
       </ul>
     </Block>

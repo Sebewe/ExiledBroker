@@ -139,27 +139,34 @@ export function PreviewStrip() {
 }
 
 const SEEN_KEY = 'eb-preview-seen'
+/** The notice comes back this long after it was last accepted (the user, 2026-10-27). */
+export const SEEN_FOR = 4 * 3_600_000
 
-/** The league whose preview this browser has acknowledged (per browser, no cookie). */
-function seenLeague(): string | null {
+/** When this browser last accepted the notice for `league` (per browser, no cookie): null
+ *  if never, for another league, or stored before it kept a time. */
+function seenAt(league: string | undefined): number | null {
   try {
-    return localStorage.getItem(SEEN_KEY)
+    const seen = JSON.parse(localStorage.getItem(SEEN_KEY) ?? 'null') as { league?: string; at?: number } | null
+    return seen?.league === league && typeof seen?.at === 'number' ? seen.at : null
   } catch {
     return null
   }
 }
 
 /**
- * The first visit's notice while the preview is on: centred over a dimmed page, which it
- * blocks until accepted. Remembered per browser for the snapshot's league, so a later
- * preview of another league asks again; never shown when the preview is off.
+ * The visit's notice while the preview is on: centred over a dimmed page, which it blocks
+ * until accepted. It comes back 4 hours after it was last accepted, and for a later
+ * preview of another league; never shown when the preview is off. Decided once per page
+ * load, so it never pops up in the middle of a visit.
  */
 export function PreviewWelcome() {
   const preview = usePreview()
   const league = preview.manifest?.league
-  const [seen, setSeen] = useState(seenLeague)
+  const [loadedAt] = useState(() => Date.now())
+  const [accepted, setAccepted] = useState<string | null>(null)
   const button = useRef<HTMLButtonElement>(null)
-  const open = preview.on && !!league && seen !== league
+  const at = seenAt(league)
+  const open = preview.on && !!league && accepted !== league && (at == null || loadedAt - at >= SEEN_FOR)
 
   useEffect(() => {
     if (!open) return
@@ -174,11 +181,11 @@ export function PreviewWelcome() {
   if (!open) return null
   const accept = () => {
     try {
-      localStorage.setItem(SEEN_KEY, league)
+      localStorage.setItem(SEEN_KEY, JSON.stringify({ league, at: Date.now() }))
     } catch {
       // private browsing: closes for this visit, just isn't remembered
     }
-    setSeen(league)
+    setAccepted(league)
   }
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-bg/80 p-4 backdrop-blur-sm">

@@ -187,5 +187,25 @@ export function reloadGame() {
   for (const l of listeners) l()
 }
 
+// A trade placed since the Portfolio page was last opened: its menu link glows until it is.
+let unseen = false
+const unseenListeners = new Set<() => void>()
+function setUnseen(v: boolean) {
+  if (unseen === v) return
+  unseen = v
+  for (const l of unseenListeners) l()
+}
+export const markTradePlaced = () => setUnseen(true)
+export const markPortfolioSeen = () => setUnseen(false)
+export function useUnseenTrade(): boolean {
+  return useSyncExternalStore(
+    (l) => {
+      unseenListeners.add(l)
+      return () => unseenListeners.delete(l)
+    },
+    () => unseen,
+  )
+}
+
 /** The game's hour for `league`, if one is running there (0: none). */
 export const gameHour = (s: GameState, league: string | undefined) => (league && s.league === league ? s.n : 0)

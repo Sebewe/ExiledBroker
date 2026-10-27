@@ -7,7 +7,7 @@ import { useGameHour } from '../api/queries'
 import { price } from '../lib/format'
 import { hourLabel, useGameClock } from '../lib/gameClock'
 import { buyIn, exchange, hourRate, orderIn, orderLot, placeFlip, placeOrder, placedNow, profit, spendable, startGame, step, tally, total, TRADE_DIVINES } from '../lib/game'
-import { getGame, setGame, START_CHAOS, START_DIV, type GameState } from '../lib/gameStore'
+import { getGame, markTradePlaced, setGame, START_CHAOS, START_DIV, useUnseenTrade, type GameState } from '../lib/gameStore'
 import { fetchPreview, previewKey } from '../lib/preview'
 import { trackFeature } from '../lib/usage'
 
@@ -42,31 +42,33 @@ export function GameTrade(props: TradeProps) {
   const placed = clock.running && placedNow(clock.s, props.kind, itemId, direction)
   const atEnd = clock.range && clock.n >= clock.range.last
 
-  const hint = (text: string) => <p className="text-xs text-faint">{text}</p>
+  // Rendered into the card's button bar (Opportunity's `actions`): the button shares the
+  // row with Show rates; a note or the form takes a row of its own.
+  const hint = (text: string) => <p className="basis-full text-xs text-faint">{text}</p>
   const holding = mine.length > 0 && (
-    <Link to="/portfolio" className="text-xs text-accent hover:text-accent-strong">
+    <Link to="/portfolio" className="order-last basis-full text-xs text-accent hover:text-accent-strong">
       In your portfolio: {chaos(mine.reduce((sum, t) => sum + t.stake, 0))}
     </Link>
   )
   if (atEnd) return hint("The preview's data ends here: start over from the Portfolio page.")
   if (props.kind !== 'flip' && !order)
     return (
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <>
         {hint("No order this hour: it didn't pay from the bid.")}
         {holding}
-      </div>
+      </>
     )
   if (placed)
     return (
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-xs">
+      <>
+        <span className="basis-full text-xs">
           <span className="inline-flex items-center gap-1 font-semibold text-accent-strong">
             <Check aria-hidden className="size-3.5" /> Placed this hour
           </span>
           {swapped && swapped.n === clock.n && <span className="text-muted">, exchanging {div(swapped.div)} for Chaos</span>}
         </span>
         {holding}
-      </div>
+      </>
     )
 
   const rate = hourRate(doc)
@@ -77,6 +79,7 @@ export function GameTrade(props: TradeProps) {
     trackFeature('game-trade')
     setSwapped(next.div < base.div ? { n: clock.n, div: base.div - next.div } : null)
     setGame(next)
+    markTradePlaced()
     setOpen(false)
     setAmount('')
     setError(null)
@@ -84,30 +87,30 @@ export function GameTrade(props: TradeProps) {
   if (!buy) return hint('No price for this trade this hour.')
   if (buy.max < 1)
     return (
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <>
         {hint(
           spendable(base, doc) >= buy.chaos
             ? `One purchase costs ${chaos(buy.chaos)}: more than the ${div(TRADE_DIVINES)} a single trade can take.`
             : `One purchase costs ${chaos(buy.chaos)}: more than your ${chaos(base.chaos)} and ${div(base.div)} can pay.`,
         )}
         {holding}
-      </div>
+      </>
     )
   if (!open)
     return (
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <>
         <button
           type="button"
           onClick={() => {
             setOpen(true)
             setAmount('1')
           }}
-          className="inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-md border border-accent/50 bg-accent/10 px-2.5 text-sm font-semibold text-accent-strong hover:bg-accent/20"
+          className="inline-flex min-h-9 min-w-[8rem] flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-md bg-accent px-2.5 text-sm font-semibold text-bg transition-colors duration-150 hover:bg-accent-strong"
         >
           <Wallet aria-hidden className="size-4" /> Trade this hour
         </button>
         {holding}
-      </div>
+      </>
     )
   const lots = Number(amount)
   const cost = Math.floor(lots) * buy.chaos
@@ -119,7 +122,7 @@ export function GameTrade(props: TradeProps) {
       : `${chaos(buy.chaos)}, the smallest whole buy at its bid`
   return (
     <form
-      className="flex flex-col gap-2 rounded-lg border border-accent/30 bg-accent/5 p-3"
+      className="flex basis-full flex-col gap-2 rounded-lg border border-accent/30 bg-accent/5 p-3"
       onSubmit={(e) => {
         e.preventDefault()
         submit(lots)
@@ -193,6 +196,9 @@ export function GameBar({ here }: { here?: 'portfolio' } = {}) {
   const [news, setNews] = useState<{ n: number; text: string } | null>(null)
   const [error, setError] = useState(false)
   const [swap, setSwap] = useState(false)
+  // On Portfolio, "Next hour" glows slowly until it's first pressed: it's what moves the game on.
+  const [stepped, setStepped] = useState(false)
+  const unseen = useUnseenTrade()
   const shown = clock.playable || !!clock.running
   useEffect(() => {
     if (!shown) return
@@ -289,16 +295,25 @@ export function GameBar({ here }: { here?: 'portfolio' } = {}) {
             <span className="hidden sm:inline">Exchange</span>
           </button>
           {here !== 'portfolio' && (
-            <Link to="/portfolio" className="inline-flex min-h-9 items-center gap-1.5 rounded-md px-2 text-sm text-muted hover:text-text" aria-label="Your trades">
+            <Link
+              to="/portfolio"
+              className={`inline-flex min-h-9 items-center gap-1.5 rounded-md px-2 text-sm hover:text-text ${unseen ? 'text-accent-strong motion-safe:animate-nudge' : 'text-muted'}`}
+              aria-label="Your trades"
+            >
               <History aria-hidden className="size-4" />
               <span className="hidden sm:inline">Your trades</span>
             </Link>
           )}
           <button
             type="button"
-            onClick={next}
+            onClick={() => {
+              setStepped(true)
+              void next()
+            }}
             disabled={busy || atEnd}
-            className="inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-md border border-accent/50 bg-accent/15 px-3 text-sm font-semibold text-accent-strong hover:bg-accent/25 disabled:cursor-default disabled:opacity-60"
+            className={`inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-md border border-accent/50 bg-accent/15 px-3 text-sm font-semibold text-accent-strong hover:bg-accent/25 disabled:cursor-default disabled:opacity-60 ${
+              here === 'portfolio' && !stepped && !atEnd ? 'motion-safe:animate-nudge-slow' : ''
+            }`}
           >
             <StepForward aria-hidden className="size-4" />
             {atEnd ? 'End of the data' : 'Next hour'}

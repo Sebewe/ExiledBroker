@@ -90,6 +90,11 @@ def test_capture_rebuild_and_fit_on_the_database(loaded, monkeypatch):
     got = paths.filter(item_id=item, bin=first)["h24"][0]
     assert got == pytest.approx(pl.Series([own]).str.json_decode()[0][first])
     assert set(consts["phase"]) == {"days 0-2"} and (consts["leagues"] == f"Past1,{LEAGUE}").all()
+    # Divine Orb's own path, in Chaos (each hour's rate), kept out of the fitted rows.
+    divine = mirage.filter(item_id=price_check.DIVINE_ID)["h24"][0]
+    assert any(v is not None for v in pl.Series([divine]).str.json_decode()[0])
+    assert price_check.DIVINE_ID not in set(rows["item_id"])
+    assert paths.filter(item_id=price_check.DIVINE_ID).height > 0
 
 
 def test_refresh_waits_for_the_fortnight_and_captures_once(loaded, monkeypatch):
@@ -231,7 +236,8 @@ def test_the_list_and_an_item_without_paths(client, loaded):  # noqa: F811
 
 def test_divine_orb_has_its_own_view_in_chaos(client, loaded):  # noqa: F811
     """Divine Orb isn't in cross_market_hour (it is the rate): it is listed from its own
-    market's hourly rows and gets a view priced in Chaos, with no outlook."""
+    market's hourly rows and gets a view priced in Chaos, with an outlook in Chaos that
+    is never a call (no paths here: nothing to judge by)."""
     doc = client.get(f"/api/price-check/{LEAGUE}").json()
     div = next(x for x in doc["items"] if x["item_id"] == price_check.DIVINE_ID)
     assert div["name"] == "Divine Orb" and div["verdict_24h"] == "none"
@@ -242,7 +248,8 @@ def test_divine_orb_has_its_own_view_in_chaos(client, loaded):  # noqa: F811
         latest = price_check.league_state(con, LEAGUE)["latest"]
         rows = price_check.divine_hours(con, LEAGUE)
     item = client.get(f"/api/price-check/{LEAGUE}/{price_check.DIVINE_ID}").json()
-    assert item["unit"] == "chaos" and item["outlook"] is None
+    assert item["unit"] == "chaos" and item["outlook"]["unit"] == "chaos"
+    assert {item["outlook"][h]["state"] for h in ("h24", "d3")} == {"no_history"}
     assert item["launch_prices"] is None and item["stack"]["divine"] is None
     assert len(item["series"]) == len(rows) > 0
     assert all(c > 1 and d is None for _, c, d in item["series"])
@@ -273,6 +280,20 @@ def test_calls_from_past_leagues_paths(client, loaded):  # noqa: F811
     h24 = item["outlook"]["h24"]
     assert h24["state"] == "judged" and h24["verdict"] == "sell" and h24["leagues"] == 3
     assert h24["low"] < h24["typical"] < h24["high"]
+
+
+def test_divine_orb_has_a_band_in_chaos_and_never_a_call(client, loaded):  # noqa: F811
+    _synthetic_paths(loaded, 0.2)
+    with db.session(loaded.db_path) as con:
+        for bin_ in range(30):
+            con.execute(
+                "INSERT INTO price_path VALUES (?, ?, 0.2, 3, 0.2, 3)",
+                [price_check.DIVINE_ID, bin_],
+            )
+    item = client.get(f"/api/price-check/{LEAGUE}/{price_check.DIVINE_ID}").json()
+    h24 = item["outlook"]["h24"]
+    assert item["outlook"]["unit"] == "chaos" and h24["state"] == "judged"
+    assert h24["verdict"] == "none" and h24["low"] < h24["typical"] < h24["high"]
 
 
 def test_no_call_falls_back_to_the_biggest_moves(client, loaded):  # noqa: F811

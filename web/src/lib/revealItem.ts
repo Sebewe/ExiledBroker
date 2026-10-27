@@ -70,7 +70,7 @@ export const REVEAL_LEAD_HOURS = 48
 /** The reveal's chart: the item's price over the 2 days before the cutoff (or from launch,
  *  if that's later) to the snapshot's end in its unit, the chosen day's hours in the
  *  accent and what came after greyed, split at the cutoff,
- *  under the outlook band as it stood that day (`band`, in Divines: the item's chart's,
+ *  under the outlook band as it stood that day (`band`, in the item's unit: the item's chart's,
  *  never recomputed from what came next), so the call can be judged by eye. */
 export function revealChartOption(t: ChartTokens, next: PreviewItemNext, cutoff: string, dayLabel: string, band: BandPoint[] | null = null): EChartsCoreOption {
   const at = Date.parse(cutoff)
@@ -82,8 +82,8 @@ export function revealChartOption(t: ChartTokens, next: PreviewItemNext, cutoff:
   const unit = next.unit === 'chaos' ? 'chaos' : 'divine'
   const fmt = (v: number | null) => price(v, unit)
   const axis = axisStyle(t)
-  // The band is in Divines: an item priced in Chaos (Divine Orb) has none.
-  const shown = unit === 'divine' ? band : null
+  // The band is in the item's unit (Chaos for Divine Orb, whose outlook is in Chaos).
+  const shown = band
   return {
     ...baseOptions(t),
     legend: { ...(baseOptions(t).legend as object), data: shown ? [dayLabel, 'What came next', 'Outlook range'] : [dayLabel, 'What came next'] },
@@ -113,7 +113,7 @@ export function revealChartOption(t: ChartTokens, next: PreviewItemNext, cutoff:
         },
       },
       { ...line('What came next', after), color: alpha(t.muted, 0.9), lineStyle: { width: 2, type: 'dashed' }, tooltip: { valueFormatter: fmt } },
-      ...(shown ? outlookBandSeries(t, shown, 0) : []),
+      ...(shown ? outlookBandSeries(t, shown, 0, unit) : []),
     ],
   }
 }

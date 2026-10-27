@@ -1,5 +1,5 @@
 import { Activity, AlertTriangle, ArrowDown, ArrowDownRight, ArrowRight, ArrowUpRight, CandlestickChart, FlaskConical, Layers, Repeat, Tag, Timer, Waves, X } from 'lucide-react'
-import { lazy, Suspense, useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import type { LiveLeague, MissedCard, MissedFlip, MissedLoop, MissedWindow, Mover, Upcoming } from '../api/client'
 import { useGameHour, useLeagues, useMissed, useServerNow, useStatus } from '../api/queries'
@@ -162,11 +162,9 @@ export default function Missed() {
     )
   }
   const early = hoursIn(info) < EARLY_HOURS
-  const lastHour = w
 
   return (
     <>
-      {lastHour && <Ticker items={lastHour.ticker} money={money} href={href} />}
       {header}
       {names.length > 1 && (
         <div>
@@ -185,8 +183,8 @@ export default function Missed() {
         (queryFallback(summary, 4) ??
           (w ? (
             <>
-              <InvestmentOptions w={w} flips={lastHour?.flips ?? []} />
-              <Flips flips={lastHour?.flips ?? []} money={money} href={href} play={play} />
+              <InvestmentOptions w={w} flips={w.flips} />
+              <Flips flips={w.flips} money={money} href={href} play={play} />
               <Loops w={w} money={money} rate={info.divine_chaos} href={href} play={play} />
               <Cards w={w} money={money} href={href} play={play} />
               <MarketMovers w={w} money={money} href={href} />
@@ -306,42 +304,6 @@ function Big({ value, label, extra }: { value: string; label: string; extra?: st
 /** The likeliest item's recent go-through share, as a bar. */
 function Likely({ value }: { value: number | null }) {
   return <Meter label="Best odds" value={value} hint="How often the likeliest one's orders went through in the last 3 days (optimistic fills)" />
-}
-
-/** A news-style strip of the last hour's movers, scrolling right to left. Two copies of
- *  the row make the loop seamless; the second is hidden from screen readers. */
-function Ticker({ items, money, href }: { items: Mover[]; money: Money; href: ItemHref }) {
-  if (!items.length) return null
-  const row = (copy: boolean) => (
-    <ul className="flex shrink-0 items-center gap-8 pr-8" aria-hidden={copy || undefined}>
-      {items.map((m) => {
-        const up = m.change > 0
-        return (
-          <li key={m.item_id} className="flex shrink-0 items-baseline gap-2 text-sm whitespace-nowrap">
-            {/* The second copy is hidden from screen readers: keep its links out of the tab order too. */}
-            <ItemName name={m.name} href={copy ? undefined : href(m.item_id)} className="text-text" />
-            <span className="num text-xs text-faint">{moneyFor(m.item_id, money)(m.price)}</span>
-            <span className={`num font-medium ${up ? 'text-positive' : 'text-negative'}`}>
-              {up ? '▲' : '▼'} {signedPct(m.change, 0)}
-            </span>
-          </li>
-        )
-      })}
-    </ul>
-  )
-  return (
-    <section
-      aria-label="Price changes in the last published hour"
-      className="ticker -mt-2 overflow-hidden rounded-lg border border-border bg-surface py-2"
-      tabIndex={0}
-    >
-      {/* About 3 seconds an item, whatever the count. */}
-      <div className="ticker-track flex w-max" style={{ '--ticker-duration': `${items.length * 3}s` } as CSSProperties}>
-        {row(false)}
-        {row(true)}
-      </div>
-    </section>
-  )
 }
 
 /** A section: its title, one plain line on what it is (`lead`), the results, and a link to
@@ -626,7 +588,7 @@ function Rates({ label, title, children }: { label: string; title: string; child
   }, [pinned])
   const open = hover || pinned
   return (
-    <div ref={box} className="relative" onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
+    <div ref={box} className="relative min-w-[8rem] flex-1" onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
       <button
         type="button"
         aria-expanded={open}
@@ -637,7 +599,7 @@ function Rates({ label, title, children }: { label: string; title: string; child
         }}
         onFocus={() => setHover(true)}
         onBlur={() => setHover(false)}
-        className={`flex min-h-8 cursor-pointer items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-colors ${
+        className={`flex min-h-9 w-full cursor-pointer items-center justify-center gap-1.5 rounded-md border px-2.5 text-sm font-medium transition-colors ${
           pinned ? 'border-accent/60 bg-accent/15 text-accent-strong' : 'border-border text-muted hover:border-accent/50 hover:text-accent'
         }`}
       >
@@ -739,32 +701,36 @@ function Loops({ w, money, rate, href, play }: { w: MissedWindow; money: Money; 
                     {l.best_edge > ODD_EDGE && <span className="text-warning">unusually large: likely one odd trade</span>}
                   </>
                 }
+                actions={
+                  <>
+                    {play && (
+                      <Suspense fallback={null}>
+                        <GameTrade kind="loop" itemId={l.item_id} name={l.name} direction={l.direction} />
+                      </Suspense>
+                    )}
+                    <Rates label={`Rates for ${l.name}`} title={l.name}>
+                      <Orders
+                        missing={l.bid == null}
+                        ok={l.order_ok}
+                        skip="From this bid it wouldn't pay at the hour's worst sale: skip it this hour."
+                        margin={loopMargin(l, rate)}
+                        steps={loopSteps(l)}
+                      />
+                      <RangeBar
+                        low={l.range_low}
+                        avg={l.range_avg}
+                        high={l.range_high}
+                        hours={l.range_hours}
+                        mark={chaosFirst ? l.bid : l.ask}
+                        markLabel={chaosFirst ? 'your bid' : 'your ask'}
+                        money={money}
+                      />
+                    </Rates>
+                  </>
+                }
               >
                 <Route steps={loopRoute(l.name, l.direction)} item={l.name} />
                 <Chance tries={l.tries} through={l.through} chance={l.chance} />
-                {play && (
-                  <Suspense fallback={null}>
-                    <GameTrade kind="loop" itemId={l.item_id} name={l.name} direction={l.direction} />
-                  </Suspense>
-                )}
-                <Rates label={`Rates for ${l.name}`} title={l.name}>
-                  <Orders
-                    missing={l.bid == null}
-                    ok={l.order_ok}
-                    skip="From this bid it wouldn't pay at the hour's worst sale: skip it this hour."
-                    margin={loopMargin(l, rate)}
-                    steps={loopSteps(l)}
-                  />
-                  <RangeBar
-                    low={l.range_low}
-                    avg={l.range_avg}
-                    high={l.range_high}
-                    hours={l.range_hours}
-                    mark={chaosFirst ? l.bid : l.ask}
-                    markLabel={chaosFirst ? 'your bid' : 'your ask'}
-                    money={money}
-                  />
-                </Rates>
               </Opportunity>
             )
           })}
@@ -807,28 +773,32 @@ function Cards({ w, money, href, play }: { w: MissedWindow; money: Money; href: 
                   <Steady paid={c.hours_paid} hours={w.hours} />
                 </>
               }
+              actions={
+                <>
+                  {/* A random reward can't be priced in the game (nor by the Backtest). */}
+                  {play && !c.worst_roll && (
+                    <Suspense fallback={null}>
+                      <GameTrade kind="card" itemId={c.item_id} name={c.name} />
+                    </Suspense>
+                  )}
+                  <Rates label={`Rates for ${c.name}`} title={c.name}>
+                    <Orders
+                      missing={c.bid == null}
+                      ok={c.order_ok}
+                      skip="A set wouldn't pay from this bid at the reward's lowest price: skip it this hour."
+                      steps={cardSteps(c)}
+                    />
+                    {/* In Chaos, like the orders above it. */}
+                    <RangeBar low={c.range_low} avg={c.range_avg} high={c.range_high} hours={c.range_hours} mark={c.bid} markLabel="your bid" money={inChaos} />
+                  </Rates>
+                </>
+              }
             >
               <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted">
                 a full set turns into <Pill accent>{c.reward}</Pill>
                 {c.worst_roll && <span>random: valued at the cheapest roll</span>}
               </div>
               <Chance tries={c.tries} through={c.through} chance={c.chance} />
-              {/* A random reward can't be priced in the game (nor by the Backtest). */}
-              {play && !c.worst_roll && (
-                <Suspense fallback={null}>
-                  <GameTrade kind="card" itemId={c.item_id} name={c.name} />
-                </Suspense>
-              )}
-              <Rates label={`Rates for ${c.name}`} title={c.name}>
-                <Orders
-                  missing={c.bid == null}
-                  ok={c.order_ok}
-                  skip="A set wouldn't pay from this bid at the reward's lowest price: skip it this hour."
-                  steps={cardSteps(c)}
-                />
-                {/* In Chaos, like the orders above it. */}
-                <RangeBar low={c.range_low} avg={c.range_avg} high={c.range_high} hours={c.range_hours} mark={c.bid} markLabel="your bid" money={inChaos} />
-              </Rates>
             </Opportunity>
           ))}
         </ol>
@@ -972,23 +942,21 @@ function Flips({ flips, money, href, play }: { flips: MissedFlip[]; money: Money
                   <span>average {money(f.price, f.high)}</span>
                 </>
               }
+              actions={
+                <>
+                  {play && (
+                    <Suspense fallback={null}>
+                      <GameTrade kind="flip" flip={f} />
+                    </Suspense>
+                  )}
+                  <Rates label={`Rates for ${f.name}`} title={f.name}>
+                    <Orders missing={false} ok={true} skip="" margin={f.ask / f.bid - 1} steps={flipSteps(f)} />
+                    <RangeBar low={f.low} avg={f.price} high={f.high} hours={1} mark={f.bid} markLabel="your bid" money={money} heading="Latest hour" />
+                  </Rates>
+                </>
+              }
             >
               <Chance tries={f.tries} through={f.through} chance={f.chance} sell="sold within 6 hours at the ask" />
-              {play && (
-                <Suspense fallback={null}>
-                  <GameTrade kind="flip" flip={f} />
-                </Suspense>
-              )}
-              <Rates label={`Rates for ${f.name}`} title={f.name}>
-                <Orders
-                  missing={false}
-                  ok={true}
-                  skip=""
-                  margin={f.ask / f.bid - 1}
-                  steps={flipSteps(f)}
-                />
-                <RangeBar low={f.low} avg={f.price} high={f.high} hours={1} mark={f.bid} markLabel="your bid" money={money} heading="Latest hour" />
-              </Rates>
             </Opportunity>
           ))}
         </ol>

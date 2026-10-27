@@ -473,7 +473,8 @@ class PriceHorizon(BaseModel):
 class PriceOutlook(BaseModel):
     h24: PriceHorizon
     d3: PriceHorizon
-    unit: Literal["divine"]  # the verdict judges in Divines (decided 2026-10-25)
+    # The verdict judges in Divines (decided 2026-10-25); Divine Orb's, a band only, in Chaos.
+    unit: Literal["divine", "chaos"]
 
 
 class StackMarkets(BaseModel):
@@ -524,7 +525,7 @@ class PriceCheckItem(BaseModel):
     # Traded hours over the hosted window (launch fortnight + latest 14 days): [hour,
     # Chaos, Divines at that hour's rate]; lines break where hours are missing.
     series: list[tuple[datetime, float | None, float | None]]
-    outlook: PriceOutlook | None  # null for Divine Orb
+    outlook: PriceOutlook | None  # null before the first hour
     stack: StackMarkets
     launch_prices: LaunchPrices | None
     last_day: list[DayHour]  # the "best time to sell" box: the latest 24 hours' trading

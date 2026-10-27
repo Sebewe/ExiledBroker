@@ -82,8 +82,9 @@ disk stops the build (and the last snapshot stands).
 - `components/Preview.tsx`: the header's pill, the strip under it with the day picker, and
   the first visit's notice (`PreviewWelcome`): a modal over the dimmed page saying the site
   is in preview mode and which league, day and hour it shows, until "Got it" (or Escape).
-  Accepting stores the snapshot's league in localStorage (`eb-preview-seen`), so it shows
-  once per browser, again for a later preview of another league, never when preview is off.
+  Accepting stores the snapshot's league and the time in localStorage (`eb-preview-seen`,
+  `{league, at}`), so it comes back 4 hours later (the user, 2026-10-27; decided once per
+  page load), at once for another league's preview, never when preview is off.
 - `api/queries.ts` is the one switch: while the preview is on, `useMissed`,
   `usePriceCheck`, `usePriceCheckItem` and `useLaunchPicks` read `/api/preview/d{day}/…`
   keyed on the snapshot's version; `useLeagues()` returns the snapshot's league on the

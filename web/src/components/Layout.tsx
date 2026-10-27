@@ -1,5 +1,6 @@
 import { Book, BriefcaseBusiness, CandlestickChart, FlaskConical, Hourglass, Moon, Scale, Sun } from 'lucide-react'
 import { useEffect, type ReactNode } from 'react'
+import { markPortfolioSeen, useUnseenTrade } from '../lib/gameStore'
 import { Link, NavLink, useLocation } from 'react-router'
 import { useRememberedSettings } from '../lib/rememberSettings'
 import { useScrollOnNavigate } from '../lib/scroll'
@@ -16,13 +17,15 @@ import { SocialLinks } from './Social'
 // not a tool to use.
 // The page you're on is filled solid, so it never reads as just another lit-up page.
 // `preview`: only while the pre-launch preview is on (docs/preview.md).
-type Nav = { to: string; label: string; icon: typeof Book; end?: boolean; featured?: boolean; proof?: boolean; preview?: boolean; hint?: string }
+// `side`: on the right, by the theme toggle (the user, 2026-10-27): the tools on the left,
+// your own trades and the proof on the right. On a phone they share one wrapped row.
+type Nav = { to: string; label: string; icon: typeof Book; end?: boolean; featured?: boolean; proof?: boolean; preview?: boolean; hint?: string; side?: boolean }
 const NAV: Nav[] = [
   { to: '/', label: 'Market recap', icon: Hourglass, end: true, featured: true },
   { to: '/price-check', label: 'Price check', icon: Scale, featured: true },
   { to: '/launch', label: 'Launch market', icon: CandlestickChart },
-  { to: '/portfolio', label: 'Portfolio', icon: BriefcaseBusiness, featured: true, preview: true, hint: 'The trading game: your trades on the recap, and what each made or lost' },
-  { to: '/research', label: 'Research', icon: FlaskConical, proof: true, hint: 'The proof behind the tools: the journal, the Backtest and how the tools work' },
+  { to: '/portfolio', label: 'Portfolio', icon: BriefcaseBusiness, preview: true, side: true, hint: 'The trading game: your trades on the recap, and what each made or lost' },
+  { to: '/research', label: 'Research', icon: FlaskConical, proof: true, side: true, hint: 'The proof behind the tools: the journal, the Backtest and how the tools work' },
 ]
 
 /** The tab's title for a path: the page's name first, so tabs and bookmarks tell pages apart. */
@@ -41,7 +44,39 @@ export function Layout({ children }: { children: ReactNode }) {
   const [theme, toggleTheme] = useTheme()
   const { pathname } = useLocation()
   const preview = usePreview()
+  const unseen = useUnseenTrade()
   useScrollOnNavigate()
+  useEffect(() => {
+    if (pathname === '/portfolio') markPortfolioSeen()
+  }, [pathname, unseen])
+  const shown = NAV.filter((n) => !n.preview || preview.on)
+  const navLink = ({ to, label, icon: Icon, end, featured, proof, hint }: Nav) => (
+    <NavLink
+      key={to}
+      to={linkTo(to)}
+      end={end}
+      title={hint}
+      className={({ isActive }) =>
+        `flex min-h-9 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-sm transition-colors duration-150 ${
+          proof
+            ? isActive
+              ? 'border-info bg-info font-semibold text-bg'
+              : 'border-info/30 bg-info/5 font-medium text-info hover:border-info/60'
+            : isActive
+              ? 'border-accent bg-accent font-semibold text-bg'
+              : featured
+                ? 'border-accent/30 bg-accent/5 font-medium text-accent hover:border-accent/60 hover:text-accent-strong'
+                : to === '/portfolio' && unseen
+                  ? 'border-transparent font-medium text-accent-strong motion-safe:animate-nudge'
+                  : 'border-transparent text-muted hover:text-text'
+        }`
+      }
+    >
+      <Icon aria-hidden className="size-4" />
+      {label}
+      {to === '/portfolio' && unseen && <span className="sr-only"> (new trade)</span>}
+    </NavLink>
+  )
   useEffect(() => {
     document.title = pageTitle(pathname)
     // Counted once the visitor has stayed a moment, so a redirect isn't a page view.
@@ -61,34 +96,17 @@ export function Layout({ children }: { children: ReactNode }) {
             <span className="text-accent">Exiled</span>Broker
           </NavLink>
           <PreviewPill />
-          {/* On a phone the menu wraps rather than scrolls, so every page stays in sight. */}
-          <nav aria-label="Main" className="order-3 -mx-1 flex w-full flex-wrap gap-1 md:order-none md:w-auto md:flex-nowrap">
-            {NAV.filter((n) => !n.preview || preview.on).map(({ to, label, icon: Icon, end, featured, proof, hint }) => (
-              <NavLink
-                key={to}
-                to={linkTo(to)}
-                end={end}
-                title={hint}
-                className={({ isActive }) =>
-                  `flex min-h-9 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-sm transition-colors duration-150 ${
-                    proof
-                      ? isActive
-                        ? 'border-info bg-info font-semibold text-bg'
-                        : 'border-info/30 bg-info/5 font-medium text-info hover:border-info/60'
-                      : isActive
-                        ? 'border-accent bg-accent font-semibold text-bg'
-                        : featured
-                          ? 'border-accent/30 bg-accent/5 font-medium text-accent hover:border-accent/60 hover:text-accent-strong'
-                          : 'border-transparent text-muted hover:text-text'
-                  }`
-                }
-              >
-                <Icon aria-hidden className="size-4" />
-                {label}
-              </NavLink>
-            ))}
-          </nav>
-          <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
+          {/* On a phone both menus share one row that wraps rather than scrolls, so every page
+              stays in sight; from tablet width the tools sit left, Portfolio and Research right. */}
+          <div className="order-3 -mx-1 flex w-full flex-wrap gap-1 md:contents">
+            <nav aria-label="Main" className="contents md:flex md:flex-nowrap md:gap-1">
+              {shown.filter((n) => !n.side).map(navLink)}
+            </nav>
+            <nav aria-label="Your trades and research" className="contents md:ml-auto md:flex md:flex-nowrap md:gap-1">
+              {shown.filter((n) => n.side).map(navLink)}
+            </nav>
+          </div>
+          <div className="ml-auto flex items-center gap-1.5 sm:gap-2 md:ml-0">
             <span className="mr-1">
               <FreshnessBadge />
             </span>

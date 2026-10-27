@@ -1112,9 +1112,9 @@ export interface components {
             h24: components["schemas"]["PriceHorizon"];
             /**
              * Unit
-             * @constant
+             * @enum {string}
              */
-            unit: "divine";
+            unit: "divine" | "chaos";
         };
         /**
          * SellHours

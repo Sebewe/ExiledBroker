@@ -97,6 +97,8 @@ describe('Portfolio (the trading game)', () => {
     // The bar steps the clock from here too.
     const bar = within(screen.getByRole('region', { name: 'Trading game' }))
     expect(bar.getByRole('button', { name: 'Next hour' })).toBeEnabled()
+    // ... and glows slowly here until first pressed: it's what moves the game on.
+    expect(bar.getByRole('button', { name: 'Next hour' })).toHaveClass('motion-safe:animate-nudge-slow')
     expect(bar.queryByRole('link', { name: 'Your trades' })).toBeNull()
     // Listed at the recap's ask (auto), or a price of the player's.
     expect(screen.getByText('110.0c')).toBeInTheDocument()

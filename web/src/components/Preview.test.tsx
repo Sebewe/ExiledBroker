@@ -8,6 +8,8 @@ import { FreshnessBanner } from './Freshness'
 import { Layout } from './Layout'
 import { clock } from '../lib/countdown'
 import { trackPage } from '../lib/usage'
+import { act } from 'react'
+import { markTradePlaced } from '../lib/gameStore'
 
 function Where() {
   const l = useLocation()
@@ -113,9 +115,23 @@ describe('preview shell', () => {
     expect(screen.queryByText(/data .* old/)).not.toBeInTheDocument()
   })
 
-  it('adds the trading game\'s portfolio to the menu', async () => {
+  it('adds the trading game\'s portfolio to the menu, on the right with Research', async () => {
     renderAt('/', previewStatus())
-    expect(await screen.findByRole('link', { name: 'Portfolio' })).toHaveAttribute('href', '/portfolio')
+    const side = within(await screen.findByRole('navigation', { name: 'Your trades and research' }))
+    expect(await side.findByRole('link', { name: 'Portfolio' })).toHaveAttribute('href', '/portfolio')
+    expect(side.getByRole('link', { name: 'Research' })).toBeInTheDocument()
+    expect(within(screen.getByRole('navigation', { name: 'Main' })).getAllByRole('link').map((a) => a.textContent)).toEqual(['Market recap', 'Price check', 'Launch market'])
+    expect(side.getByRole('link', { name: 'Portfolio' }).className).not.toMatch(/border-accent/)
+  })
+
+  it('makes Portfolio glow after a trade, until it is opened', async () => {
+    renderAt('/', previewStatus())
+    await screen.findByRole('link', { name: 'Portfolio' })
+    act(() => markTradePlaced())
+    const link = screen.getByRole('link', { name: /^Portfolio\s*\(new trade\)$/ })
+    expect(link.className).toMatch(/animate-nudge/)
+    fireEvent.click(link)
+    expect(await screen.findByRole('link', { name: 'Portfolio' })).not.toHaveClass('motion-safe:animate-nudge')
   })
 
   it('is absent while the preview is off', async () => {
@@ -168,7 +184,7 @@ describe('preview welcome', () => {
     expect(document.body.style.overflow).toBe('hidden')
     fireEvent.click(button)
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    expect(localStorage.getItem('eb-preview-seen')).toBe('Mirage')
+    expect(JSON.parse(localStorage.getItem('eb-preview-seen')!)).toMatchObject({ league: 'Mirage', at: expect.any(Number) })
     expect(document.body.style.overflow).toBe('')
   })
 
@@ -183,12 +199,25 @@ describe('preview welcome', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
-  it('stays closed once accepted, and asks again for another league', async () => {
-    localStorage.setItem('eb-preview-seen', 'Mirage')
-    renderAt('/', previewStatus())
+  it('stays closed for 4 hours once accepted, and asks again for another league', async () => {
+    const seen = (league: string, hoursAgo: number) =>
+      localStorage.setItem('eb-preview-seen', JSON.stringify({ league, at: Date.now() - hoursAgo * 3_600_000 }))
+    seen('Mirage', 3.9)
+    const { unmount } = renderAt('/', previewStatus())
     expect(await screen.findByText('Preview')).toBeInTheDocument()
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    localStorage.setItem('eb-preview-seen', 'Settlers')
+    unmount()
+    seen('Mirage', 4)
+    renderAt('/', previewStatus())
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+  })
+
+  it('asks again for another league, or after an acknowledgement stored without a time', async () => {
+    localStorage.setItem('eb-preview-seen', JSON.stringify({ league: 'Settlers', at: Date.now() }))
+    const { unmount } = renderAt('/', previewStatus())
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+    unmount()
+    localStorage.setItem('eb-preview-seen', 'Mirage') // before it kept a time
     renderAt('/', previewStatus())
     expect(await screen.findByRole('dialog')).toBeInTheDocument()
   })

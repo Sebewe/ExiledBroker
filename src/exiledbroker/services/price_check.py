@@ -26,8 +26,10 @@ and movers, and one item's view, each one small document per data version.
 - **Divine Orb** is the rate the others are quoted at, so `cross_market_hour` has no row
   for it: its own market (Divine/Chaos) is its hourly row in `price_observation`. It is
   listed and has an item view priced in Chaos only (`unit` "chaos"): its 24-hour move in
-  Chaos, no outlook (a verdict judged in Divines means nothing for the Divine), the Chaos
-  market's stack inputs, no launch prices. It is never a mover.
+  Chaos, an outlook in Chaos with no verdict (a verdict judged in Divines means nothing
+  for the Divine; only the band, from past leagues' Divine paths in Chaos:
+  `price_paths.divine_rows`), the Chaos market's stack inputs, no launch prices. It is
+  never a mover.
 
 SQL here must stay Postgres-compatible and aggregates in SQL: the hosted site's
 Postgres serves the same queries.
@@ -669,11 +671,20 @@ def divine_entry(con, league: str, latest: datetime) -> dict | None:
     }
 
 
+def divine_outlook(con, day: float | None, thick: bool) -> dict:
+    """Divine Orb's outlook: past leagues' paths of its price in Chaos from this point,
+    with the weights and residuals fitted for items (in Divines), so a band to draw and
+    never a verdict."""
+    f = pl.DataFrame({"item_id": [DIVINE_ID], "thick": [thick], "n_now": [0]})
+    return outlooks(con, day, f, DIVINE_ID)[DIVINE_ID] | {"unit": "chaos"}
+
+
 def divine_item(con, league: str, entry: dict, latest: datetime | None, day) -> dict:
     """Divine Orb's view, in Chaos: its series (the Divine column empty: a Divine is
     worth one), no outlook, the Chaos market's stack inputs (price over the latest 24
     hours, units an hour, hourly swing and share of hours traded over the latest 3 days)
-    and its last day's trading. The best-hour inputs are the same as any item's."""
+    and its last day's trading. The best-hour inputs are the same as any item's. Its
+    outlook is in Chaos and never a call: only the band (`divine_outlook`)."""
     rows = divine_hours(con, league)
     helper = sell_helper.constants(con, day)
     doc = {
@@ -696,7 +707,11 @@ def divine_item(con, league: str, entry: dict, latest: datetime | None, day) -> 
     if latest is None:
         return doc
     f = divine_features(con, league, latest, rows)
-    doc |= {"thick": f["thick"], "change_24h": _sig(f["change_24h"])}
+    doc |= {
+        "thick": f["thick"],
+        "change_24h": _sig(f["change_24h"]),
+        "outlook": divine_outlook(con, day, f["thick"]),
+    }
     day_start = latest - timedelta(hours=PRICE_HOURS)
     doc["last_day"] = [
         {

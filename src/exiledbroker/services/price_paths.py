@@ -36,6 +36,7 @@ from exiledbroker.analysis import price_outlook as po
 from exiledbroker.config import Settings, get_settings
 from exiledbroker.ingest.core_pool import load_pool
 from exiledbroker.services import launch_picks
+from exiledbroker.services.live import DIVINE_ID
 from exiledbroker.storage import db
 
 LEAGUES = "price_path_league"
@@ -99,7 +100,10 @@ def load(con, league: str) -> tuple[pl.DataFrame, pl.DataFrame]:
 
 def league_rows(con, league: str, names: set[str] | None) -> pl.DataFrame:
     """The league's backtest rows (`price_outlook.hourly_rows`), core-pool items only."""
-    prices, hours = load(con, league)
+    return _rows(*load(con, league), names)
+
+
+def _rows(prices: pl.DataFrame, hours: pl.DataFrame, names: set[str] | None) -> pl.DataFrame:
     if names is not None:
         prices = prices.filter(pl.col("name").is_in(list(names)))
     if prices.is_empty() or hours.is_empty():
@@ -107,15 +111,34 @@ def league_rows(con, league: str, names: set[str] | None) -> pl.DataFrame:
     return po.hourly_rows(prices.drop("name"), hours)
 
 
-def league_paths(rows: pl.DataFrame) -> pl.DataFrame:
+def divine_rows(hours: pl.DataFrame) -> pl.DataFrame:
+    """Divine Orb's own backtest rows, in Chaos: each loaded hour's Divine rate is its
+    price that hour, a thick market. Its path is the one in Chaos (`league_paths(rows,
+    "chaos")`: in Divines it never moves), and it stays out of `fit`, whose weights are
+    for changes in Divines."""
+    priced = hours.filter(pl.col("rate") > 0)
+    if priced.is_empty():
+        return pl.DataFrame()
+    prices = priced.select(
+        "league",
+        pl.lit(DIVINE_ID).alias("item_id"),
+        pl.lit("other").alias("grp"),
+        "hour",
+        pl.col("rate").alias("chaos"),
+        pl.lit(po.THICK_CHAOS_H).alias("cv"),
+    )
+    return po.hourly_rows(prices, hours)
+
+
+def league_paths(rows: pl.DataFrame, unit: str = "div") -> pl.DataFrame:
     """One league's own path per item: its median change from each bin over each
-    horizon, as JSON lists by bin (null where it had none)."""
+    horizon (in Divines, or `unit`), as JSON lists by bin (null where it had none)."""
     if rows.is_empty():
         return pl.DataFrame(schema={"item_id": pl.String, **{h: pl.String for h in po.HORIZONS}})
     launch = rows.filter(pl.col("phase") != po.LATER)
     by_item: dict[str, dict[str, dict[int, float]]] = {}
     for h in po.HORIZONS:
-        y = f"y_{h}_div"
+        y = f"y_{h}_{unit}"
         med = (
             launch.filter(pl.col(y).is_not_null())
             .group_by("item_id", "bin")
@@ -155,11 +178,13 @@ def _write(con, table: str, df: pl.DataFrame) -> None:
 
 def capture(con, league: str, names: set[str] | None = None) -> pl.DataFrame:
     """Reduce a finished league's launch fortnight to its own paths in
-    price_path_league, replacing what was captured for it before. Returns the league's
-    backtest rows (what `fit` needs). The read runs on the site's database itself
-    (`db.pushdown`): once a league, the fortnight's traded hours (~250k rows)."""
-    rows = league_rows(db.pushdown(con), league, names)
-    paths = league_paths(rows)
+    price_path_league (Divine Orb's in Chaos, `divine_rows`), replacing what was
+    captured for it before. Returns the league's backtest rows (what `fit` needs, Divine
+    Orb's left out). The read runs on the site's database itself (`db.pushdown`): once a
+    league, the fortnight's traded hours (~250k rows)."""
+    prices, hours = load(db.pushdown(con), league)
+    rows = _rows(prices, hours, names)
+    paths = pl.concat([league_paths(rows), league_paths(divine_rows(hours), "chaos")])
     if paths.is_empty():  # still mark it captured, so the pipeline doesn't try again
         paths = pl.DataFrame({"item_id": [""], **{h: ["[]"] for h in po.HORIZONS}})
     start = db.scalar(db.pushdown(con), "SELECT start_at FROM league WHERE name = ?", [league])
