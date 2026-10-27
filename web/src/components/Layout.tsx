@@ -6,7 +6,7 @@ import { useScrollOnNavigate } from '../lib/scroll'
 import { useTheme } from '../lib/theme'
 import { trackFeature, trackPage } from '../lib/usage'
 import { FreshnessBadge } from './Freshness'
-import { PreviewPill, PreviewStrip } from './Preview'
+import { PreviewPill, PreviewStrip, PreviewWelcome } from './Preview'
 import { usePreview } from '../lib/preview'
 import { RESEARCH } from '../lib/research'
 import { SocialLinks } from './Social'
@@ -107,6 +107,7 @@ export function Layout({ children }: { children: ReactNode }) {
         </div>
       </header>
       <PreviewStrip />
+      <PreviewWelcome />
       <main id="main" className="mx-auto flex max-w-7xl min-w-0 flex-col gap-8 px-4 py-6 *:min-w-0">
         {children}
       </main>

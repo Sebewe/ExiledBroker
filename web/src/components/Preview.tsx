@@ -1,5 +1,5 @@
 import { Eye, Timer } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router'
 import { useServerNow, useStatus } from '../api/queries'
 import type { Upcoming } from '../api/client'
@@ -116,6 +116,88 @@ export function PreviewStrip() {
           {preview.hour && <> ({utcHour(preview.hour)})</>}, real data rewound. <NextLeague upcoming={upcoming} />
         </p>
         {picker && <DayPicker />}
+      </div>
+    </div>
+  )
+}
+
+const SEEN_KEY = 'eb-preview-seen'
+
+/** The league whose preview this browser has acknowledged (per browser, no cookie). */
+function seenLeague(): string | null {
+  try {
+    return localStorage.getItem(SEEN_KEY)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The first visit's notice while the preview is on: centred over a dimmed page, which it
+ * blocks until accepted. Remembered per browser for the snapshot's league, so a later
+ * preview of another league asks again; never shown when the preview is off.
+ */
+export function PreviewWelcome() {
+  const preview = usePreview()
+  const league = preview.manifest?.league
+  const [seen, setSeen] = useState(seenLeague)
+  const button = useRef<HTMLButtonElement>(null)
+  const open = preview.on && !!league && seen !== league
+
+  useEffect(() => {
+    if (!open) return
+    button.current?.focus()
+    const overflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = overflow
+    }
+  }, [open])
+
+  if (!open) return null
+  const accept = () => {
+    try {
+      localStorage.setItem(SEEN_KEY, league)
+    } catch {
+      // private browsing: closes for this visit, just isn't remembered
+    }
+    setSeen(league)
+  }
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-bg/80 p-4 backdrop-blur-sm">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="preview-welcome-title"
+        aria-describedby="preview-welcome-body"
+        onKeyDown={(e) => {
+          // One control: keep focus on it, and let Escape accept too.
+          if (e.key === 'Tab') e.preventDefault()
+          if (e.key === 'Escape') accept()
+        }}
+        className="w-full max-w-md rounded-xl border border-accent/40 bg-surface p-6 shadow-xl shadow-shadow/40"
+      >
+        <h2 id="preview-welcome-title" className="flex items-center gap-2 font-display text-xl text-text">
+          <Eye aria-hidden className="size-5 text-accent" />
+          Preview mode
+        </h2>
+        <p id="preview-welcome-body" className="mt-3 leading-relaxed text-muted">
+          The site is currently in preview mode. You are seeing{' '}
+          <strong className="font-semibold text-text">{league}</strong> as of{' '}
+          <strong className="font-semibold text-text">
+            day {preview.day}
+            {preview.hour && <> ({utcHour(preview.hour)})</>}
+          </strong>
+          : real data, rewound. It switches to the next league live once that launches.
+        </p>
+        <button
+          ref={button}
+          type="button"
+          onClick={accept}
+          className="mt-5 min-h-10 w-full cursor-pointer rounded-lg bg-accent px-4 font-semibold text-bg transition-colors duration-150 hover:bg-accent-strong"
+        >
+          Got it
+        </button>
       </div>
     </div>
   )
