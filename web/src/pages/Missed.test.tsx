@@ -396,6 +396,7 @@ describe('Market recap', () => {
     renderPage()
     expect(await screen.findByText('Loops that paid')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Show what happened next' })).toBeNull()
+    expect(document.body).not.toHaveClass('has-reveal-bar')
   })
 })
 
@@ -408,7 +409,10 @@ describe('Market recap in the preview', () => {
     fetch.mockImplementation(globalThis.fetch)
     vi.stubGlobal('fetch', fetch)
     renderPage()
-    const button = await screen.findByRole('button', { name: 'Show what happened next' })
+    // The toggle is the bar fixed to the bottom of the screen, and the page is padded for it.
+    const bar = within(await screen.findByRole('region', { name: 'Preview reveal' }))
+    const button = bar.getByRole('button', { name: 'Show what happened next' })
+    expect(document.body).toHaveClass('has-reveal-bar')
     const paths = () => fetch.mock.calls.map(([input]) => new URL(typeof input === 'string' ? input : input.url, 'http://test').pathname)
     expect(paths()).not.toContain('/api/preview/d2/recap-next')
     // The preview's strip says when the next league launches, so the page doesn't.

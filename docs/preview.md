@@ -88,7 +88,9 @@ disk stops the build (and the last snapshot stands).
   chosen day (the pages use it instead of `status.leagues`). The reveal's data:
   `usePreviewItemNext(itemId)` and `usePreviewRecapNext()`.
 - The reveal ("what happened next", `components/Reveal.tsx`, `RevealItem.tsx`, `lib/reveal.ts`,
-  `lib/revealItem.ts`) sits behind a button and fetches nothing until opened. Price check: the
+  `lib/revealItem.ts`) sits behind a button and fetches nothing until opened. The button is a
+  bar fixed to the bottom of the screen (z-20, under popups; the body gets `has-reveal-bar`
+  padding while it's shown), so it can be flipped from anywhere on the page. Price check: the
   typical price (median of 6 hours, in Divines; Chaos for the Divine Orb) 1 and 3 days after
   the day's last hour, against that day's calls (Sell held if it fell, Hold if it didn't),
   and the path to `next_until` greyed past the day, under the day's outlook band (the item

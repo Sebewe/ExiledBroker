@@ -424,7 +424,7 @@ describe('Price check in the preview', () => {
     expect(await panel.findAllByText("The preview's data ends before then.")).toHaveLength(2)
     expect(paths()).toContain(`/api/preview/next/price-check/${EXALT}`)
     expect(panel.getByRole('img')).toHaveAttribute('data-series', 'Day 2:27,What came next:3')
-    fireEvent.click(panel.getByRole('button', { name: 'Hide what happened' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Hide what happened' }))
     expect(screen.queryByRole('group', { name: '1 day later' })).toBeNull()
   })
 
