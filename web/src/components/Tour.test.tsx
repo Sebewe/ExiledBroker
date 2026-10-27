@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Status } from '../api/client'
@@ -49,8 +49,14 @@ function renderAt(status: Status, child = <Targets />) {
       return new Response('{"detail":"no data"}', { status: 503 })
     }),
   )
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(page(child))
+}
+
+let client: QueryClient
+/** The site's layout around `child`, on this test's query client (for a rerender). */
+function page(child: ReactNode) {
+  return (
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={['/']}>
         <Layout>
@@ -59,7 +65,7 @@ function renderAt(status: Status, child = <Targets />) {
           </Routes>
         </Layout>
       </MemoryRouter>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   )
 }
 
@@ -112,14 +118,20 @@ describe('first-visit tour', () => {
     expect(screen.queryByRole('dialog', { name: 'Trading game tour' })).not.toBeInTheDocument()
   })
 
-  it('starts at once when the welcome was accepted earlier, leaving out targets not on the page', async () => {
+  it('waits for a trade to point at, then leaves out targets not on the page', async () => {
     welcomed()
-    renderAt(previewStatus(), <Targets trade={false} />)
+    const { rerender } = renderAt(previewStatus(), <Targets trade={false} next={false} />)
+    await screen.findByText('Preview')
+    await settle()
+    // Another page (no trade): not started, and still due.
+    expect(screen.queryByRole('dialog', { name: 'Trading game tour' })).not.toBeInTheDocument()
+    expect(localStorage.getItem('eb-tour-done')).toBeNull()
+    rerender(page(<Targets next={false} />))
     const dialog = await tour()
-    expect(dialog.textContent).toMatch(/Next hour/)
+    expect(dialog.textContent).toMatch(/Trade this hour/)
     expect(dialog.textContent).toMatch(/1 of 2/)
     fireEvent.click(screen.getByRole('button', { name: 'Next' }))
-    expect(screen.getByRole('dialog', { name: 'Trading game tour' }).textContent).toMatch(/2 of 2/)
+    expect(screen.getByRole('dialog', { name: 'Trading game tour' }).textContent).toMatch(/Portfolio shows/)
   })
 
   it('moves past targets that went away mid-tour', async () => {

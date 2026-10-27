@@ -3,8 +3,9 @@ import { markTourDone } from '../lib/tour'
 
 // The trading game's first-visit tour (lib/tour.ts says when): three small pointers, at
 // "Trade this hour", "Next hour" and Portfolio, marked with `data-tour`. No backdrop, it
-// doesn't block the page; a step whose target isn't on this page is left out. Finished or
-// skipped, it never shows again. A lazy chunk, loaded only while it's due.
+// doesn't block the page. It starts only where there's a trade to point at (the Market
+// recap), so the three steps make sense in order; a later step whose target has gone is
+// left out. Finished or skipped, it never shows again. A lazy chunk, loaded only while it's due.
 
 type Target = 'trade' | 'next-hour' | 'portfolio'
 const STEPS: { target: Target; text: string }[] = [
@@ -34,20 +35,20 @@ export default function Tour() {
   const box = useRef<HTMLDivElement>(null)
   const button = useRef<HTMLButtonElement>(null)
 
-  // Start once the page has settled, with the steps whose targets are on it. None yet
-  // (another page, data still loading): keep waiting, and stay due.
+  // Start once the page has settled and shows a trade, with the steps whose targets are on
+  // it. No trade yet (another page, data still loading): keep waiting, and stay due.
   useEffect(() => {
     if (steps) return
     let settle: ReturnType<typeof setTimeout> | undefined
     let deadline: ReturnType<typeof setTimeout> | undefined
     const start = () => {
-      const here = STEPS.filter((s) => find(s.target))
-      if (here.length) setSteps(here)
+      if (!find('trade')) return
+      setSteps(STEPS.filter((s) => find(s.target)))
     }
     const check = () => {
       clearTimeout(settle)
       settle = setTimeout(start, SETTLE_MS)
-      if (!deadline && STEPS.some((s) => find(s.target))) deadline = setTimeout(start, MAX_WAIT_MS)
+      if (!deadline && find('trade')) deadline = setTimeout(start, MAX_WAIT_MS)
     }
     const watch = new MutationObserver(check)
     watch.observe(document.body, { childList: true, subtree: true })
