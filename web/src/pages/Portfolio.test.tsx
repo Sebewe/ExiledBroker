@@ -84,29 +84,36 @@ describe('Portfolio (the trading game)', () => {
     renderPage()
     const history = await screen.findByRole('table')
     const row = within(history).getAllByRole('row')[1]!
-    expect(row).toHaveTextContent('+0.200div')
+    expect(row).toHaveTextContent('+20.0c')
     expect(row).toHaveTextContent('Loop: Reverent Fragment (Chaos first)')
     expect(row).toHaveTextContent('Sold, Day 2, 20:00 UTC')
     expect(screen.getByText('Orb of Conflict', { exact: false })).toBeInTheDocument()
     expect(screen.getByText(/Holding 5 of 5/)).toBeInTheDocument()
+    // What it was bought at, and the wallet: 2 loop purchases and 5 bids took the 200c and 4 div exchanged.
+    expect(screen.getByText('80.0c each')).toBeInTheDocument()
+    expect(screen.getAllByText('6.00div · 220.0c')).toHaveLength(2) // the Wallet stat and the bar
+    // The bar steps the clock from here too.
+    const bar = within(screen.getByRole('region', { name: 'Trading game' }))
+    expect(bar.getByRole('button', { name: 'Next hour' })).toBeEnabled()
+    expect(bar.queryByRole('link', { name: 'Your trades' })).toBeNull()
     // Listed at the recap's ask (auto), or a price of the player's.
     expect(screen.getByText('110.0c')).toBeInTheDocument()
     fireEvent.change(screen.getByPlaceholderText('c each'), { target: { value: '150' } })
     fireEvent.click(screen.getByRole('button', { name: 'Set' }))
     expect(await screen.findByText('150.0c')).toBeInTheDocument()
     expect(JSON.parse(localStorage.getItem('eb-game')!).open[0].listing).toBe(150)
-    // Sold now at the hour's lowest trade: 5 × 78c at 100c a Divine.
+    // Sold now at the hour's lowest trade: 5 × 78c.
     fireEvent.click(screen.getByRole('button', { name: /Sell now/ }))
     expect(await screen.findByText('Nothing open.')).toBeInTheDocument()
-    expect(JSON.parse(localStorage.getItem('eb-game')!).cash).toBeCloseTo(10.2 - 4 + 3.9)
+    expect(JSON.parse(localStorage.getItem('eb-game')!).chaos).toBeCloseTo(220 + 390)
   })
 
-  it('starts over', async () => {
+  it('resets the game', async () => {
     played()
     serve({ ...previewRoutes(), '/api/status': { body: previewStatus() }, '/api/preview/game/25': { body: H25 } })
     renderPage()
-    fireEvent.click(await screen.findByRole('button', { name: 'Start over' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Start over' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Reset game' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Reset' }))
     expect(await screen.findByText('No trades yet')).toBeInTheDocument()
   })
 })

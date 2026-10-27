@@ -423,23 +423,25 @@ describe('Market recap in the preview: the trading game', () => {
     serve(routes())
     const fetch = globalThis.fetch as ReturnType<typeof vi.fn>
     renderPage()
-    // The bar fixed to the bottom of the screen: 10 Divines to start, and the page padded for it.
+    // The bar fixed to the bottom of the screen: 10 Divines and 200 Chaos to start, and the page padded for it.
     const bar = within(await screen.findByRole('region', { name: 'Trading game' }))
-    expect(bar.getByLabelText('Your Divines')).toHaveTextContent('10.0div')
+    expect(bar.getByLabelText('Your wallet')).toHaveTextContent('10.0div · 200.0c')
     expect(document.body).toHaveClass('has-game-bar')
     // The preview's strip says when the next league launches, so the page doesn't.
     expect(screen.queryByText(/The next league launches/)).toBeNull()
     const loops = within(document.getElementById('loops')!)
     fireEvent.click(await loops.findByRole('button', { name: 'Trade this hour' }))
-    // Whole purchases at the real price: one is the order's smallest lot, 100c (1 div) here.
+    // Whole purchases at the real price: one is the order's smallest lot, 100c here.
     const buy = loops.getByLabelText(/Purchases/)
     expect(buy).toHaveValue(1)
-    expect(loops.getByText(/one is 100\.0c \(1\.00div\)/)).toBeInTheDocument()
+    expect(loops.getByText(/one is 100\.0c, the smallest whole buy/)).toBeInTheDocument()
     fireEvent.change(buy, { target: { value: '8' } })
-    expect(loops.getByText(/= 8\.00div/)).toBeInTheDocument()
+    // 800c: the 200 Chaos, and 6 Divines exchanged at the hour's 100c.
+    expect(loops.getByText(/= 800\.0c/)).toHaveTextContent('(exchanges 6.00div at 100.0c each)')
     fireEvent.click(loops.getByRole('button', { name: 'Place it' }))
     expect(await loops.findByText('Placed this hour')).toBeInTheDocument()
-    expect(JSON.parse(localStorage.getItem('eb-game')!)).toMatchObject({ league: 'Mirage', n: 28, cash: 2 })
+    expect(loops.getByText(/exchanging 6\.00div for Chaos/)).toBeInTheDocument()
+    expect(JSON.parse(localStorage.getItem('eb-game')!)).toMatchObject({ league: 'Mirage', n: 28, div: 4, chaos: 0 })
     const paths = () => fetch.mock.calls.map(([input]) => new URL(typeof input === 'string' ? input : input.url, 'http://test').pathname)
     expect(paths()).not.toContain('/api/preview/game/29')
     // The flips and the card offer their own trades.
@@ -448,10 +450,15 @@ describe('Market recap in the preview: the trading game', () => {
 
     fireEvent.click(bar.getByRole('button', { name: 'Next hour' }))
     // 5 of the 8 filled and sold at +10%; the 3 that didn't came back.
-    expect(await bar.findByText('1 closed, +0.500div')).toBeInTheDocument()
-    expect(bar.getByLabelText('Your Divines')).toHaveTextContent('10.5div')
+    expect(await bar.findByText('1 closed, +50.0c')).toBeInTheDocument()
+    expect(bar.getByLabelText('Your wallet')).toHaveTextContent('4.00div · 850.0c')
     expect(JSON.parse(localStorage.getItem('eb-game')!)).toMatchObject({ n: 29, open: [] })
     // Hour 29 is the sample's last: the clock stops there.
     expect(bar.getByRole('button', { name: 'End of the data' })).toBeDisabled()
+    // Exchange at the hour's average Divine price.
+    fireEvent.click(bar.getByRole('button', { name: /Exchange/ }))
+    fireEvent.change(bar.getByLabelText(/Exchange at/), { target: { value: '2' } })
+    fireEvent.click(bar.getByRole('button', { name: 'Chaos → Divines' }))
+    expect(bar.getByLabelText('Your wallet')).toHaveTextContent('6.00div · 650.0c')
   })
 })

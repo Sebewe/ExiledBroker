@@ -5,7 +5,7 @@ import { useServerNow, useStatus } from '../api/queries'
 import type { Upcoming } from '../api/client'
 import { clock, launchDay } from '../lib/countdown'
 import { utcHour } from '../lib/format'
-import { gameHour, START_CASH, useGame } from '../lib/gameStore'
+import { gameHour, START_CHAOS, START_DIV, useGame } from '../lib/gameStore'
 import { usePreview } from '../lib/preview'
 import { trackFeature } from '../lib/usage'
 
@@ -213,9 +213,9 @@ export function PreviewWelcome() {
               <Wallet aria-hidden className="size-4 text-accent" /> Paper trading
             </p>
             <p className="mt-1">
-              Try the trades on the Market recap with {START_CASH} pretend Divines. Press <span className="text-text">Trade this hour</span> on one and choose how
+              Try the trades on the Market recap with {START_DIV} pretend Divines and {START_CHAOS} Chaos. Press <span className="text-text">Trade this hour</span> on one and choose how
               many to buy: purchases are whole, at the real price that hour, so a trade costs at least its smallest buy-in. Then press{' '}
-              <span className="text-text">Next hour</span> in the bar at the bottom: orders fill only as far as the market really traded, and sell when it did.
+              <span className="text-text">Next hour</span> in the bar at the bottom: orders fill only as far as the market really traded, and sell when it did. Trades are paid in Chaos: when you run short, Divines are exchanged at that hour's average price, or exchange them yourself from the bar.
               Your trades and what each made are on the Portfolio page, kept in this browser only.
             </p>
           </div>
