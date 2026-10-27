@@ -1,5 +1,5 @@
 import sample from './preview_sample.json'
-import type { PreviewManifest, Status } from '../api/client'
+import type { PreviewGameHour, PreviewManifest, Status } from '../api/client'
 
 // The sample pre-launch preview snapshot (preview_sample.json here, made by tests/fixtures/
 // make_preview_sample.py from the Mirage replay): every key kind, days 1–3 (default 2),
@@ -25,4 +25,11 @@ export function previewStatus(over: Partial<Status> = {}): Status {
     preview: PREVIEW_MANIFEST,
     ...over,
   }
+}
+
+/** A trading game hour (`game/{n}`), on the sample's clock: the sample's own documents
+ *  have no fills or flips, so the game's tests make theirs. */
+export function gameHourDoc(n: number, over: Partial<PreviewGameHour> = {}): PreviewGameHour {
+  const latest = new Date(Date.parse(PREVIEW_MANIFEST.launched_at!) + (n - 1) * 3_600_000).toISOString().replace('.000Z', 'Z')
+  return { latest_hour: latest, divine_chaos: 100, recap: [], orders: [], prices: {}, ...over }
 }

@@ -2,19 +2,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { ChartTokens } from '../lib/chartOptions'
-import { portfolio } from '../lib/portfolio'
-import { previewRoutes, previewStatus } from '../test/preview'
+import { placeFlip, placeOrder, startGame, step } from '../lib/game'
+import { reloadGame, setGame, type GameState } from '../lib/gameStore'
+import { gameHourDoc, previewRoutes, previewStatus } from '../test/preview'
 import Portfolio from './Portfolio'
-
-// ECharts needs a canvas: stand in for the chart, building its option, exposing its series.
-vi.mock('../components/Chart', () => ({
-  default: ({ build, label }: { build: (t: ChartTokens) => { series: { name: string; data: unknown[] }[] }; label: string }) => {
-    const t = { text: '', muted: '', faint: '', border: '', surface: '', surface2: '', accent: '#e3ac72', info: '#93b8f5' }
-    const option = build(t)
-    return <div role="img" aria-label={label} data-series={option.series.map((s) => `${s.name}:${s.data.length}`).join(',')} />
-  },
-}))
 
 function serve(routes: Record<string, { status?: number; body: unknown }>) {
   const fetch = vi.fn(async (input: Request | string) => {
@@ -37,60 +28,85 @@ function renderPage(url = '/portfolio') {
   )
 }
 
-const routes = () => ({ ...previewRoutes(), '/api/status': { body: previewStatus() } })
+const ok = (x: GameState | string) => {
+  if (typeof x === 'string') throw new Error(x)
+  return x
+}
+
+const FLIP = {
+  item_id: 'currency:f',
+  name: 'Orb of Conflict',
+  price: 100,
+  low: 80,
+  high: 120,
+  range: 0.4,
+  volume: 50000,
+  bid: 80,
+  ask: 110,
+  bid_lot: 1,
+  bid_total: 80,
+  ask_lot: 1,
+  ask_total: 110,
+  cut: 0.1,
+}
+const LOOP = { kind: 'loop' as const, item_id: 'currency:d', direction: 'chaos_first', filled: true, spent: 500, pnl: 50, settle_at: gameHourDoc(25).latest_hour }
+const H25 = gameHourDoc(25, { prices: { 'currency:f': [78, 90, 100, 1000] } })
+
+/** A game at hour 25: a loop bought and sold at +10%, and 5 Orbs of Conflict held. */
+function played() {
+  let s = ok(placeOrder(startGame('Mirage', 24), gameHourDoc(24), LOOP, 'Reverent Fragment', 2))
+  s = ok(placeFlip(s, gameHourDoc(24), FLIP, 4))
+  setGame(step(s, H25))
+}
 
 afterEach(() => {
   vi.unstubAllGlobals()
   localStorage.clear()
-  portfolio.reload()
+  reloadGame()
 })
 
-describe('Paper portfolio', () => {
+describe('Portfolio (the trading game)', () => {
   it('says it was part of the preview once the preview is off', async () => {
     serve({ '/api/status': { body: previewStatus({ preview: null }) } })
     renderPage()
     expect(await screen.findByText('Part of the pre-launch preview')).toBeInTheDocument()
   })
 
-  it('starts empty, and stakes an item picked from the search', async () => {
-    serve(routes())
+  it('says how to start before any trade', async () => {
+    serve({ ...previewRoutes(), '/api/status': { body: previewStatus() } })
     renderPage()
-    expect(await screen.findByText('Nothing staked yet')).toBeInTheDocument()
-    const box = await screen.findByRole('combobox', { name: 'Add an item' })
-    fireEvent.focus(box)
-    fireEvent.change(box, { target: { value: 'Exalted' } })
-    fireEvent.click(await screen.findByRole('option', { name: /Exalted Orb/ }))
-    const row = (await screen.findByText('Exalted Orb')).closest('tr')!
-    expect(within(row).getByRole('spinbutton', { name: /Stake on Exalted Orb/ })).toHaveValue(10)
-    expect(JSON.parse(localStorage.getItem('eb-portfolio')!).positions).toEqual([{ item_id: 'currency:exalted-orb', name: 'Exalted Orb', stake: 10 }])
+    expect(await screen.findByText('No trades yet')).toBeInTheDocument()
   })
 
-  it('steps the clock forward and values the stakes then', async () => {
-    portfolio.add({ item_id: 'currency:exalted-orb', name: 'Exalted Orb' })
-    portfolio.add({ item_id: 'currency:not-in-snapshot', name: 'Gone Orb' })
-    serve(routes())
-    renderPage('/portfolio?day=2')
-    const row = (await screen.findByText('Exalted Orb')).closest('tr')!
-    expect(await within(row).findByText('10.0div')).toBeInTheDocument()
-    expect(await screen.findByText("Not in the preview's data")).toBeInTheDocument()
-    expect(screen.getByText(/Bought at the end of/)).toBeInTheDocument()
-    expect(screen.getByRole('img').dataset.series).toBe('Your portfolio:1,Kept as Divines:1,Kept as Chaos:1')
+  it('lists the closed trades with what they made, and the flips held', async () => {
+    played()
+    serve({ ...previewRoutes(), '/api/status': { body: previewStatus() }, '/api/preview/game/25': { body: H25 } })
+    renderPage()
+    const history = await screen.findByRole('table')
+    const row = within(history).getAllByRole('row')[1]!
+    expect(row).toHaveTextContent('+0.200div')
+    expect(row).toHaveTextContent('Loop: Reverent Fragment (Chaos first)')
+    expect(row).toHaveTextContent('Sold, Day 2, 20:00 UTC')
+    expect(screen.getByText('Orb of Conflict', { exact: false })).toBeInTheDocument()
+    expect(screen.getByText(/Holding 5 of 5/)).toBeInTheDocument()
+    // Listed at the recap's ask (auto), or a price of the player's.
+    expect(screen.getByText('110.0c')).toBeInTheDocument()
+    fireEvent.change(screen.getByPlaceholderText('c each'), { target: { value: '150' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Set' }))
+    expect(await screen.findByText('150.0c')).toBeInTheDocument()
+    expect(JSON.parse(localStorage.getItem('eb-game')!).open[0].listing).toBe(150)
+    // Sold now at the hour's lowest trade: 5 × 78c at 100c a Divine.
+    fireEvent.click(screen.getByRole('button', { name: /Sell now/ }))
+    expect(await screen.findByText('Nothing open.')).toBeInTheDocument()
+    expect(JSON.parse(localStorage.getItem('eb-game')!).cash).toBeCloseTo(10.2 - 4 + 3.9)
+  })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Next hour' }))
-    expect(screen.getByText('1 h')).toBeInTheDocument()
-    expect(screen.getByText('Worth after 1 h')).toBeInTheDocument()
-    expect(screen.getByRole('img').dataset.series).toBe('Your portfolio:2,Kept as Divines:2,Kept as Chaos:2')
-    // The sample runs two hours past day 2: then the clock stops.
-    fireEvent.click(screen.getByRole('button', { name: 'Next day' }))
-    expect(screen.getByText("That's as far as the preview goes.")).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Next hour' })).toBeDisabled()
-    // The Exalt fell after day 2 (sample data), and the Divine rose: both read as a loss.
-    expect(within(row).getByText(/^−|^-/)).toHaveClass('text-negative')
-    expect(JSON.parse(localStorage.getItem('eb-portfolio')!).at).toBe(2)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Remove Gone Orb' }))
-    expect(screen.queryByText('Gone Orb')).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /Empty the portfolio/ }))
-    expect(screen.getByText('Nothing staked yet')).toBeInTheDocument()
+  it('starts over', async () => {
+    played()
+    serve({ ...previewRoutes(), '/api/status': { body: previewStatus() }, '/api/preview/game/25': { body: H25 } })
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Start over' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Start over' }))
+    expect(await screen.findByText('No trades yet')).toBeInTheDocument()
   })
 })

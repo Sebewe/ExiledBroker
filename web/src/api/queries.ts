@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
+import { gameHour, useGame } from '../lib/gameStore'
 import { fetchPreview, previewKey, usePreview } from '../lib/preview'
 import { JITTER, nextCheckIn } from '../lib/schedule'
-import { api, unwrap, type LiveLeague, type PreviewItemNext, type PreviewRecapNext, type PriceCheckItem } from './client'
+import { api, unwrap, type LiveLeague, type PreviewGameHour, type PreviewItemNext, type PriceCheckItem } from './client'
 
 /** Checked only when a new hour is due (lib/schedule): its `data_version` changes when a
  *  new hour is loaded, and every data query below is keyed on it. Between checks,
@@ -48,15 +49,23 @@ export function useLeagues(): LiveLeague[] {
   return status.data?.leagues ?? []
 }
 
-/** The landing page's recap: all three look-backs in one small response, per loaded hour. */
+/** The landing page's recap: all three look-backs in one small response, per loaded hour.
+ *  While a trading game runs in the preview, the game's hour instead (lib/gameStore). */
 export function useMissed(league: string | undefined) {
-  return useVersioned(
+  const preview = usePreview()
+  const game = useGame()
+  const n = preview.on ? gameHour(game, preview.manifest?.league) : 0
+  const daily = useVersioned(
     ['missed', league],
     (v) => unwrap(api.GET('/api/missed/{league}', { params: { path: { league: league! }, query: { v } } })),
-    !!league,
+    !!league && !n,
     previewKey.missed,
   )
+  const hourly = useGameHour(n || undefined, recapOf)
+  return n ? hourly : daily
 }
+
+const recapOf = (d: PreviewGameHour) => d.recap
 
 /** Ranked from past leagues; the live prices in it change with each loaded hour. */
 export function useLaunchPicks() {
@@ -103,16 +112,18 @@ export function usePreviewItemNext(itemId: string | undefined, enabled = true) {
   })
 }
 
-/** The preview's reveal on the recap: whether the chosen day's trades kept paying over
- *  the next 24 hours. Only in the preview (disabled otherwise); `enabled` false holds it
- *  until the reveal is opened. */
-export function usePreviewRecapNext(enabled = true) {
+/** The trading game's hour `n` (lib/game.ts): its recap, orders and flip prices. Only in
+ *  the preview; each hour is one cached document. */
+export function useGameHour<T = PreviewGameHour>(n: number | undefined, select?: (d: PreviewGameHour) => T) {
   const preview = usePreview()
-  const key = previewKey.recapNext(preview.day)
+  const key = previewKey.game(n ?? 0)
   return useQuery({
     queryKey: ['preview', key, preview.version],
-    queryFn: () => fetchPreview<PreviewRecapNext>(key, preview.version),
-    enabled: enabled && preview.on,
+    queryFn: () => fetchPreview<PreviewGameHour>(key, preview.version),
+    enabled: preview.on && !!n,
+    staleTime: Infinity,
+    select,
+    placeholderData: (previous) => previous, // keep the last hour on the page while the next loads
   })
 }
 

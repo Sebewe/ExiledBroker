@@ -84,16 +84,6 @@ def test_build_writes_every_key_offline(research):
             if o["settle_at"]:
                 assert o["settle_at"] > g["latest_hour"]
         assert set(g["prices"]) <= flipped_ever
-    # The recap finds trades only late in the replay: day 5's are judged on 0 known hours.
-    recaps = [k for k in keys if k.endswith("/recap-next")]
-    assert recaps
-    for key in recaps:
-        assert docs[key]["hours"] <= pb.NEXT_HOURS
-        for t in docs[key]["trades"]:  # the Backtest's fills, one per known hour
-            n = docs[key]["hours"]
-            assert len(t["paid"]) == len(t["filled"]) == len(t["pnl"]) == n
-            assert t["paid_hours"] <= t["traded_hours"] <= t["orders"]
-            assert t["fills"] <= t["orders"]
     # The reveal's series run to the last loaded hour.
     series = docs[snapshot.next_key("currency:divine-orb")]["series"]
     assert series[-1][0] == manifest["next_until"]

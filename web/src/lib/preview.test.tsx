@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { useBacktest, useLeagues, useMissed, usePreviewItemNext, usePreviewRecapNext, usePriceCheckItem } from '../api/queries'
+import { useBacktest, useLeagues, useMissed, usePreviewItemNext, usePriceCheckItem } from '../api/queries'
 import { PREVIEW_DOCS, PREVIEW_MANIFEST, previewRoutes, previewStatus } from '../test/preview'
 import { chooseDay, usePreview } from './preview'
 
@@ -29,7 +29,6 @@ function Probe() {
   const missed = useMissed(leagues[0]?.name)
   const item = usePriceCheckItem(leagues[0]?.name, 'currency:divine-orb')
   const next = usePreviewItemNext('currency:divine-orb')
-  const recap = usePreviewRecapNext()
   useBacktest()
   return (
     <dl>
@@ -40,7 +39,6 @@ function Probe() {
       <dd data-testid="missed">{missed.data ? missed.data.map((w) => w.latest_hour).join() : 'none'}</dd>
       <dd data-testid="item">{item.data ? item.data.latest_hour : 'none'}</dd>
       <dd data-testid="next">{next.data ? next.data.series.length : next.fetchStatus}</dd>
-      <dd data-testid="recap">{recap.data ? recap.data.latest_hour : recap.fetchStatus}</dd>
     </dl>
   )
 }
@@ -69,14 +67,12 @@ describe('the preview switch', () => {
     const missed = doc<{ latest_hour: string }[]>('d3/missed')
     expect(screen.getByTestId('missed')).toHaveTextContent(missed[0]!.latest_hour)
     await waitFor(() => expect(screen.getByTestId('next')).not.toHaveTextContent('idle'))
-    await waitFor(() => expect(screen.getByTestId('recap')).toHaveTextContent(doc<{ latest_hour: string }>('d3/recap-next').latest_hour))
     const v = `?v=${PREVIEW_MANIFEST.version}`
     expect(requested).toEqual(
       expect.arrayContaining([
         `/api/preview/d3/missed${v}`,
         `/api/preview/d3/price-check/currency:divine-orb${v}`,
         `/api/preview/next/price-check/currency:divine-orb${v}`,
-        `/api/preview/d3/recap-next${v}`,
         '/api/backtest?v=v1',
       ]),
     )

@@ -49,7 +49,7 @@ def test_the_sample_holds_every_kind_of_key_and_matches_its_models():
     days = [d["day"] for d in manifest["days"]]
     assert manifest["default_day"] in days
     for day in days:
-        for what in ("missed", "price-check", "launch-picks", "recap-next"):
+        for what in ("missed", "price-check", "launch-picks"):
             assert snapshot.day_key(day, what) in DOCS
         listed = DOCS[snapshot.day_key(day, "price-check")]["items"]
         for item in listed:

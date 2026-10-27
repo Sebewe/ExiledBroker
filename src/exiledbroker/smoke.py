@@ -193,8 +193,10 @@ def _preview(out: list[Check], get: Get, preview: dict, edge: bool):
     _check(out, "the preview's documents are cached a day", "max-age=86400" in cache, cache)
     days = [d.get("day") for d in preview.get("days") or []]
     _check(out, "the preview's default day is one of its days", day in days, f"{day} {days}")
-    for what in ("missed", "launch-picks", "recap-next"):
+    for what in ("missed", "launch-picks"):
         _table(out, get, f"/api/preview/d{day}/{what}{v}", edge)
+    if game := preview.get("game"):  # the trading game's first hour
+        _table(out, get, f"/api/preview/game/{game['first']}{v}", edge)
     index_r = _table(out, get, f"/api/preview/d{day}/price-check{v}", edge)
     items = (index_r.json().get("items") or []) if index_r is not None else []
     if not items:

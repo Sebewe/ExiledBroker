@@ -4,7 +4,6 @@ import type { LaunchPick, LaunchWindow, LiveLeague } from '../api/client'
 import { useLaunchPicks, useLeagues, useStatus } from '../api/queries'
 import { ItemName } from '../components/ItemLink'
 import { Notice } from '../components/Notice'
-import { PortfolioAdd } from '../components/PortfolioAdd'
 import { PageHeader } from '../components/Section'
 import { count } from '../lib/format'
 import { useItemHref } from '../lib/itemHref'
@@ -252,10 +251,7 @@ function PickCard({ p, w, isNow }: { p: LaunchPick; w: LaunchWindow; isNow: bool
           </h3>
           <div className="text-xs text-faint capitalize">{p.group_id === 'divination' ? 'Divination card' : p.group_id}</div>
         </div>
-        <div className="flex flex-col items-end gap-1.5">
-          <div className="num text-right text-2xl font-semibold text-positive">{times(p.growth)}</div>
-          <PortfolioAdd item={p} compact />
-        </div>
+        <div className="num text-right text-2xl font-semibold text-positive">{times(p.growth)}</div>
       </div>
       <p className="text-sm">
         <span className="num">{BUDGET} div</span> → <span className="num font-semibold text-positive">{div(BUDGET * p.growth)}</span>
@@ -300,7 +296,6 @@ function PickRow({ p, w, isNow }: { p: LaunchPick; w: LaunchWindow; isNow: boole
       <span className="num w-14 text-right font-semibold text-positive" title={`${BUDGET} div → ${div(BUDGET * p.growth)} by day ${w.sell_last}`}>
         {times(p.growth)}
       </span>
-      <PortfolioAdd item={p} compact />
     </div>
   )
 }

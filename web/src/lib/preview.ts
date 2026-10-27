@@ -56,7 +56,7 @@ export const previewKey = {
   priceCheck: (day: number) => `d${day}/price-check`,
   priceCheckItem: (day: number, itemId: string) => `d${day}/price-check/${itemId}`,
   launchPicks: (day: number) => `d${day}/launch-picks`,
-  recapNext: (day: number) => `d${day}/recap-next`,
+  game: (n: number) => `game/${n}`,
   itemNext: (itemId: string) => `next/price-check/${itemId}`,
 }
 

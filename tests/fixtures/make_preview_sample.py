@@ -33,7 +33,7 @@ from exiledbroker.config import Settings
 from exiledbroker.ingest import currency_exchange as cx
 from exiledbroker.ingest.live import sync_live
 from exiledbroker.preview import snapshot
-from exiledbroker.preview.build import game_hours, recap_next  # the snapshot's own
+from exiledbroker.preview.build import game_hours  # the snapshot's own
 from exiledbroker.storage import db
 from test_currency_exchange import FakeExchange, client_for
 from test_live_pipeline import LAUNCH, PAGES, store_reference_data
@@ -64,7 +64,7 @@ def main() -> None:
     store_reference_data(s)
     server = FakeExchange(PAGES, now=LAUNCH)
     docs: dict[str, object] = {}
-    days, missed, items, games = [], {}, set(), {}
+    days, items, games = [], set(), {}
     at_day = {h: d for d, h in DAYS.items()}
     for hours_in in range(min(DAYS.values()), max(DAYS.values()) + 1):
         load(s, server, hours_in)
@@ -80,8 +80,7 @@ def main() -> None:
         if (day := at_day.get(hours_in)) is None:
             continue
         days.append({"day": day, "league": league})
-        missed[day] = get(client, f"/api/missed/{LEAGUE}")
-        docs[snapshot.day_key(day, "missed")] = missed[day]
+        docs[snapshot.day_key(day, "missed")] = get(client, f"/api/missed/{LEAGUE}")
         index = get(client, f"/api/price-check/{LEAGUE}")
         listed = {x["item_id"] for x in index["items"]}
         # A handful of items: the movers (up to 4) and Divine Orb (judged in Chaos).
@@ -106,9 +105,6 @@ def main() -> None:
         }
     end = cx.from_ts(LAUNCH + (max(DAYS.values()) - 1) * 3600).replace(tzinfo=None)
     with db.session(s.db_path, read_only=True) as con:
-        for day in DAYS:
-            if (doc := recap_next(con, LEAGUE, missed[day], end)) is not None:
-                docs[snapshot.day_key(day, "recap-next")] = doc
         for n, doc in game_hours(con, LEAGUE, games, end).items():
             docs[snapshot.game_key(n)] = doc
 

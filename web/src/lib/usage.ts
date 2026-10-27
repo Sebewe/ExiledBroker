@@ -7,7 +7,7 @@ export const PAGES = [
   '/',
   '/launch',
   '/price-check',
-  '/portfolio', // the pre-launch preview's paper portfolio
+  '/portfolio', // the pre-launch preview's trading game: the player's trades
   '/research',
   '/research/notes', // every note counts here, not one name each
   '/research/method',
@@ -28,8 +28,8 @@ export type Feature =
   | 'preview-day' // picked another day of the rewound league
   | 'preview-reveal' // opened "what happened next"
   | 'preview-cta' // followed the preview's call to action
-  | 'portfolio-add' // paper portfolio (v2): staked an item
-  | 'portfolio-step' // paper portfolio (v2): stepped forward a day
+  | 'game-trade' // trading game: placed a trade
+  | 'game-step' // trading game: stepped to the next hour
 
 /** The page's name for a path: one of PAGES, or "/not-found". */
 export function pageOf(pathname: string): string {

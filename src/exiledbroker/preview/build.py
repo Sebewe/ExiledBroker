@@ -7,7 +7,8 @@ chosen day (`now = launch + day × 24 h`), with a client that refuses every requ
 every page must come from disk (`currency_exchange.fetch_page`). After each day the
 site's services answer as the API would have then, and their answers are stored, one
 document per key (preview/snapshot.py). A last load to NEXT_DAYS gives the reveal's
-documents: each item's series to then, and whether each recap trade kept paying.
+documents: each item's series to then. The trading game's hours (`game/{n}`) are loaded
+one at a time from the first day's end, each with its recap and the orders it'd take.
 
 What the services read besides the league's hours is copied from the research
 database, rewound: the reference data (names, core pool, card tiers: today's), and
@@ -47,10 +48,7 @@ from exiledbroker.services import (
 )
 from exiledbroker.storage import db
 
-NEXT_HOURS = 24  # recap-next: the hours after the chosen day that are judged
-STILL_FROM = 18  # still paid: paid in any of hours 19-24 after
 FILL = "touch"  # a fill: some trade went past the order (the recap's chances count so)
-FLIP_HOLD = 24  # hours a flip stays listed before it's dumped (the Backtest's: 72)
 # Copied from the research database into the replay (its own league's rows are loaded).
 REFERENCE = ["reference_data"]
 REWOUND = {  # rows of the replayed league, or a later one, are left out
@@ -219,32 +217,6 @@ def _hour(iso: str) -> datetime:
     return datetime.fromisoformat(iso).replace(tzinfo=None)
 
 
-def _outcome(kind, item_id, direction, orders: dict, hours: list[datetime]) -> dict:
-    """One trade's next hours from its orders (`orders`: pricing hour -> (filled, pnl in
-    Chaos, or None while the sale isn't known, ...)), an hour with no order as None."""
-    filled, pnl, paid = [], [], []
-    for at in hours:
-        f, v = orders.get(at, (None, None))[:2]
-        filled.append(f)
-        pnl.append(v if f else None)
-        paid.append(None if f is None or (f and v is None) else bool(f and v > 0))
-    return {
-        "kind": kind,
-        "item_id": item_id,
-        "direction": direction,
-        "paid": paid,
-        "paid_hours": sum(1 for p in paid if p),
-        "traded_hours": sum(1 for p in paid if p is not None),
-        "next_hour_paid": paid[0] if paid else None,
-        "still_paid": any(paid[STILL_FROM:]) if len(hours) >= NEXT_HOURS else None,
-        "filled": filled,
-        "pnl": pnl,
-        "orders": sum(1 for f in filled if f is not None),
-        "fills": sum(1 for f in filled if f),
-        "profit": sum(v for v in pnl if v is not None),
-    }
-
-
 def _orders(
     t: pl.DataFrame, keys: list[str], unknown: pl.Expr, spent: pl.Expr, settle: pl.Expr
 ) -> dict:
@@ -308,67 +280,11 @@ def _card_orders(con, league: str, cards: list[str], since, until, last_hour) ->
     return _orders(t, ["item_id"], unknown, spent, pl.col("sell_at"))
 
 
-def _flip_orders(con, league: str, items: list[str], since, until, last_hour) -> dict:
-    px = flips.chaos_prices(con, league).filter(
-        pl.col("item_id").is_in(items), pl.col("observed_at") > since
-    )
-    sig = flips.candidates(px).filter(pl.col("observed_at") < until)
-    rate = bt._rate(con, league, since)
-    t = flips.hold(px, rate, sig, FILL, **bt.FLIP, whole_lots=True, max_hold=FLIP_HOLD)
-    sale_open = pl.col("observed_at") + (1 + FLIP_HOLD) * bt.H > last_hour
-    t = t.with_columns(filled=pl.lit(True), pnl="profit")
-    sold = pl.col("observed_at") + pl.col("sold_at") * bt.H
-    out = _orders(
-        t, ["item_id"], pl.col("dumped") & sale_open, pl.col("cost") * pl.col("rate"), sold
-    )
-    for r in sig.iter_rows(named=True):  # placed, not bought: the next hour didn't reach it
-        out.setdefault((r["item_id"], r["observed_at"]), (False, None))
-    return out
-
-
-def recap_next(con, league: str, windows: list[dict], last_hour: datetime) -> dict | None:
-    """Did each of a day's recap trades (`windows`: its d{day}/missed) keep paying,
-    hour by hour, over the next NEXT_HOURS (as far as `last_hour`, the replay's last)?
-    Each hour, the recap's own order for it is priced from the hour before (the first
-    is the very order the recap showed) and filled by the Backtest's rules
-    (analysis/backtest.py: loops and cards as the Market recap orders them, flips listed
-    and cut for FLIP_HOLD hours), counting a fill the optimistic way (FILL). It's placed
-    when the recap would call it ok: a loop or a set that still pays from the bid at
-    that hour's worst prices, an item still liquid and volatile enough to flip; other
-    hours have none. Random-reward cards aren't replayed (the Backtest can't price
-    them), so they're left out. None for a recap with no look-backs."""
-    if not windows:
-        return None
-    cutoff = _hour(windows[0]["latest_hour"])
-    known = max(0, min(NEXT_HOURS, int((last_hour - cutoff).total_seconds() // 3600)))
-    keys: dict[tuple, None] = {}
-    for w in windows:
-        keys |= {("loop", x["item_id"], x["direction"]): None for x in w["loops"]}
-        keys |= {("card", x["item_id"], None): None for x in w["cards"] if not x["worst_roll"]}
-        keys |= {("flip", x["item_id"], None): None for x in w["flips"]}
-    # Orders are priced from these hours and placed in the hour after each.
-    hours = [cutoff + k * bt.H for k in range(known)]
-    since, until = cutoff - bt.H, cutoff + known * bt.H
-    orders: dict[str, dict] = {"loop": {}, "card": {}, "flip": {}}
-    find = {"loop": _loop_orders, "card": _card_orders, "flip": _flip_orders}
-    for kind in orders:
-        items = sorted({i for k, i, _ in keys if k == kind})
-        if items and known:
-            orders[kind] = find[kind](con, league, items, since, until, last_hour)
-    trades = []
-    for kind, item_id, direction in keys:
-        key = (item_id, direction) if kind == "loop" else (item_id,)
-        mine = {at: orders[kind].get((*key, at)) for at in hours}
-        mine = {at: o for at, o in mine.items() if o is not None}
-        trades.append(_outcome(kind, item_id, direction, mine, hours))
-    return {"latest_hour": windows[0]["latest_hour"], "hours": known, "trades": trades}
-
-
 def game_hours(con, league: str, games: dict[int, dict], last_hour: datetime) -> dict:
     """The trading game's hours (lib/game.ts): `games` (hours since launch -> the
     league's latest hour, its Divine rate and its Market recap then), each given what a
     player could trade then. Loops and cards: the recap's own order that hour, filled by
-    the Backtest's rules as recap_next fills it, with what it spent, made and when it
+    the Backtest's rules, with what it spent, made and when it
     sold (null where the sale isn't known by `last_hour`). Flips are played in the
     browser from the hour's Chaos prices (low, average, high, items traded) of every
     item the game ever lists to flip, since a player holds one as long as they like."""
@@ -452,7 +368,7 @@ def build(
     for path in (replay.db_path, replay.db_path.with_name(replay.db_path.name + ".wal")):
         path.unlink(missing_ok=True)
     docs: dict[str, Any] = {}
-    manifest_days, recaps, items, games = [], {}, set(), {}
+    manifest_days, items, games = [], set(), {}
     # The trading game plays hour by hour from the first day to the reveal's last.
     played = {d * day_hours: d for d in days}
     if game:
@@ -472,7 +388,7 @@ def build(
                         day_docs, row = _day(con, research, league, day)
                         docs.update(day_docs)
                         manifest_days.append({"day": day, "league": row})
-                        recap = recaps[day] = day_docs[snapshot.day_key(day, "missed")]
+                        recap = day_docs[snapshot.day_key(day, "missed")]
                         items |= set(_entries(day_docs[snapshot.day_key(day, "price-check")]))
                         progress(
                             f"day {day}: to {last:%Y-%m-%d %H:00} UTC, {len(day_docs)} documents"
@@ -501,10 +417,6 @@ def build(
                     docs[key] = _doc(
                         key, {k: doc[k] for k in ("item_id", "name", "unit", "series")}
                     )
-                for day, windows in recaps.items():
-                    if (doc := recap_next(con, league, windows, last)) is not None:
-                        key = snapshot.day_key(day, "recap-next")
-                        docs[key] = _doc(key, doc)
                 for n, doc in game_hours(con, league, games, last).items():
                     key = snapshot.game_key(n)
                     docs[key] = _doc(key, doc)

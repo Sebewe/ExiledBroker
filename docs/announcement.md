@@ -96,4 +96,4 @@ Flair if the sub uses one: **Project**.
 
 - Watch the readiness signals in go-live section 11 for the first few hours: Workers
   requests against the daily 100k, Railway's usage, `/admin`'s counts.
-- The second post (v2: the paper portfolio, a few days later) gets its own draft here.
+- The second post (v2: the trading game, a few days later) gets its own draft here.
