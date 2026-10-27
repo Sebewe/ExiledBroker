@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { MissedFlip, PreviewGameHour, PreviewGameOrder } from '../api/client'
-import { hourAt, isoAt, listingAt, placeFlip, placeOrder, quickSell, setListing, startGame, step, tally, total } from './game'
+import { buyIn, hourAt, isoAt, listingAt, placeFlip, placeOrder, quickSell, setListing, startGame, step, tally, total } from './game'
 import { parse, type FlipTrade, type GameState } from './gameStore'
 
 const LAUNCH = '2026-03-06T20:00:00Z'
@@ -20,6 +20,7 @@ const loop = (over: Partial<PreviewGameOrder> = {}): PreviewGameOrder => ({
   spent: 500, // 5 div
   pnl: 50, // +10%
   settle_at: isoAt(LAUNCH, 26),
+  lot: 100, // a purchase: 1 div
   ...over,
 })
 const flip: MissedFlip = {
@@ -58,7 +59,7 @@ describe('loops and card turn-ins', () => {
     // 5 of the 8 Divines filled (the order spent 500c at 100c a Divine); 3 came back.
     expect(s.cash).toBeCloseTo(5)
     expect(s.open[0]).toMatchObject({ state: 'filled', stake: 5 })
-    expect(total(s, 100)).toBeCloseTo(10)
+    expect(total(s)).toBeCloseTo(10)
     s = step(s, hour(26))
     expect(s.open).toEqual([])
     expect(s.cash).toBeCloseTo(10.5) // +10% on the 5 that filled
@@ -79,37 +80,64 @@ describe('loops and card turn-ins', () => {
     let s = ok(placeOrder(startGame('Mirage', 24), hour(24), loop({ pnl: null, settle_at: null }), 'X', 5))
     s = step(step(s, hour(25)), hour(26))
     expect(s.open).toHaveLength(1)
-    expect(total(s, 100)).toBeCloseTo(10)
+    expect(total(s)).toBeCloseTo(10)
   })
 
   it('refuses no order, too much, and the same trade twice in an hour', () => {
     const s = startGame('Mirage', 24)
     expect(placeOrder(s, hour(24), loop({ filled: null }), 'X', 1)).toMatch(/No order/)
     expect(placeOrder(s, hour(24), loop(), 'X', 11)).toMatch(/don’t have/)
-    expect(placeOrder(s, hour(24), loop(), 'X', 0)).toMatch(/more than nothing/)
+    expect(placeOrder(s, hour(24), loop(), 'X', 0)).toMatch(/at least one/)
+    expect(placeOrder(s, hour(24), loop(), 'X', 1.5)).toMatch(/at least one/)
     expect(placeOrder(s, hour(24, { divine_chaos: null }), loop(), 'X', 1)).toMatch(/Divine price/)
     const once = ok(placeOrder(s, hour(24), loop(), 'X', 1))
     expect(placeOrder(once, hour(24), loop(), 'X', 1)).toMatch(/Already/)
+  })
+
+  it("can't buy into a trade whose smallest purchase costs more than what's free", () => {
+    const s = ok(placeOrder(startGame('Mirage', 24), hour(24), loop(), 'X', 8)) // 2 div left
+    expect(placeOrder(s, hour(24), loop({ item_id: 'currency:b', lot: 300 }), 'Y', 1)).toMatch(/One purchase costs 3.00 div/)
+    expect(buyIn(s, hour(24), 300)).toMatchObject({ div: 3, max: 0 })
+    expect(buyIn(s, hour(24), 50)).toMatchObject({ div: 0.5, max: 4 })
+  })
+
+  it('fills whole purchases only, and converts at the price fixed at the first trade', () => {
+    let s = ok(placeOrder(startGame('Mirage', 24), hour(24), loop({ spent: 250, pnl: 25, lot: 100 }), 'X', 5))
+    expect(s.rate).toBe(100)
+    s = step(s, hour(25, { divine_chaos: 200 })) // the Divine's price moved: the game's didn't
+    expect(s.open[0]).toMatchObject({ lots: 2, stake: 2 }) // 250c fills 2 whole 100c purchases
+    expect(s.cash).toBeCloseTo(8)
+    s = step(s, hour(26, { divine_chaos: 200 }))
+    expect(s.cash).toBeCloseTo(10.2) // +10% on 2 div
   })
 })
 
 describe('flips', () => {
   const held = () => {
-    const s = ok(placeFlip(startGame('Mirage', 24), hour(24), flip, 4)) // 400c: 5 items at 80c
+    const s = ok(placeFlip(startGame('Mirage', 24), hour(24), flip, 5)) // 5 bids of 1 item at 80c: 4 div
     return step(s, hour(25, { prices: { 'currency:f': [78, 90, 100, 1000] } }))
   }
+
+  it('bids in whole lots', () => {
+    const lots = { ...flip, bid_lot: 4, bid_total: 320 } // 4 items for 320c: 3.2 div a bid
+    expect(placeFlip(startGame('Mirage', 24), hour(24), lots, 4)).toMatch(/don’t have/)
+    const s = step(ok(placeFlip(startGame('Mirage', 24), hour(24), lots, 3)), hour(25, { prices: { 'currency:f': [78, 90, 100, 90] } }))
+    // A tenth of 90 traded is 9 items: 2 whole lots of 4.
+    expect(s.open[0]).toMatchObject({ lots: 2, units: 8 })
+    expect(s.cash).toBeCloseTo(10 - 6.4)
+  })
 
   it("buys the next hour if a trade went under the bid, as many as a tenth of the hour's trades", () => {
     const s = held()
     expect(s.open[0]).toMatchObject({ state: 'holding', units: 5, left: 5, mark: 90 })
     expect(s.cash).toBeCloseTo(6)
-    const thin = step(ok(placeFlip(startGame('Mirage', 24), hour(24), flip, 4)), hour(25, { prices: { 'currency:f': [78, 90, 100, 30] } }))
+    const thin = step(ok(placeFlip(startGame('Mirage', 24), hour(24), flip, 5)), hour(25, { prices: { 'currency:f': [78, 90, 100, 30] } }))
     expect(thin.open[0]).toMatchObject({ units: 3 })
     expect(thin.cash).toBeCloseTo(10 - 2.4)
   })
 
   it("gives the bid back when nothing traded under it", () => {
-    const s = step(ok(placeFlip(startGame('Mirage', 24), hour(24), flip, 4)), hour(25, { prices: { 'currency:f': [85, 90, 100, 1000] } }))
+    const s = step(ok(placeFlip(startGame('Mirage', 24), hour(24), flip, 5)), hour(25, { prices: { 'currency:f': [85, 90, 100, 1000] } }))
     expect(s.cash).toBe(10)
     expect(s.done[0]!.outcome).toBe('unfilled')
   })
@@ -136,7 +164,7 @@ describe('flips', () => {
     let s = setListing(h, id, 200)
     s = step(s, hour(26, { prices: { 'currency:f': [90, 100, 150, 1000] } }))
     expect((s.open[0] as FlipTrade).left).toBe(5) // never over 200
-    expect(total(s, 100)).toBeCloseTo(6 + (5 * 100) / 100)
+    expect(total(s)).toBeCloseTo(6 + (5 * 100) / 100)
     expect(quickSell(s, hour(26), id)).toMatch(/didn’t trade/)
     s = ok(quickSell(s, hour(26, { prices: { 'currency:f': [90, 100, 150, 1000] } }), id))
     expect(s.cash).toBeCloseTo(6 + 4.5)
@@ -148,15 +176,17 @@ describe('the stored game', () => {
   it('starts fresh from anything unreadable', () => {
     expect(parse(null).n).toBe(0)
     expect(parse('{').cash).toBe(10)
-    expect(parse(JSON.stringify({ league: 'Mirage', n: 'x', cash: 1, open: [], done: [] })).n).toBe(0)
-    const s = parse(JSON.stringify({ league: 'Mirage', n: 30, start: 24, cash: 7, open: [{ id: 'a', stake: 3, at: 29 }, { junk: true }], done: [] }))
-    expect(s).toMatchObject({ league: 'Mirage', n: 30, cash: 7 })
+    expect(parse(JSON.stringify({ v: 2, league: 'Mirage', n: 'x', cash: 1, open: [], done: [] })).n).toBe(0)
+    // A game from before whole purchases starts over.
+    expect(parse(JSON.stringify({ league: 'Mirage', n: 30, start: 24, cash: 7, open: [], done: [] })).n).toBe(0)
+    const s = parse(JSON.stringify({ v: 2, league: 'Mirage', n: 30, start: 24, rate: 120, cash: 7, open: [{ id: 'a', stake: 3, at: 29, lots: 3 }, { junk: true }], done: [] }))
+    expect(s).toMatchObject({ league: 'Mirage', n: 30, cash: 7, rate: 120 })
     expect(s.open).toHaveLength(1)
   })
 
   it('keeps the closed trades across a reload', () => {
     const done = { id: 'b', kind: 'loop', item_id: 'currency:x', name: 'X', at: 24, closed: 26, cost: 1, back: 1.4, outcome: 'sold' }
-    const s = parse(JSON.stringify({ league: 'Mirage', n: 30, start: 24, cash: 7, open: [], done: [done, { id: 'c', at: 25 }] }))
+    const s = parse(JSON.stringify({ v: 2, league: 'Mirage', n: 30, start: 24, cash: 7, open: [], done: [done, { id: 'c', at: 25 }] }))
     expect(s.done).toEqual([done])
   })
 })

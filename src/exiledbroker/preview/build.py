@@ -218,15 +218,21 @@ def _hour(iso: str) -> datetime:
 
 
 def _orders(
-    t: pl.DataFrame, keys: list[str], unknown: pl.Expr, spent: pl.Expr, settle: pl.Expr
+    t: pl.DataFrame,
+    keys: list[str],
+    unknown: pl.Expr,
+    spent: pl.Expr,
+    settle: pl.Expr,
+    lot: pl.Expr,
 ) -> dict:
     """The orders the backtest placed (`t`, one row per order), by (`keys`..., hour):
     (filled, pnl in Chaos or None where `unknown`, what the fill spent in Chaos, the
-    hour it sold or None)."""
+    hour it sold or None, and the smallest whole purchase the order makes, in Chaos)."""
     t = t.with_columns(
         chaos=pl.when(unknown).then(None).otherwise(pl.col("pnl") * pl.col("rate")),
         spent_=pl.when(pl.col("filled")).then(spent).otherwise(None),
         settle_=pl.when(pl.col("filled") & unknown.not_()).then(settle).otherwise(None),
+        lot_=lot,
     )
     return {
         (*(r[k] for k in keys), r["observed_at"]): (
@@ -234,6 +240,7 @@ def _orders(
             r["chaos"],
             r["spent_"],
             r["settle_"],
+            r["lot_"],
         )
         for r in t.iter_rows(named=True)
     }
@@ -256,8 +263,10 @@ def _loop_orders(con, league: str, items: list[str], since, until, last_hour) ->
     unknown = pl.col("filled") & pl.col("sell_at").is_null() & sale_open
     # Chaos first spends `buy` Chaos an item; Divines first, `buy` Divines at the hour's rate.
     each = pl.when(pl.col("direction") == "chaos_first").then(pl.col("buy"))
-    spent = pl.col("k") * each.otherwise(pl.col("buy") * pl.col("rate"))
-    return _orders(t, ["item_id", "direction"], unknown, spent, _settled())
+    each = each.otherwise(pl.col("buy") * pl.col("rate"))
+    # It buys whole lots of what one sale takes (1 Divine for 8 items: 8 at a time).
+    lot = pl.col("sell_lot") * each
+    return _orders(t, ["item_id", "direction"], unknown, pl.col("k") * each, _settled(), lot)
 
 
 def _card_orders(con, league: str, cards: list[str], since, until, last_hour) -> dict:
@@ -283,7 +292,10 @@ def _card_orders(con, league: str, cards: list[str], since, until, last_hour) ->
     sale_open = pl.col("observed_at") + 2 * bt.H + bt.SELL_WITHIN > last_hour
     unknown = pl.col("filled") & pl.col("sell_at").is_null() & sale_open
     spent = pl.col("k") * pl.col("n") * pl.col("buy")
-    return _orders(t, ["item_id"], unknown, spent, _settled())
+    # Whole sets, as many as one sale of the reward takes.
+    sets = (pl.col("sell_lot") / pl.col("q")).ceil().clip(lower_bound=1)
+    lot = sets * pl.col("n") * pl.col("buy")
+    return _orders(t, ["item_id"], unknown, spent, _settled(), lot)
 
 
 def game_hours(con, league: str, games: dict[int, dict], last_hour: datetime) -> dict:
@@ -331,7 +343,7 @@ def game_hours(con, league: str, games: dict[int, dict], last_hour: datetime) ->
                     continue
                 seen.add((kind, item_id, direction))
                 key = (item_id, direction, at) if kind == "loop" else (item_id, at)
-                f, v, spent, settle = orders[kind].get(key, (None, None, None, None))
+                f, v, spent, settle, lot = orders[kind].get(key, (None,) * 5)
                 mine.append(
                     {
                         "kind": kind,
@@ -341,6 +353,7 @@ def game_hours(con, league: str, games: dict[int, dict], last_hour: datetime) ->
                         "spent": spent if f else None,
                         "pnl": v if f else None,
                         "settle_at": _iso(settle) if f and settle is not None else None,
+                        "lot": lot if f is not None and lot and lot > 0 else None,
                     }
                 )
         out[n] = {**g, "orders": mine, "prices": prices.get(at, {})}

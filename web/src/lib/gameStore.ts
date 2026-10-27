@@ -18,10 +18,13 @@ export type OrderTrade = {
   direction?: string | null
   /** The game hour it was placed in (hours since launch). */
   at: number
-  /** Divines tied up: the stake while the order waits, what filled once it has. */
+  /** Divines tied up: the purchases bought while the order waits, what filled once it has. */
   stake: number
-  /** The Divine's price in Chaos when placed: the trade's Chaos are converted at it. */
+  /** The game's Divine price in Chaos: the trade's Chaos are converted at it. */
   rate: number
+  /** Chaos one purchase costs (the smallest whole trade at the order's bid), and how many. */
+  lot: number
+  lots: number
   filled: boolean | null
   spent: number | null
   pnl: number | null
@@ -40,6 +43,10 @@ export type FlipTrade = {
   /** Divines put in: the stake while bidding, the items' cost once bought. */
   stake: number
   rate: number
+  /** Items one purchase buys, its Chaos (the recap's whole bid), and how many were bid for. */
+  lot: number
+  lotCost: number
+  lots: number
   /** Chaos an item: the recap's bid and first ask, and its hourly cut. */
   bid: number
   ask: number
@@ -74,18 +81,23 @@ export type Done = {
 }
 
 export type GameState = {
+  /** The stored format: an older game starts over. */
+  v: 2
   /** The snapshot's league: a game of another league starts over. */
   league: string
   /** The game hour the clock is at (hours since launch); 0: no game yet. */
   n: number
   /** Where it started, for the history. */
   start: number
+  /** The Divine's price in Chaos, fixed for the game at its first trade (0: none yet):
+   *  every Chaos amount converts at it, so the total moves only with the trades. */
+  rate: number
   cash: number
   open: Trade[]
   done: Done[]
 }
 
-export const EMPTY: GameState = { league: '', n: 0, start: 0, cash: START_CASH, open: [], done: [] }
+export const EMPTY: GameState = { v: 2, league: '', n: 0, start: 0, rate: 0, cash: START_CASH, open: [], done: [] }
 
 const finite = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x)
 
@@ -93,14 +105,16 @@ const finite = (x: unknown): x is number => typeof x === 'number' && Number.isFi
 export function parse(raw: string | null): GameState {
   try {
     const v = JSON.parse(raw ?? 'null') as Partial<GameState> | null
-    if (!v || typeof v.league !== 'string' || !finite(v.n) || !finite(v.cash) || !Array.isArray(v.open) || !Array.isArray(v.done)) return EMPTY
-    const ok = (t: unknown) => !!t && typeof t === 'object' && typeof (t as Trade).id === 'string' && finite((t as Trade).stake) && finite((t as Trade).at)
+    if (!v || v.v !== 2 || typeof v.league !== 'string' || !finite(v.n) || !finite(v.cash) || !Array.isArray(v.open) || !Array.isArray(v.done)) return EMPTY
+    const ok = (t: unknown) => !!t && typeof t === 'object' && typeof (t as Trade).id === 'string' && finite((t as Trade).stake) && finite((t as Trade).at) && finite((t as Trade).lots)
     // A closed trade has no stake: what went in and came back.
     const closed = (t: unknown) => !!t && typeof t === 'object' && typeof (t as Done).id === 'string' && finite((t as Done).at) && finite((t as Done).cost) && finite((t as Done).back)
     return {
+      v: 2,
       league: v.league,
       n: Math.max(0, Math.round(v.n)),
       start: finite(v.start) ? v.start : 0,
+      rate: finite(v.rate) && v.rate > 0 ? v.rate : 0,
       cash: v.cash,
       open: v.open.filter(ok) as Trade[],
       done: v.done.filter(closed).slice(-500) as Done[],

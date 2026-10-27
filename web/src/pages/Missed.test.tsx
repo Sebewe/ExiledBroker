@@ -406,7 +406,7 @@ describe('Market recap in the preview: the trading game', () => {
   // The sample's day 2 ends at game hour 28. Its recap here lists a loop whose order that
   // hour filled 5 Divines' worth (500c) and made 10%, sold the next hour.
   const windows = (n: number) => RECAP.map((w) => ({ ...w, latest_hour: gameHourDoc(n).latest_hour }))
-  const order = { kind: 'loop' as const, item_id: 'currency:d', direction: 'chaos_first', filled: true, spent: 500, pnl: 50, settle_at: gameHourDoc(29).latest_hour }
+  const order = { kind: 'loop' as const, item_id: 'currency:d', direction: 'chaos_first', filled: true, spent: 500, pnl: 50, settle_at: gameHourDoc(29).latest_hour, lot: 100 }
   const routes = () => ({
     ...previewRoutes(),
     '/api/status': { body: previewStatus() },
@@ -431,7 +431,12 @@ describe('Market recap in the preview: the trading game', () => {
     expect(screen.queryByText(/The next league launches/)).toBeNull()
     const loops = within(document.getElementById('loops')!)
     fireEvent.click(await loops.findByRole('button', { name: 'Trade this hour' }))
-    fireEvent.change(loops.getByLabelText(/Divines to put in/), { target: { value: '8' } })
+    // Whole purchases at the real price: one is the order's smallest lot, 100c (1 div) here.
+    const buy = loops.getByLabelText(/Purchases/)
+    expect(buy).toHaveValue(1)
+    expect(loops.getByText(/one is 100\.0c \(1\.00div\)/)).toBeInTheDocument()
+    fireEvent.change(buy, { target: { value: '8' } })
+    expect(loops.getByText(/= 8\.00div/)).toBeInTheDocument()
     fireEvent.click(loops.getByRole('button', { name: 'Place it' }))
     expect(await loops.findByText('Placed this hour')).toBeInTheDocument()
     expect(JSON.parse(localStorage.getItem('eb-game')!)).toMatchObject({ league: 'Mirage', n: 28, cash: 2 })

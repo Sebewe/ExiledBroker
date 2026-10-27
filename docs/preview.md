@@ -118,6 +118,16 @@ day and play the rewound league hour by hour, trading only what the Market recap
 so the only way up is trading. The rules are `lib/game.ts`; the state is `eb-game` in
 localStorage (in memory where storage is blocked): no accounts, nothing sent.
 
+- **Whole purchases at the real price** (the user, 2026-10-27: "you can't put 2 div in
+  something that has a 3 div buy-in"). A player buys a number of a trade's smallest whole
+  purchases: a loop's or card's order `lot` (Chaos for the smallest whole lot at its bid,
+  `sell_lot` units of a loop, enough whole sets for a card), a flip's whole bid
+  (`bid_lot` items for `bid_total`). The form says what one costs and how many fit in the
+  Divines free (10 at most); a trade whose purchase costs more than that can't be placed.
+  Orders fill in whole purchases too. Chaos convert to Divines at one price fixed for the
+  game at its first trade (`GameState.rate`; the user: keep the portfolio in Divines, no
+  real-time conversion), so the total moves only with the trades. A game stored before
+  this (no `v: 2`) starts over.
 - **Hours.** `game/{n}` is the site `n` hours after launch (its latest hour is
   `launch + n − 1 h`), for every `n` from the first day's end to `next_until`
   (`manifest.game`: `first`, `last`). A game starts at the chosen day's end; while it runs,
@@ -128,8 +138,8 @@ localStorage (in memory where storage is blocked): no accounts, nothing sent.
   (`preview/build.game_hours`), filled by the Backtest's rules (`loop_order_fills` /
   `card_order_fills`, a fill when a trade went past the order, at most a tenth of what
   traded and 10 Divines an order): `filled` (null: no order, it didn't pay from the bid),
-  `spent` and `pnl` (Chaos) and `settle_at` (the hour it sold). A player's stake fills up to
-  `spent`, the rest comes back the next hour, and what filled earns `pnl / spent` and is
+  `spent` and `pnl` (Chaos) and `settle_at` (the hour it sold). A player's purchases fill up to
+  `spent` (whole `lot`s), the rest comes back the next hour, and what filled earns `pnl / spent` and is
   tied up until `settle_at`. A sale not known by `next_until` stays open at what it cost.
   Random-reward cards aren't offered (the Backtest can't price them).
 - **Flips** are held positions, played in the browser from each hour's Chaos prices (low,

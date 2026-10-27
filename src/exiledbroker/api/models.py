@@ -621,6 +621,10 @@ class PreviewGameOrder(BaseModel):
     spent: float | None  # Chaos the filled order spent
     pnl: float | None  # Chaos it made once sold; null: unfilled, or not sold by the end
     settle_at: datetime | None  # the hour it sold
+    # Chaos for the smallest whole purchase the order makes, at its bid: a lot of what
+    # one sale takes (loops) or the sets one sale of the reward needs (cards). A player
+    # buys whole ones (lib/game.ts). Null in a snapshot built before 2026-10-27 12:00.
+    lot: float | None = None
 
 
 class PreviewGameHour(BaseModel):

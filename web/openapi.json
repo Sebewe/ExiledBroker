@@ -2104,6 +2104,17 @@
             "title": "Kind",
             "type": "string"
           },
+          "lot": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lot"
+          },
           "pnl": {
             "anyOf": [
               {

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { LiveLeague, Status } from '../api/client'
@@ -160,6 +160,9 @@ describe('preview welcome', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Preview mode' })
     expect(dialog).toHaveAttribute('aria-modal', 'true')
     expect(dialog.textContent).toMatch(/The site is currently in preview mode\. You are seeing Mirage as of day 2 \(.+ UTC\)/)
+    // How the paper trading works, while the snapshot has a game to play.
+    expect(within(dialog).getByText('Paper trading')).toBeInTheDocument()
+    expect(dialog.textContent).toMatch(/purchases are whole, at the real price that hour/)
     const button = screen.getByRole('button', { name: 'Got it' })
     expect(button).toHaveFocus()
     expect(document.body.style.overflow).toBe('hidden')
