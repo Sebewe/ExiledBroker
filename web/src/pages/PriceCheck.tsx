@@ -272,9 +272,12 @@ function ItemView({
         </span>
       </header>
       <VerdictCard item={item} />
-      {/* The preview's reveal, closed again for another item or day. */}
-      {preview.on && <ItemReveal key={`${item.item_id}@${preview.day}`} item={item} divineChaos={info.divine_chaos} />}
-      <PriceChart item={item} info={info} />
+      <PriceChart
+        item={item}
+        info={info}
+        // The preview's reveal, right under the chart; closed again for another item or day.
+        reveal={preview.on && <ItemReveal key={`${item.item_id}@${preview.day}`} item={item} divineChaos={info.divine_chaos} />}
+      />
       <Selling item={item} money={shown} divineChaos={info.divine_chaos} />
       {!chaosOnly && <LaunchPrices item={item} money={money} divineChaos={info.divine_chaos} />}
     </>
@@ -339,7 +342,7 @@ function HorizonCard({ title, h, horizon }: { title: string; h: Horizon; horizon
   )
 }
 
-function PriceChart({ item, info }: { item: PriceCheckItem; info: LiveLeague }) {
+function PriceChart({ item, info, reveal }: { item: PriceCheckItem; info: LiveLeague; reveal?: ReactNode }) {
   const [rangeParam, setRange] = useParam<Range>('range', '3d')
   const range: Range = rangeParam in RANGES ? rangeParam : '3d'
   const { bounds, points, band } = useMemo(() => {
@@ -375,6 +378,7 @@ function PriceChart({ item, info }: { item: PriceCheckItem; info: LiveLeague }) 
           />
         </div>
       )}
+      {reveal}
       <ul className="flex max-w-3xl flex-col gap-1 text-xs text-faint">
         {priced === 1 && <li>Only one hour has traded so far: the lines start as the next hours are published.</li>}
         {chaosOnly && <li>Its own market's price: how many Chaos a Divine Orb traded for each hour, the rate the site converts every price with.</li>}
