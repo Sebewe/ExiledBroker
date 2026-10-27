@@ -162,6 +162,8 @@ describe('Market recap', () => {
     const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)
     expect(headings.indexOf('Volatile flips')).toBe(headings.indexOf('Loops that paid') - 1)
     const flips = screen.getByRole('heading', { level: 2, name: 'Volatile flips' }).closest('section')!
+    // The odds sit behind each card's Details.
+    within(flips).getAllByRole('button', { name: 'Details' }).forEach((b) => fireEvent.click(b))
     expect(within(flips).getByText('90%')).toBeInTheDocument() // went through, recently
     // The flip's margin at its orders: 110c over 84c, and 5.5c over 4.2c (11c for 2 over 21c for 5).
     expect(within(flips).getAllByText('+31%')).toHaveLength(2)
@@ -220,6 +222,7 @@ describe('Market recap', () => {
     renderPage()
     const section = (await screen.findByRole('heading', { level: 2, name: 'Loops that paid' })).closest('section')!
     expect(within(section).getAllByRole('heading', { level: 3 })).toHaveLength(3) // the top 3
+    within(section).getAllByRole('button', { name: 'Details' }).forEach((b) => fireEvent.click(b))
     expect(within(section).getAllByText('15 of 20 tries in the last 3 days, by the optimistic fill rule')).toHaveLength(3)
     // The rates stay hidden until asked for.
     expect(within(section).queryByText('21c for 2')).not.toBeInTheDocument()

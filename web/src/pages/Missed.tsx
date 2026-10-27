@@ -701,6 +701,21 @@ function NeverFilled({ chance }: { chance?: number | null }) {
   return <span className="text-[11px] text-warning">Its orders never went through lately, so the profit above is unlikely to be yours.</span>
 }
 
+/** The section's pick for its takeaway: the largest headline among those whose orders went
+ *  through lately (`ok` too), else the first listed; none for an empty list. */
+function bestOf<T extends { chance?: number | null }>(xs: T[], value: (x: T) => number, ok: (x: T) => boolean = () => true): T | undefined {
+  const fair = xs.filter((x) => x.chance !== 0 && ok(x))
+  return fair.reduce<T | undefined>((best, x) => (best === undefined || value(x) > value(best) ? x : best), undefined) ?? xs[0]
+}
+
+const thisWindow = (hours: number) => (hours === 1 ? 'this hour' : `in ${lastHours(hours)}`)
+
+/** "Best loop this hour: +6% on Reverent Fragment", skipping a likely odd trade. */
+function loopTakeaway(w: MissedWindow) {
+  const best = bestOf(w.loops, (l) => l.best_edge, (l) => l.best_edge <= ODD_EDGE)
+  return best && `Best loop ${thisWindow(w.hours)}: ${signedPct(best.best_edge, 0)} on ${best.name}`
+}
+
 function Loops({ w, money, rate, href, play }: { w: MissedWindow; money: Money; rate: number | null | undefined; href: ItemHref; play: boolean }) {
   const [all, setAll] = useState(false)
   const shown = all ? w.loops : w.loops.slice(0, TOP)
@@ -709,12 +724,15 @@ function Loops({ w, money, rate, href, play }: { w: MissedWindow; money: Money; 
       id="loops"
       title="Loops that paid"
       icon={Repeat}
+      takeaway={loopTakeaway(w)}
       lead="Buy an item with one currency and sell it for the other: these round trips ended with more Chaos than they started with."
       method="loops"
       more={<ShowAll all={all} total={w.loops.length} onToggle={() => setAll(!all)} />}
     >
       {w.loops.length === 0 ? (
-        <Empty>No loop with enough volume beat a 2% edge in {lastHours(w.hours)}.</Empty>
+        <Empty hint="Try the Volatile flips above, or check back after the next hour.">
+          No loop with enough volume beat a 2% edge in {lastHours(w.hours)}.
+        </Empty>
       ) : (
         <ol className="grid gap-3 md:grid-cols-3">
           {shown.map((l) => {
@@ -729,11 +747,20 @@ function Loops({ w, money, rate, href, play }: { w: MissedWindow; money: Money; 
                 label="best edge, worst prices"
                 footer={
                   <>
-                    <Steady paid={l.hours_paid} hours={w.hours} />
                     <span>
                       <span className="num text-text">{money(l.volume)}</span> traded through both markets an hour
                     </span>
                     {l.best_edge > ODD_EDGE && <span className="text-warning">unusually large: likely one odd trade</span>}
+                  </>
+                }
+                details={
+                  <>
+                    <Chance tries={l.tries} through={l.through} chance={l.chance} />
+                    {w.hours > 1 && (
+                      <span className="text-xs text-muted">
+                        <Steady paid={l.hours_paid} hours={w.hours} />
+                      </span>
+                    )}
                   </>
                 }
                 actions={
@@ -765,7 +792,7 @@ function Loops({ w, money, rate, href, play }: { w: MissedWindow; money: Money; 
                 }
               >
                 <Route steps={loopRoute(l.name, l.direction)} item={l.name} />
-                <Chance tries={l.tries} through={l.through} chance={l.chance} />
+                <NeverFilled chance={l.chance} />
               </Opportunity>
             )
           })}
@@ -954,6 +981,15 @@ function flipSteps(f: MissedFlip): Step[] {
   ]
 }
 
+/** What a flip makes if both orders fill at their first rates (before any cuts): its card's headline. */
+const flipMargin = (f: MissedFlip) => f.ask / f.bid - 1
+
+/** "Widest flip this hour: +18% on Chaos Shard". */
+function flipTakeaway(flips: MissedFlip[]) {
+  const best = bestOf(flips, flipMargin)
+  return best && `Widest flip this hour: ${signedPct(flipMargin(best), 0)} on ${best.name}`
+}
+
 /** The latest hour's flips: the same whatever the look-back (sent with the 1-hour one). */
 function Flips({ flips, money, href, play }: { flips: MissedFlip[]; money: Money; href: ItemHref; play: boolean }) {
   const [all, setAll] = useState(false)
@@ -963,12 +999,13 @@ function Flips({ flips, money, href, play }: { flips: MissedFlip[]; money: Money
       id="flips"
       title="Volatile flips"
       icon={Activity}
+      takeaway={flipTakeaway(flips)}
       lead="Items whose price swung widely in the last hour: bid low, list high, and wait."
       method="flips"
       more={<ShowAll all={all} total={flips.length} onToggle={() => setAll(!all)} />}
     >
       {flips.length === 0 ? (
-        <Empty>No liquid item traded across a wide enough range in the latest hour.</Empty>
+        <Empty hint="Loops and card turn-ins below may still have something.">No liquid item traded across a wide enough range in the latest hour.</Empty>
       ) : (
         <ol className="grid gap-3 md:grid-cols-3">
           {shown.map((f) => (
@@ -977,17 +1014,20 @@ function Flips({ flips, money, href, play }: { flips: MissedFlip[]; money: Money
               title={f.name}
               href={href(f.item_id)}
               muted={f.chance === 0}
-              // What the flip makes if both orders fill at their first rates (before any cuts).
-              amount={signedPct(f.ask / f.bid - 1, 0)}
+              amount={signedPct(flipMargin(f), 0)}
               label="per flip, if both orders fill"
-              footer={
+              footer={<span>average {money(f.price, f.high)}</span>}
+              details={
                 <>
-                  <span>
-                    <span className="num text-text">{Math.round(f.range * 100)}%</span> range last hour
-                  </span>
-                  <span>
-                    <span className="num text-text">{money(f.volume)}</span> traded</span>
-                  <span>average {money(f.price, f.high)}</span>
+                  <Chance tries={f.tries} through={f.through} chance={f.chance} sell="sold within 6 hours at the ask" />
+                  <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted">
+                    <span>
+                      <span className="num text-text">{Math.round(f.range * 100)}%</span> range last hour
+                    </span>
+                    <span>
+                      <span className="num text-text">{money(f.volume)}</span> traded
+                    </span>
+                  </div>
                 </>
               }
               actions={
@@ -1004,7 +1044,7 @@ function Flips({ flips, money, href, play }: { flips: MissedFlip[]; money: Money
                 </>
               }
             >
-              <Chance tries={f.tries} through={f.through} chance={f.chance} sell="sold within 6 hours at the ask" />
+              <NeverFilled chance={f.chance} />
             </Opportunity>
           ))}
         </ol>
