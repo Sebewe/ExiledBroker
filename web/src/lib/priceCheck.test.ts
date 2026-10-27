@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Horizon, Outlook, SeriesPoint } from '../api/client'
 import { alpha, type ChartTokens } from './chartOptions'
-import { BETWEEN_LAUNCHES, dayLabel, inRange, isLater, latestHour, outlookBand, priceChartOption, rangeBounds, reason } from './priceCheck'
+import { BETWEEN_LAUNCHES, dayLabel, inRange, isLater, latestHour, outlookBand, pathLabel, priceChartOption, rangeBounds, reason, typicalPath } from './priceCheck'
 
 const H = 3_600_000
 const T0 = Date.parse('2026-10-01T00:00:00Z')
@@ -171,5 +171,26 @@ describe('reason', () => {
     expect(reason(horizon({ state: 'later', typical: null }), 'h24')).toBe(BETWEEN_LAUNCHES)
     expect(isLater({ h24: horizon({ state: 'later' }), d3: horizon({ state: 'later' }), unit: 'divine' })).toBe(true)
     expect(isLater(OUTLOOK)).toBe(false)
+  })
+})
+
+describe('typicalPath', () => {
+  it('runs from today (no change) through each judged horizon, with its range', () => {
+    const path = typicalPath(OUTLOOK)!
+    expect(path).toEqual([
+      { hours: 0, typical: 0, low: 0, high: 0 },
+      { hours: 24, typical: -0.03, low: -0.09, high: 0.02 },
+      { hours: 72, typical: -0.08, low: -0.12, high: 0.02 },
+    ])
+    expect(pathLabel(path)).toBe('Typically −3% after 24 hours and −8% after 3 days in past leagues, in Divines.')
+  })
+
+  it('skips a horizon without history, and is null when none has any', () => {
+    const none = horizon({ verdict: 'none', state: 'no_history', typical: null, low: null, high: null, leagues: 0 })
+    const later = horizon({ verdict: 'none', state: 'later', typical: null, low: null, high: null, leagues: 0 })
+    expect(typicalPath({ ...OUTLOOK, d3: later })!.map((p) => p.hours)).toEqual([0, 24])
+    expect(pathLabel(typicalPath({ ...OUTLOOK, h24: none })!)).toBe('Typically −8% after 3 days in past leagues, in Divines.')
+    expect(typicalPath({ h24: none, d3: later, unit: 'divine' })).toBeNull()
+    expect(typicalPath(null)).toBeNull()
   })
 })

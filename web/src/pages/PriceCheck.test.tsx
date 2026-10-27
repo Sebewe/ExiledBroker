@@ -261,6 +261,8 @@ describe('Price check', () => {
     expect(day.getByText('In past leagues it fell 3% in Divines over the next 24 hours from this point (−9% to +2%, 4 leagues).')).toBeInTheDocument()
     expect(within(verdict.getByRole('group', { name: 'Next 3 days' })).getByText('No clear signal')).toBeInTheDocument()
     expect(verdict.getByText(/Judged in Divines/)).toBeInTheDocument()
+    // The typical path at a glance, beside the question.
+    expect(verdict.getByRole('img', { name: 'Typically −3% after 24 hours and −1% after 3 days in past leagues, in Divines.' })).toBeInTheDocument()
     // The order of the page: chart, verdict (under the chart: the user), selling, launch.
     const chartBlock = screen.getByRole('region', { name: 'Price this league' })
     expect(chartBlock.compareDocumentPosition(screen.getByRole('region', { name: 'Verdict' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
@@ -317,6 +319,7 @@ describe('Price check', () => {
     expect(verdict.getAllByText('No clear signal')).toHaveLength(2)
     expect(verdict.getAllByText(/nothing to judge by/)).toHaveLength(2)
     expect(verdict.getByText(/A verdict needs at least two past leagues/)).toBeInTheDocument()
+    expect(verdict.queryByRole('img')).toBeNull() // no path to draw
     expect(screen.getByRole('img', { name: /hourly price/ }).dataset.series).toBe('Chaos:72,Divine:72') // no band
     expect(screen.getByText(/No past league's launch has this item yet/)).toBeInTheDocument()
   })
@@ -329,6 +332,7 @@ describe('Price check', () => {
     expect(verdict.getByText("Calls appear in a league's first two weeks; after that past leagues don't predict the next few days.")).toBeInTheDocument()
     expect(verdict.queryByText('Sell now')).toBeNull()
     expect(verdict.queryByText('No clear signal')).toBeNull()
+    expect(verdict.queryByRole('img')).toBeNull()
     expect(screen.getByRole('img', { name: /hourly price/ }).dataset.series).toBe('Chaos:72,Divine:72')
     expect(screen.getByRole('region', { name: 'Selling a stack' })).toBeInTheDocument()
   })
