@@ -149,8 +149,9 @@ localStorage (in memory where storage is blocked): no accounts, nothing sent.
   Nothing sells by itself at a loss (the user, 2026-10-27: no automatic sale, flag it
   "Dump now" instead): where the sale never filled (`unsold`: the Backtest gave up after
   `SELL_WITHIN` and counted it lost), the player is left holding `units` of `hold` a
-  purchase (the loop's item, the card's reward), priced each hour in `prices` (the
-  Backtest's hourly prices), flagged **Dump now**, with "Sell now" at the hour's lowest
+  purchase (the loop's item, the card's reward), priced each hour in `prices` (a
+  loop's item from its Chaos market, `cross_market_hour`, since the hourly price rows keep
+  only price-mapping items; a card's reward from the Backtest's hourly prices), flagged **Dump now**, with "Sell now" at the hour's lowest
   trade; they can also hold on.
   Random-reward cards aren't offered (the Backtest can't price them).
 - **Flips** are held positions, played in the browser from each hour's Chaos prices (low,

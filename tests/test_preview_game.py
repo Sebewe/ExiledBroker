@@ -110,3 +110,39 @@ def test_the_game_takes_each_hours_own_order_with_what_it_spent_and_when_it_sold
     assert out[3]["prices"] == {"r": [25.0, 30.0, 33.0, 60.0]}
     assert all(o["item_id"] != "w" for g in out.values() for o in g["orders"])
     assert out[1]["prices"] == {}  # no flips listed, and no hour of the reward
+
+
+def test_a_loop_left_unsold_is_priced_from_its_chaos_market(market, monkeypatch):
+    """A loop's item has no hourly price rows (only price-mapping items do): what an
+    unsold loop holds is priced from its Chaos market, the card's reward as before."""
+    loops = {("a", "chaos_first", T0): (True, -880.0, 880.0, T0 + 2 * H, 80.0, "a", 8, True)}
+    monkeypatch.setattr(pb, "_loop_orders", lambda *a: loops)
+    asked = []
+
+    def chaos_hours(con, league, items, since):
+        asked.append(items)
+        return pl.DataFrame(
+            {
+                "item_id": ["a"],
+                "observed_at": [T0 + 2 * H],
+                "lo": [9.0],
+                "p": [10.0],
+                "hi": [11.0],
+                "units": [500.0],
+            }
+        )
+
+    monkeypatch.setattr(pb, "_chaos_hours", chaos_hours)
+    games = {
+        n: {
+            "latest_hour": f"{T0 + (n - 1) * H:%Y-%m-%dT%H:%M:%S}Z",
+            "divine_chaos": 100.0,
+            "recap": _windows(),
+        }
+        for n in (1, 2, 3)
+    }
+    out = pb.game_hours(None, "Mirage", games, T0 + 4 * H)
+    assert asked == [["a"]]
+    loop = next(o for o in out[1]["orders"] if o["kind"] == "loop")
+    assert (loop["hold"], loop["units"], loop["unsold"]) == ("a", 8, True)
+    assert out[3]["prices"] == {"a": [9.0, 10.0, 11.0, 500.0], "r": [25.0, 30.0, 33.0, 60.0]}
