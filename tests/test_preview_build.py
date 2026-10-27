@@ -91,7 +91,7 @@ def test_build_writes_every_key_offline(research):
         assert docs[key]["hours"] <= pb.NEXT_HOURS
         for t in docs[key]["trades"]:  # the Backtest's fills, one per known hour
             n = docs[key]["hours"]
-            assert len(t["paid"]) == len(t["filled"]) == len(t["pnl"]) == len(t["spent"]) == n
+            assert len(t["paid"]) == len(t["filled"]) == len(t["pnl"]) == n
             assert t["paid_hours"] <= t["traded_hours"] <= t["orders"]
             assert t["fills"] <= t["orders"]
     # The reveal's series run to the last loaded hour.

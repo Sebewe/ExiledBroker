@@ -221,14 +221,12 @@ def _hour(iso: str) -> datetime:
 
 def _outcome(kind, item_id, direction, orders: dict, hours: list[datetime]) -> dict:
     """One trade's next hours from its orders (`orders`: pricing hour -> (filled, pnl in
-    Chaos, or None while the sale isn't known, and what the fill spent in Chaos)), an
-    hour with no order as None."""
-    filled, pnl, paid, spent = [], [], [], []
+    Chaos, or None while the sale isn't known, ...)), an hour with no order as None."""
+    filled, pnl, paid = [], [], []
     for at in hours:
-        f, v, s = (*orders.get(at, (None, None)), None, None)[:3]
+        f, v = orders.get(at, (None, None))[:2]
         filled.append(f)
         pnl.append(v if f else None)
-        spent.append(s if f and s and s > 0 else None)
         paid.append(None if f is None or (f and v is None) else bool(f and v > 0))
     return {
         "kind": kind,
@@ -241,7 +239,6 @@ def _outcome(kind, item_id, direction, orders: dict, hours: list[datetime]) -> d
         "still_paid": any(paid[STILL_FROM:]) if len(hours) >= NEXT_HOURS else None,
         "filled": filled,
         "pnl": pnl,
-        "spent": spent,
         "orders": sum(1 for f in filled if f is not None),
         "fills": sum(1 for f in filled if f),
         "profit": sum(v for v in pnl if v is not None),
@@ -391,17 +388,14 @@ def game_hours(con, league: str, games: dict[int, dict], last_hour: datetime) ->
         k: find[k](con, league, sorted(v), first - bt.H, end, last_hour) if v else {}
         for k, v in keys.items()
     }
-    px = flips.chaos_prices(con, league).filter(
-        pl.col("item_id").is_in(sorted(flipped)), pl.col("observed_at") >= first
-    )
     prices: dict[datetime, dict] = {}
-    for r in px.iter_rows(named=True):
-        prices.setdefault(r["observed_at"], {})[r["item_id"]] = [
-            r["lo"],
-            r["p"],
-            r["hi"],
-            r["units"],
-        ]
+    if flipped:
+        px = flips.chaos_prices(con, league).filter(
+            pl.col("item_id").is_in(sorted(flipped)), pl.col("observed_at") >= first
+        )
+        for r in px.iter_rows(named=True):
+            hour = prices.setdefault(r["observed_at"], {})
+            hour[r["item_id"]] = [r["lo"], r["p"], r["hi"], r["units"]]
     out = {}
     for n, g in games.items():
         at = _hour(g["latest_hour"])

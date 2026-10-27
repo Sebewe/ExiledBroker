@@ -48,7 +48,7 @@ def market(monkeypatch):
     monkeypatch.setattr(pb.bt, "_cross_hours", lambda *a, **k: cross)
     monkeypatch.setattr(pb.bt, "_rate", lambda *a, **k: rate)
     # Cards and flips stand in: one card's order from hour 1 filled at a 5c loss.
-    cards = {("c", T0 + H): (True, -5.0)}
+    cards = {("c", T0 + H): (True, -5.0, 105.0, T0 + 3 * H)}
     monkeypatch.setattr(pb, "_card_orders", lambda *a: cards)
     monkeypatch.setattr(pb, "_flip_orders", lambda *a: {})
 
@@ -87,9 +87,6 @@ def test_the_order_is_bought_with_10_divines_at_most_and_sold_at_the_ask(market)
     # Bid 10c (whole Chaos), ask 0.125 div: the exchange takes 1 Divine for 8 items.
     # 90 items for 10 Divines at the buy hour's 11c high, sold at 100c a Divine.
     assert loop["pnl"][0] == pytest.approx(88 * (100 / 8 - 10))
-    # What it spent, for the trading game's return: 88 items at the 10c bid; nothing
-    # where it didn't fill.
-    assert loop["spent"] == [pytest.approx(880.0), None, None, pytest.approx(880.0)]
 
 
 def test_nothing_is_judged_without_hours_after(market):
@@ -97,3 +94,31 @@ def test_nothing_is_judged_without_hours_after(market):
     assert doc["hours"] == 0
     assert all(t["paid"] == [] and t["next_hour_paid"] is None for t in doc["trades"])
     assert pb.recap_next(None, "Mirage", [], T0) is None
+
+
+def test_the_game_takes_each_hours_own_order_with_what_it_spent_and_when_it_sold(market):
+    recap = _windows()
+    games = {
+        n: {
+            "latest_hour": f"{T0 + (n - 1) * H:%Y-%m-%dT%H:%M:%S}Z",
+            "divine_chaos": 100.0,
+            "recap": recap,
+        }
+        for n in (1, 2, 3)
+    }
+    out = pb.game_hours(None, "Mirage", games, T0 + 4 * H)
+    assert sorted(out) == [1, 2, 3]
+    loop = next(o for o in out[1]["orders"] if o["kind"] == "loop")
+    # Hour 0's order: 88 items at the 10c bid, sold in hour 2 at the ask.
+    assert loop["filled"] is True and loop["spent"] == pytest.approx(880.0)
+    assert loop["pnl"] == pytest.approx(88 * (100 / 8 - 10))
+    assert loop["settle_at"] == f"{T0 + 2 * H:%Y-%m-%dT%H:%M:%S}Z"
+    # Hour 1's didn't fill: nothing spent; hour 2's wasn't placed.
+    nxt = next(o for o in out[2]["orders"] if o["kind"] == "loop")
+    assert (nxt["filled"], nxt["spent"], nxt["pnl"], nxt["settle_at"]) == (False, None, None, None)
+    assert next(o for o in out[3]["orders"] if o["kind"] == "loop")["filled"] is None
+    # The card's order from hour 1 lost 5c of the 105c it spent; random rewards aren't offered.
+    card = next(o for o in out[2]["orders"] if o["kind"] == "card")
+    assert (card["spent"], card["pnl"]) == (105.0, -5.0)
+    assert all(o["item_id"] != "w" for g in out.values() for o in g["orders"])
+    assert out[1]["prices"] == {}  # no flips listed

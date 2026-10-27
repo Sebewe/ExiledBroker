@@ -2435,21 +2435,6 @@
             "title": "Profit",
             "type": "number"
           },
-          "spent": {
-            "default": [],
-            "items": {
-              "anyOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "title": "Spent",
-            "type": "array"
-          },
           "still_paid": {
             "anyOf": [
               {

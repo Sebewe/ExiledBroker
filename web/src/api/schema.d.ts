@@ -1045,11 +1045,6 @@ export interface components {
              * @default 0
              */
             profit: number;
-            /**
-             * Spent
-             * @default []
-             */
-            spent: (number | null)[];
             /** Still Paid */
             still_paid: boolean | null;
             /** Traded Hours */

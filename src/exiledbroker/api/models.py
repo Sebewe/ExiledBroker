@@ -631,10 +631,6 @@ class PreviewTradeNext(BaseModel):
     # Chaos once sold (null: no fill, or the sale isn't known).
     filled: list[bool | None] = []
     pnl: list[float | None] = []
-    # Per hour: what the filled order spent, in Chaos (null: no fill). With `pnl`, the
-    # trading game's return on a player's stake (lib/game.ts); a snapshot built before
-    # 2026-10-27 has none, and the game can't settle its trades.
-    spent: list[float | None] = []
     orders: int = 0  # hours an order was placed
     fills: int = 0  # of them, filled
     profit: float = 0.0  # Chaos, summed over the known fills
