@@ -452,7 +452,7 @@ describe('Market recap in the preview: the trading game', () => {
     expect(bar.getByLabelText('Your wallet')).toHaveTextContent('4.00div · 850.0c')
     // Coloured is the profit alone, not the whole balance in Divines (the user).
     const gain = bar.getByLabelText('Profit')
-    expect(gain).toHaveTextContent('+0.500div profit')
+    expect(gain).toHaveTextContent('+0.50div profit')
     expect(gain.className).toMatch(/text-positive/)
     expect(bar.getByText(/· worth /).className).toMatch(/text-muted/)
     expect(JSON.parse(localStorage.getItem('eb-game')!)).toMatchObject({ n: 29, open: [] })
