@@ -416,6 +416,12 @@ describe('Price check in the preview', () => {
     renderPage(`/price-check?item=${EXALT}`)
     const button = await screen.findByRole('button', { name: 'Show what happened next' })
     expect(screen.getByText(/as it stood at the end of day 2/)).toBeInTheDocument()
+    // The toggle is in the box, right under the chart: no bar fixed to the screen here.
+    const box = screen.getByRole('region', { name: 'What happened next' })
+    expect(box).toContainElement(button)
+    expect(screen.getByRole('region', { name: 'Price this league' })).toContainElement(box)
+    expect(screen.queryByRole('region', { name: 'Preview reveal' })).toBeNull()
+    expect(document.body).not.toHaveClass('has-reveal-bar')
     const paths = () => fetch.mock.calls.map(([input]) => new URL(typeof input === 'string' ? input : input.url, 'http://test').pathname)
     expect(paths()).not.toContain(`/api/preview/next/price-check/${EXALT}`)
     fireEvent.click(button)
@@ -424,7 +430,7 @@ describe('Price check in the preview', () => {
     expect(await panel.findAllByText("The preview's data ends before then.")).toHaveLength(2)
     expect(paths()).toContain(`/api/preview/next/price-check/${EXALT}`)
     expect(panel.getByRole('img')).toHaveAttribute('data-series', 'Day 2:27,What came next:3')
-    fireEvent.click(screen.getByRole('button', { name: 'Hide what happened' }))
+    fireEvent.click(panel.getByRole('button', { name: 'Hide what happened' }))
     expect(screen.queryByRole('group', { name: '1 day later' })).toBeNull()
   })
 

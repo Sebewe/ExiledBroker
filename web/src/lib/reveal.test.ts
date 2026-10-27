@@ -76,6 +76,15 @@ describe('revealChartOption', () => {
     ])
   })
 
+  it('starts two days before the cutoff, so the launch spike sets no scale', () => {
+    const next = item(24 * 6, () => 1)
+    const option = revealChartOption(t, next, cutoffAt(24 * 4), 'Day 4') as { series: { name: string; data: [string, number][] }[]; grid: { top: number } }
+    const first = option.series[0]!.data[0]![0]
+    expect(first).toBe(iso(START + 24 * 2 * HOUR))
+    expect(option.series[0]!.data).toHaveLength(49)
+    expect(option.grid.top).toBe(40)
+  })
+
   it("draws the chosen day's outlook band, unchanged, over what came next", () => {
     const next = item(100, () => 1)
     const at = START + 4 * HOUR
@@ -87,6 +96,8 @@ describe('revealChartOption', () => {
     const option = revealChartOption(t, next, cutoffAt(4), 'Day 1', band) as { series: S[]; legend: { data: string[] } }
     expect(option.series.map((s) => s.name)).toEqual(['Day 1', 'What came next', 'band-low', 'Outlook range', 'Outlook (typical)'])
     expect(option.legend.data).toContain('Outlook range')
+    // Three entries wrap at phone width: room for a second legend row above the plot.
+    expect((option as unknown as { grid: { top: number } }).grid.top).toBe(64)
     const byName = Object.fromEntries(option.series.map((s) => [s.name, s]))
     // On the reveal's one axis; the range is stacked on its floor.
     expect(byName['Outlook range']!.yAxisIndex).toBe(0)
