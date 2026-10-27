@@ -1,9 +1,10 @@
-import { ArrowRight } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { ArrowRight, ChevronDown } from 'lucide-react'
+import { useId, useState, type ReactNode } from 'react'
 import { ItemName } from './ItemLink'
 
 // The trading cards on the Market recap: the key item top left, one headline amount top
-// right, a route, a few facts below, and the card's buttons in a bar along the bottom.
+// right, a route, its price below, the odds behind a "Details" toggle, and the card's
+// buttons in a bar along the bottom.
 
 export function Pill({ children, accent = false }: { children: ReactNode; accent?: boolean }) {
   return (
@@ -42,6 +43,7 @@ export function Opportunity({
   muted = false,
   children,
   footer,
+  details,
   actions,
 }: {
   title: string
@@ -50,7 +52,8 @@ export function Opportunity({
   label: string
   muted?: boolean // nothing to gain at the viewer's settings, or its orders never went through
   children: ReactNode
-  footer: ReactNode
+  footer: ReactNode // the price, always shown
+  details?: ReactNode // the odds and the rest of the facts, behind "Details"
   actions?: ReactNode // the card's buttons, in a bar along its bottom edge
 }) {
   return (
@@ -66,6 +69,7 @@ export function Opportunity({
       </div>
       {children}
       <div className="mt-auto flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted">{footer}</div>
+      {details && <Details>{details}</Details>}
       {/* Full-width buttons that share the bar, so they line up across a row of cards. */}
       {actions && <div className="-mx-4 -mb-4 flex flex-wrap items-center gap-2 rounded-b-lg border-t border-border bg-surface-2/40 px-4 py-3">{actions}</div>}
     </li>
@@ -86,6 +90,35 @@ export function Meter({ label, value, hint }: { label: string; value: number | n
   )
 }
 
-export function Empty({ children }: { children: ReactNode }) {
-  return <p className="rounded-lg border border-dashed border-border px-3 py-4 text-center text-sm text-faint">{children}</p>
+/** The card's odds and extra facts, closed by default (one toggle per card). */
+function Details({ children }: { children: ReactNode }) {
+  const [open, setOpen] = useState(false)
+  const id = useId()
+  return (
+    <div className="flex flex-col gap-2">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={id}
+        onClick={() => setOpen(!open)}
+        className="-my-1 flex min-h-8 w-fit cursor-pointer items-center gap-1 text-xs text-muted hover:text-accent"
+      >
+        Details
+        <ChevronDown aria-hidden className={`size-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      <div id={id} hidden={!open} className="flex flex-col gap-2">
+        {open && children}
+      </div>
+    </div>
+  )
+}
+
+/** A small "nothing here" line, with a hint of what to try instead. */
+export function Empty({ children, hint }: { children: ReactNode; hint?: ReactNode }) {
+  return (
+    <div className="rounded-md border border-dashed border-border px-3 py-2 text-xs">
+      <p className="text-muted">{children}</p>
+      {hint && <p className="mt-0.5 text-faint">{hint}</p>}
+    </div>
+  )
 }

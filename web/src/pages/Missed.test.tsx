@@ -162,6 +162,8 @@ describe('Market recap', () => {
     const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)
     expect(headings.indexOf('Volatile flips')).toBe(headings.indexOf('Loops that paid') - 1)
     const flips = screen.getByRole('heading', { level: 2, name: 'Volatile flips' }).closest('section')!
+    // The odds sit behind each card's Details.
+    within(flips).getAllByRole('button', { name: 'Details' }).forEach((b) => fireEvent.click(b))
     expect(within(flips).getByText('90%')).toBeInTheDocument() // went through, recently
     // The flip's margin at its orders: 110c over 84c, and 5.5c over 4.2c (11c for 2 over 21c for 5).
     expect(within(flips).getAllByText('+31%')).toHaveLength(2)
@@ -183,7 +185,11 @@ describe('Market recap', () => {
     fireEvent.pointerDown(document.body)
     expect(screen.getByText('+12%')).toBeInTheDocument() // the loop's edge, not a total
     expect(screen.queryByText(/likely one odd trade/)).not.toBeInTheDocument() // 12% isn't odd
-    expect(screen.getByText('20.0div')).toBeInTheDocument() // 4000c traded an hour, at 200c
+    const loops = screen.getByRole('heading', { level: 2, name: 'Loops that paid' }).closest('section')!
+    expect(within(loops).getByText('50.0c')).toBeInTheDocument() // the loop's price, on the card
+    expect(within(loops).queryByText('20.0div')).not.toBeInTheDocument() // its volume, behind Details
+    fireEvent.click(within(loops).getByRole('button', { name: 'Details' }))
+    expect(within(loops).getByText('20.0div')).toBeInTheDocument() // 4000c traded an hour, at 200c
     expect(screen.getByText('40.0c → 60.0c')).toBeInTheDocument() // under a Divine: Chaos
     // No scrolling ticker (the user, 2026-10-27): the movers are in Market Movers.
     expect(screen.queryByRole('region', { name: 'Price changes in the last published hour' })).not.toBeInTheDocument()
@@ -220,6 +226,7 @@ describe('Market recap', () => {
     renderPage()
     const section = (await screen.findByRole('heading', { level: 2, name: 'Loops that paid' })).closest('section')!
     expect(within(section).getAllByRole('heading', { level: 3 })).toHaveLength(3) // the top 3
+    within(section).getAllByRole('button', { name: 'Details' }).forEach((b) => fireEvent.click(b))
     expect(within(section).getAllByText('15 of 20 tries in the last 3 days, by the optimistic fill rule')).toHaveLength(3)
     // The rates stay hidden until asked for.
     expect(within(section).queryByText('21c for 2')).not.toBeInTheDocument()
