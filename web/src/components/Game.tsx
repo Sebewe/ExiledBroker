@@ -5,7 +5,7 @@ import { Link } from 'react-router'
 import type { MissedFlip, PreviewGameHour } from '../api/client'
 import { useGameHour } from '../api/queries'
 import { price } from '../lib/format'
-import { hourLabel, useGameClock } from '../lib/gameClock'
+import { hourLabel, shortHourLabel, useGameClock } from '../lib/gameClock'
 import { buyIn, exchange, hourRate, orderIn, orderLot, placeFlip, placeOrder, placedNow, profit, spendable, startGame, step, tally, total, TRADE_DIVINES } from '../lib/game'
 import { getGame, markTradePlaced, setGame, START_CHAOS, START_DIV, useUnseenTrade, type GameState } from '../lib/gameStore'
 import { fetchPreview, previewKey } from '../lib/preview'
@@ -272,7 +272,7 @@ export function GameBar({ here }: { here?: 'portfolio' } = {}) {
                 </span>
               )}
             </p>
-            <p className="truncate text-xs text-muted">
+            <p className="line-clamp-2 text-xs text-muted sm:line-clamp-none sm:truncate">
               {error ? (
                 <span className="text-negative">Couldn't load the next hour. Try again.</span>
               ) : news && news.n === clock.n ? (
@@ -281,7 +281,9 @@ export function GameBar({ here }: { here?: 'portfolio' } = {}) {
                 <>
                   {/* On a phone the gain moves down here, next to the hour. */}
                   {worth != null && rate && <span className={`num font-semibold sm:hidden ${gainTone}`}>{signed(gain)} profit · </span>}
-                  {hourLabel(clock.launched, clock.n)}
+                  {/* On a phone the short form, so the line fits beside the buttons. */}
+                  <span className="sm:hidden">{shortHourLabel(clock.launched, clock.n)}</span>
+                  <span className="hidden sm:inline">{hourLabel(clock.launched, clock.n)}</span>
                   {s.open.length > 0 && ` · ${s.open.length} open`}
                 </>
               ) : (
