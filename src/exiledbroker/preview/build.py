@@ -224,15 +224,22 @@ def _orders(
     spent: pl.Expr,
     settle: pl.Expr,
     lot: pl.Expr,
+    hold: pl.Expr,
+    units: pl.Expr | str,
 ) -> dict:
     """The orders the backtest placed (`t`, one row per order), by (`keys`..., hour):
     (filled, pnl in Chaos or None where `unknown`, what the fill spent in Chaos, the
-    hour it sold or None, and the smallest whole purchase the order makes, in Chaos)."""
+    hour it sold or None, the smallest whole purchase the order makes in Chaos, the
+    item held while it sells and how many one purchase holds, and whether its sale never
+    filled: the Backtest gave up and counted it lost, where the game holds it)."""
     t = t.with_columns(
         chaos=pl.when(unknown).then(None).otherwise(pl.col("pnl") * pl.col("rate")),
         spent_=pl.when(pl.col("filled")).then(spent).otherwise(None),
         settle_=pl.when(pl.col("filled") & unknown.not_()).then(settle).otherwise(None),
         lot_=lot,
+        hold_=hold,
+        units_=units,
+        unsold_=pl.col("filled") & pl.col("sell_at").is_null() & unknown.not_(),
     )
     return {
         (*(r[k] for k in keys), r["observed_at"]): (
@@ -241,6 +248,9 @@ def _orders(
             r["spent_"],
             r["settle_"],
             r["lot_"],
+            r["hold_"],
+            r["units_"],
+            bool(r["unsold_"]),
         )
         for r in t.iter_rows(named=True)
     }
@@ -266,7 +276,10 @@ def _loop_orders(con, league: str, items: list[str], since, until, last_hour) ->
     each = each.otherwise(pl.col("buy") * pl.col("rate"))
     # It buys whole lots of what one sale takes (1 Divine for 8 items: 8 at a time).
     lot = pl.col("sell_lot") * each
-    return _orders(t, ["item_id", "direction"], unknown, pl.col("k") * each, _settled(), lot)
+    k = pl.col("k") * each
+    return _orders(
+        t, ["item_id", "direction"], unknown, k, _settled(), lot, pl.col("item_id"), "sell_lot"
+    )
 
 
 def _card_orders(con, league: str, cards: list[str], since, until, last_hour) -> dict:
@@ -295,7 +308,8 @@ def _card_orders(con, league: str, cards: list[str], since, until, last_hour) ->
     # Whole sets, as many as one sale of the reward takes.
     sets = (pl.col("sell_lot") / pl.col("q")).ceil().clip(lower_bound=1)
     lot = sets * pl.col("n") * pl.col("buy")
-    return _orders(t, ["item_id"], unknown, spent, _settled(), lot)
+    held = sets * pl.col("q")  # the rewards a purchase turns into
+    return _orders(t, ["item_id"], unknown, spent, _settled(), lot, pl.col("reward_id"), held)
 
 
 def game_hours(con, league: str, games: dict[int, dict], last_hour: datetime) -> dict:
@@ -303,9 +317,10 @@ def game_hours(con, league: str, games: dict[int, dict], last_hour: datetime) ->
     league's latest hour, its Divine rate and its Market recap then), each given what a
     player could trade then. Loops and cards: the recap's own order that hour, filled by
     the Backtest's rules, with what it spent, made and when it
-    sold (null where the sale isn't known by `last_hour`). Flips are played in the
-    browser from the hour's Chaos prices (low, average, high, items traded) of every
-    item the game ever lists to flip, since a player holds one as long as they like."""
+    sold (null where the sale isn't known by `last_hour`), or `unsold` where it never did
+    (the player holds `units` of `hold` a purchase and sells them). Flips, and what an
+    unsold order holds, are played in the browser from the hour's Chaos prices (low,
+    average, high, items traded), since a player holds them as long as they like."""
     if not games:
         return {}
     first = min(_hour(g["latest_hour"]) for g in games.values())
@@ -322,7 +337,14 @@ def game_hours(con, league: str, games: dict[int, dict], last_hour: datetime) ->
         k: find[k](con, league, sorted(v), first - bt.H, end, last_hour) if v else {}
         for k, v in keys.items()
     }
+    # What an order whose sale never filled leaves the player holding (the loop's item,
+    # the card's reward), priced each hour as the Backtest sells it.
+    held = sorted({v[5] for o in orders.values() for v in o.values() if v[7] and v[5]} - flipped)
     prices: dict[datetime, dict] = {}
+    if held:
+        for r in bt._prices(con, league, held, first).iter_rows(named=True):
+            hour = prices.setdefault(r["observed_at"], {})
+            hour[r["item_id"]] = [r["lo"], r["p"], r["hi"], r["units"]]
     if flipped:
         px = flips.chaos_prices(con, league).filter(
             pl.col("item_id").is_in(sorted(flipped)), pl.col("observed_at") >= first
@@ -343,7 +365,7 @@ def game_hours(con, league: str, games: dict[int, dict], last_hour: datetime) ->
                     continue
                 seen.add((kind, item_id, direction))
                 key = (item_id, direction, at) if kind == "loop" else (item_id, at)
-                f, v, spent, settle, lot = orders[kind].get(key, (None,) * 5)
+                f, v, spent, settle, lot, hold, units, unsold = orders[kind].get(key, (None,) * 8)
                 mine.append(
                     {
                         "kind": kind,
@@ -354,6 +376,9 @@ def game_hours(con, league: str, games: dict[int, dict], last_hour: datetime) ->
                         "pnl": v if f else None,
                         "settle_at": _iso(settle) if f and settle is not None else None,
                         "lot": lot if f is not None and lot and lot > 0 else None,
+                        "hold": hold if f else None,
+                        "units": units if f else None,
+                        "unsold": bool(unsold) if f else None,
                     }
                 )
         out[n] = {**g, "orders": mine, "prices": prices.get(at, {})}

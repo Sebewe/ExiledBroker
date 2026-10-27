@@ -2092,6 +2092,17 @@
             ],
             "title": "Filled"
           },
+          "hold": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hold"
+          },
           "item_id": {
             "title": "Item Id",
             "type": "string"
@@ -2148,6 +2159,28 @@
               }
             ],
             "title": "Spent"
+          },
+          "units": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Units"
+          },
+          "unsold": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unsold"
           }
         },
         "required": [

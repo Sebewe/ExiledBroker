@@ -1,4 +1,4 @@
-import { RotateCcw, Tag } from 'lucide-react'
+import { RotateCcw, Tag, TriangleAlert } from 'lucide-react'
 import { useId, useState } from 'react'
 import { Link } from 'react-router'
 import { GameBar } from '../components/Game'
@@ -8,7 +8,7 @@ import { Notice } from '../components/Notice'
 import { PageHeader, Section } from '../components/Section'
 import { Stat } from '../components/Stat'
 import { price, signedPct } from '../lib/format'
-import { hourRate, listingAt, profit, quickSell, setListing, startWorth, tally, total, worth } from '../lib/game'
+import { dumpNow, holding, hourRate, listingAt, profit, quickSell, setListing, startWorth, tally, total, worth } from '../lib/game'
 import { EMPTY, setGame, START_CHAOS, START_DIV, type Done, type FlipTrade, type Trade } from '../lib/gameStore'
 import { usePreview } from '../lib/preview'
 import { queryFallback } from '../lib/queryFallback'
@@ -133,14 +133,27 @@ function OpenRow({ t, n, launched }: { t: Trade; n: number; launched: string | n
         : `Holding ${t.left} of ${t.units}${t.got > 0 ? `, ${chaos(t.got)} sold so far` : ''}`
       : t.state === 'placed'
         ? `${t.lots} ${t.lots === 1 ? 'purchase' : 'purchases'} placed: fills next hour or comes back`
-        : t.settle != null
-          ? `${t.lots} filled; sells ${hourLabel(launched, t.settle)}`
-          : "Filled; the sale isn't known by the end of the preview's data"
+        : t.state === 'held'
+          ? `Its sale didn't fill: holding ${t.left} ${t.kind === 'card' ? 'of the reward' : t.name}${t.mark != null ? ` at ${chaos(t.mark)} each` : ''}`
+          : t.settle != null
+            ? `${t.lots} filled; sells ${hourLabel(launched, t.settle)}`
+            : "Filled; the sale isn't known by the end of the preview's data"
+  const dump = dumpNow(t, n)
   return (
-    <li className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-3 sm:flex-row sm:items-center sm:justify-between">
+    <li className={`flex flex-col gap-2 rounded-lg border bg-surface p-3 sm:flex-row sm:items-center sm:justify-between ${dump ? 'border-warning/60' : 'border-border'}`}>
       <div className="min-w-0">
-        <p className="truncate font-semibold" title={tradeName(t)}>
-          {tradeName(t)}
+        <p className="flex min-w-0 items-center gap-2 font-semibold">
+          <span className="truncate" title={tradeName(t)}>
+            {tradeName(t)}
+          </span>
+          {dump && (
+            <span
+              className="inline-flex shrink-0 items-center gap-1 rounded-full border border-warning/50 bg-warning/10 px-2 text-xs text-warning"
+              title={t.kind === 'flip' ? "Its price fell under what you paid and it hasn't sold in hours: holding it no longer pays" : "Its sale never filled: the market didn't take it, so holding it no longer pays"}
+            >
+              <TriangleAlert aria-hidden className="size-3" /> Dump now
+            </span>
+          )}
         </p>
         <p className="text-xs text-muted">
           {hourLabel(launched, t.at)} · {state}
@@ -155,6 +168,7 @@ function OpenRow({ t, n, launched }: { t: Trade; n: number; launched: string | n
           <span className="text-faint">in</span> {chaos(t.stake)} <span className="text-faint">· worth</span> {chaos(worth(t))}
         </span>
         {t.kind === 'flip' && t.state === 'holding' && <FlipControls t={t} n={n} />}
+        {t.kind !== 'flip' && t.state === 'held' && <SellNow t={t} />}
       </div>
     </li>
   )
@@ -163,12 +177,10 @@ function OpenRow({ t, n, launched }: { t: Trade; n: number; launched: string | n
 /** A held flip's listing (the recap's, cut each hour, or the player's) and "Sell now". */
 function FlipControls({ t, n }: { t: FlipTrade; n: number }) {
   const clock = useGameClock()
-  const doc = useGameHour(clock.running || undefined).data
   const [edit, setEdit] = useState('')
   const [error, setError] = useState<string | null>(null)
   const id = useId()
   const listing = listingAt(t, n + 1)
-  const lo = doc?.prices[t.item_id]?.[0]
   return (
     <div className="flex flex-wrap items-center gap-2 text-sm">
       <form
@@ -207,6 +219,21 @@ function FlipControls({ t, n }: { t: FlipTrade; n: number }) {
           </button>
         )}
       </form>
+      <SellNow t={t} />
+      {error && <span className="text-xs text-negative">{error}</span>}
+    </div>
+  )
+}
+
+/** "Sell now": what a trade holds, at this hour's lowest trade. */
+function SellNow({ t }: { t: Trade }) {
+  const clock = useGameClock()
+  const doc = useGameHour(clock.running || undefined).data
+  const [error, setError] = useState<string | null>(null)
+  const h = holding(t)
+  const lo = h ? doc?.prices[h.item]?.[0] : undefined
+  return (
+    <span className="inline-flex flex-wrap items-center gap-2 text-sm">
       <button
         type="button"
         disabled={!doc || lo == null}
@@ -221,7 +248,7 @@ function FlipControls({ t, n }: { t: FlipTrade; n: number }) {
         Sell now{lo != null && <span className="num font-normal"> at {price(lo)}</span>}
       </button>
       {error && <span className="text-xs text-negative">{error}</span>}
-    </div>
+    </span>
   )
 }
 

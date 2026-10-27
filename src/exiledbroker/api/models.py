@@ -625,6 +625,12 @@ class PreviewGameOrder(BaseModel):
     # one sale takes (loops) or the sets one sale of the reward needs (cards). A player
     # buys whole ones (lib/game.ts). Null in a snapshot built before 2026-10-27 12:00.
     lot: float | None = None
+    # The item held while it sells (the loop's item, the card's reward) and how many a
+    # purchase holds; `unsold`: its sale never filled (the Backtest gave up), so the
+    # player holds them and sells them. Null in older snapshots.
+    hold: str | None = None
+    units: float | None = None
+    unsold: bool | None = None
 
 
 class PreviewGameHour(BaseModel):

@@ -146,6 +146,12 @@ localStorage (in memory where storage is blocked): no accounts, nothing sent.
   `spent` and `pnl` (Chaos) and `settle_at` (the hour it sold). A player's purchases fill up to
   `spent` (whole `lot`s), the rest comes back the next hour, and what filled earns `pnl / spent` and is
   tied up until `settle_at`. A sale not known by `next_until` stays open at what it cost.
+  Nothing sells by itself at a loss (the user, 2026-10-27: no automatic sale, flag it
+  "Dump now" instead): where the sale never filled (`unsold`: the Backtest gave up after
+  `SELL_WITHIN` and counted it lost), the player is left holding `units` of `hold` a
+  purchase (the loop's item, the card's reward), priced each hour in `prices` (the
+  Backtest's hourly prices), flagged **Dump now**, with "Sell now" at the hour's lowest
+  trade; they can also hold on.
   Random-reward cards aren't offered (the Backtest can't price them).
 - **Flips** are held positions, played in the browser from each hour's Chaos prices (low,
   average, high, items traded) of every item the game lists to flip. The bid (the recap's)
@@ -153,6 +159,8 @@ localStorage (in memory where storage is blocked): no accounts, nothing sent.
   Divines; then the items are listed from the hour after at the recap's ask, cut by its
   `cut` each hour, unless the player sets a price, and sell when a trade goes over the
   listing, a tenth of the hour's trades at most. "Sell now" takes the hour's lowest trade.
+  A held flip is flagged **Dump now** once it has been listed 6 hours (`DUMP_AFTER`)
+  without a sale and its average price is under what it cost.
   A held item counts at its latest average price.
 - One order a trade an hour (the market's share can't be taken twice).
 
