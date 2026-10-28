@@ -1,21 +1,20 @@
-import { useCallback, useMemo } from 'react'
-import type { PriceCheckItem, Verdict } from '../api/client'
-import { usePreviewItemNext } from '../api/queries'
-import type { ChartTokens } from '../lib/chartOptions'
+import type { PreviewItemNext, PriceCheckItem, Verdict } from '../api/client'
 import { pctTone, price, signedPct } from '../lib/format'
-import { hasHistory, outlookBand, VERDICT_SHORT } from '../lib/priceCheck'
+import { hasHistory, VERDICT_SHORT } from '../lib/priceCheck'
 import { usePreview } from '../lib/preview'
-import { outcome, revealChartOption, type Outcome } from '../lib/revealItem'
-import { LazyChart } from './LazyChart'
+import { outcome, type Outcome } from '../lib/revealItem'
 import { Skeleton } from './QueryState'
 import { RevealPanel } from './Reveal'
 
 // The preview's reveal on Price check (docs/preview.md): the price 1 and 3 days after the
-// chosen day against that day's calls, and its path on a chart, greyed past the day.
+// chosen day against that day's calls. What came next is drawn dotted on the item's own
+// chart (PriceCheck.tsx), so opening it adds lines and these cards, and nothing moves.
+
+type NextQuery = { data?: PreviewItemNext; error: unknown }
 
 /** Price check's reveal: the price 1 and 3 days after the chosen day, against its calls.
- *  Open, its chart takes the place of the item's (the user: one chart, not two). */
-export function ItemReveal({ item, divineChaos, open, onToggle }: { item: PriceCheckItem; divineChaos: number | null | undefined; open: boolean; onToggle: () => void }) {
+ *  `drawn`: whether the item's chart shows what came next (a range ending at the day). */
+export function ItemReveal({ item, next, drawn, open, onToggle }: { item: PriceCheckItem; next: NextQuery; drawn: boolean; open: boolean; onToggle: () => void }) {
   const preview = usePreview()
   return (
     <RevealPanel
@@ -23,22 +22,17 @@ export function ItemReveal({ item, divineChaos, open, onToggle }: { item: PriceC
       onToggle={onToggle}
       prompt={`This is ${item.name} as it stood at the end of day ${preview.day}. Make your call, then see what its price did next.`}
     >
-      <ItemNext item={item} divineChaos={divineChaos} />
+      <ItemNext item={item} q={next} drawn={drawn} />
     </RevealPanel>
   )
 }
 
-function ItemNext({ item, divineChaos }: { item: PriceCheckItem; divineChaos: number | null | undefined }) {
+function ItemNext({ item, q, drawn }: { item: PriceCheckItem; q: NextQuery; drawn: boolean }) {
   const preview = usePreview()
-  const q = usePreviewItemNext(item.item_id)
   const cutoff = preview.hour
-  const dayLabel = `Day ${preview.day}`
   const next = q.data
-  // The prediction as of the chosen day: the item here is that day's snapshot.
-  const band = useMemo(() => outlookBand(item.series, item.outlook, divineChaos), [item, divineChaos])
-  const build = useCallback((t: ChartTokens) => revealChartOption(t, next!, cutoff!, dayLabel, band), [next, cutoff, dayLabel, band])
   if (q.error) return <p className="text-sm text-muted">What came next isn't in the preview for this item.</p>
-  if (!next || !cutoff) return <Skeleton rows={4} />
+  if (!next || !cutoff) return <Skeleton rows={2} />
   const call = (h: 'h24' | 'd3'): Verdict => (item.outlook && hasHistory(item.outlook[h]) ? item.outlook[h].verdict : 'none')
   const days = [
     { title: '1 day later', o: outcome(next, cutoff, 24, call('h24')), verdict: call('h24') },
@@ -52,17 +46,10 @@ function ItemNext({ item, divineChaos }: { item: PriceCheckItem; divineChaos: nu
           <OutcomeCard key={d.title} title={d.title} o={d.o} verdict={d.verdict} unit={unit} />
         ))}
       </div>
-      <div className="rounded-lg border border-border bg-bg/40 p-3">
-        <LazyChart
-          build={build}
-          height={260}
-          label={`${next.name}: price in ${unit === 'chaos' ? 'Chaos' : 'Divines'} up to day ${preview.day}, then what came next${band ? ", under that day's outlook range" : ''}`}
-        />
-      </div>
       <p className="text-xs text-faint">
+        {drawn ? 'The dotted lines on the chart above are what came next. ' : 'Pick a range that ends at the chosen day to see what came next on the chart. '}
         Typical prices: the median of the 6 hours before each point, in {unit === 'chaos' ? 'Chaos' : 'Divines, as the calls are judged'}. A Sell call held if the price fell, a Hold call
         if it didn't.
-        {band && ` The shaded range is the outlook as it stood on day ${preview.day}: what past leagues did from there, with the typical path dashed.`}
       </p>
     </>
   )

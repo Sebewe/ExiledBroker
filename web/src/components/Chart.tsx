@@ -21,10 +21,13 @@ function useTokens(): ChartTokens {
 }
 
 /** An ECharts chart that resizes with its container. `build` makes its option from the
- *  theme's colours; `label` names it for screen readers. */
-export default function Chart({ build, label, height = 320 }: { build: (t: ChartTokens) => echarts.EChartsCoreOption; label: string; height?: number }) {
+ *  theme's colours; `label` names it for screen readers. A new option replaces the old one
+ *  whole, unless it has the same `morph` key as the last: then its series are matched by
+ *  id, so a series added animates in on the chart as it stands (Price check's reveal). */
+export default function Chart({ build, label, height = 320, morph }: { build: (t: ChartTokens) => echarts.EChartsCoreOption; label: string; height?: number; morph?: string }) {
   const ref = useRef<HTMLDivElement>(null)
   const chart = useRef<echarts.ECharts | null>(null)
+  const lastMorph = useRef<string | undefined>(undefined)
   const tokens = useTokens()
 
   useEffect(() => {
@@ -40,8 +43,11 @@ export default function Chart({ build, label, height = 320 }: { build: (t: Chart
   }, [])
 
   useEffect(() => {
-    chart.current?.setOption(build(tokens), { notMerge: true })
-  }, [build, tokens])
+    if (!chart.current) return
+    const same = morph != null && morph === lastMorph.current
+    chart.current.setOption(build(tokens), same ? { replaceMerge: ['series'] } : { notMerge: true })
+    lastMorph.current = morph
+  }, [build, tokens, morph])
 
   return <div ref={ref} role="img" aria-label={label} style={{ height }} className="w-full" />
 }

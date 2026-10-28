@@ -3,7 +3,7 @@ import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { ApiError, type LiveLeague } from '../api/client'
 import type { Horizon, PriceCheckIndex, PriceCheckItem, PriceCheckListItem, Verdict } from '../api/client'
-import { useLeagues, usePriceCheck, usePriceCheckItem, useServerNow, useStatus } from '../api/queries'
+import { useLeagues, usePreviewItemNext, usePriceCheck, usePriceCheckItem, useServerNow, useStatus } from '../api/queries'
 import { NumberField, Segmented, Select, Toolbar } from '../components/Controls'
 import { FreshnessBanner } from '../components/Freshness'
 import { ItemSearch } from '../components/ItemSearch'
@@ -382,34 +382,31 @@ function PathSpark({ path }: { path: PathPoint[] }) {
   )
 }
 
-/** The item's chart; in the preview, with the reveal under it, whose chart replaces it while open. */
+/** The item's chart; in the preview, with the reveal under it. Opening the reveal draws
+ *  what came next dotted on this same chart and its outcomes in the box under it: nothing
+ *  above moves (the user: no new chart, no jumping). */
 function PriceChart({ item, info, reveal }: { item: PriceCheckItem; info: LiveLeague; reveal: boolean }) {
   const [revealed, setRevealed] = useState(false)
   const [rangeParam, setRange] = useParam<Range>('range', '3d')
   const range: Range = rangeParam in RANGES ? rangeParam : '3d'
-  const { bounds, points, band } = useMemo(() => {
+  const nextQ = usePreviewItemNext(item.item_id, reveal && revealed)
+  const { bounds, points, band, latestShown } = useMemo(() => {
     const bounds = rangeBounds(item.series, range, info.launched_at)
     const points = bounds ? inRange(item.series, bounds) : []
     // The band continues the latest hour, so it's shown only on ranges that end there.
     const latestShown = bounds != null && points.length > 0 && points[points.length - 1]![0] === lastPricedHour(item)
     const band = latestShown ? outlookBand(item.series, item.outlook, info.divine_chaos) : null
-    return { bounds, points, band }
+    return { bounds, points, band, latestShown }
   }, [item, range, info.launched_at, info.divine_chaos])
   const chaosOnly = item.unit === 'chaos'
+  // In the preview the axis keeps room for the next 3 days, so the reveal fits without moving it.
+  const ahead = reveal && latestShown
+  const next = ahead && revealed && nextQ.data ? nextQ.data.series : null
   const build = useCallback(
-    (t: ChartTokens) => priceChartOption(t, points, bounds ?? [0, 0], band, range === 'launch' && bounds ? bounds[0] : null, chaosOnly),
-    [points, bounds, band, range, chaosOnly],
+    (t: ChartTokens) => priceChartOption(t, points, bounds ?? [0, 0], band, range === 'launch' && bounds ? bounds[0] : null, chaosOnly, { ahead, next }),
+    [points, bounds, band, range, chaosOnly, ahead, next],
   )
   const priced = points.filter(([, c, d]) => c != null || d != null).length
-  const panel = reveal && (
-    <ItemReveal item={item} divineChaos={info.divine_chaos} open={revealed} onToggle={() => setRevealed(!revealed)} />
-  )
-  if (revealed)
-    return (
-      <Block id="chart" title="Price this league" icon={LineChart}>
-        {panel}
-      </Block>
-    )
   return (
     <Block id="chart" title="Price this league" icon={LineChart}>
       <div className="flex">
@@ -425,11 +422,14 @@ function PriceChart({ item, info, reveal }: { item: PriceCheckItem; info: LiveLe
           <LazyChart
             build={build}
             height={300}
-            label={`${item.name}: hourly price in Chaos${chaosOnly ? '' : ' (left axis) and in Divines (right axis)'}, ${RANGES[range].toLowerCase()}${band ? ', with the outlook range past the latest hour' : ''}`}
+            morph={range}
+            label={`${item.name}: hourly price in Chaos${chaosOnly ? '' : ' (left axis) and in Divines (right axis)'}, ${RANGES[range].toLowerCase()}${band ? ', with the outlook range past the latest hour' : ''}${next ? ', and what came next dotted' : ''}`}
           />
         </div>
       )}
-      {panel}
+      {reveal && (
+        <ItemReveal item={item} next={nextQ} drawn={ahead} open={revealed} onToggle={() => setRevealed(!revealed)} />
+      )}
       <ul className="flex max-w-3xl flex-col gap-1 text-xs text-faint">
         {priced === 1 && <li>Only one hour has traded so far: the lines start as the next hours are published.</li>}
         {chaosOnly && <li>Its own market's price: how many Chaos a Divine Orb traded for each hour, the rate the site converts every price with.</li>}
@@ -440,6 +440,7 @@ function PriceChart({ item, info, reveal }: { item: PriceCheckItem; info: LiveLe
             path.
           </li>
         )}
+        {next && <li>The dotted lines are what its price did next, over the 3 days the outlook covers.</li>}
         <li>Hourly, UTC. Lines break at hours with no trades.</li>
       </ul>
     </Block>

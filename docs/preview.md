@@ -99,11 +99,14 @@ disk stops the build (and the last snapshot stands).
   `lib/revealItem.ts`, Price check only) sits behind a button in its box, right under the
   price chart, and fetches nothing until opened: the typical price (median of 6 hours, in
   Divines; Chaos for the Divine Orb) 1 and 3 days after the day's last hour, against that
-  day's calls (Sell held if it fell, Hold if it didn't), and the path to `next_until`
-  greyed past the day (the chart starts 2 days before the day's end, so the launch spike
-  doesn't set its scale), under the day's outlook band (the item chart's `outlookBand` from
-  that day's snapshot, never recomputed from what came next; the user, 2026-10-27: to see
-  how the prediction held up). The recap has the trading game instead.
+  day's calls (Sell held if it fell, Hold if it didn't), shown in the box. What came next is
+  drawn dotted on the item's own chart, in each line's colour, over the 3 days past the
+  day's last hour (the user, 2026-10-28: no second chart, nothing jumps). In the preview the
+  chart's axis always keeps those 3 days, so opening the reveal only adds the lines; the
+  series carry ids and the chart merges them in (`Chart`'s `morph`). The day's outlook
+  band stays (the item chart's `outlookBand` from that day's snapshot, never recomputed
+  from what came next; the user, 2026-10-27: to see how the prediction held up). The recap
+  has the trading game instead.
 - The trading game ([below](#the-trading-game)): "Trade this hour" on the recap's loops,
   cards and flips, and a bar fixed to the bottom of the recap with the player's Divines
   and "Next hour" (`components/Game.tsx`, a lazy chunk; z-20, under popups, and the body
