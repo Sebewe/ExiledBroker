@@ -137,6 +137,33 @@ describe('priceChartOption', () => {
     ])
   })
 
+  it("in the preview, keeps 3 days' room past the latest hour and draws what came next dotted on it", () => {
+    const s = series(10)
+    const bounds = rangeBounds(s, '3d')!
+    type O = { series: { name: string; id?: string; yAxisIndex: number; data: unknown[]; lineStyle?: { type?: string } }[]; xAxis: { max: number }; legend: { data: string[] } }
+    // Before the reveal: no band, but the axis already ends 3 days on, so opening it moves nothing.
+    const closed = priceChartOption(TOKENS, s, bounds, null, null, false, { ahead: true }) as O
+    expect(closed.xAxis.max).toBe(T0 + 81 * H)
+    expect(closed.legend.data).toEqual(['Chaos', 'Divine'])
+    // Open: from the latest hour (so the lines join) to 3 days on; later hours are left out.
+    const open = priceChartOption(TOKENS, s, bounds, null, null, false, { ahead: true, next: series(100, 5) }) as O
+    expect(open.xAxis.max).toBe(closed.xAxis.max)
+    const next = open.series.filter((x) => x.name === 'What came next')
+    expect(next.map((x) => [x.id, x.yAxisIndex, x.data.length, x.lineStyle?.type])).toEqual([
+      ['next-chaos', 0, 73, 'dotted'],
+      ['next-divine', 1, 73, 'dotted'],
+    ])
+    expect(open.legend.data).toEqual(['Chaos', 'Divine', 'What came next'])
+    // Divine Orb: its Chaos line alone, then too.
+    const chaosOnly = priceChartOption(TOKENS, s, bounds, null, null, true, { ahead: true, next: series(100, 5) }) as O
+    expect(chaosOnly.series.map((x) => x.id ?? x.name)).toEqual(['Chaos', 'next-chaos'])
+    expect(chaosOnly.legend.data).toEqual(['Chaos', 'What came next'])
+    // In the launch fortnight's days-since-launch axis, the dotted lines are in days too.
+    const launch = priceChartOption(TOKENS, s, rangeBounds(s, 'launch', at(0))!, null, T0, false, { ahead: true, next: series(100, 5) }) as O
+    expect(launch.xAxis.max).toBe(81 / 24)
+    expect(launch.series.find((x) => x.id === 'next-chaos')!.data[0]).toEqual([9 / 24, 14])
+  })
+
   it('has no band series without a band', () => {
     const s = series(3)
     const option = priceChartOption(TOKENS, s, rangeBounds(s, '3d')!, null) as { series: unknown[] }

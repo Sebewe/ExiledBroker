@@ -98,10 +98,17 @@ function anchorChaos(series: SeriesPoint[]): number | null {
 /** Whether a series has any price in Divines. */
 export const hasDivine = (series: SeriesPoint[]) => series.some(([, , d]) => d != null)
 
+/** Hours past the latest hour the chart makes room for: the outlook's 3 days, so the band
+ *  and the preview's "what came next" fit without the axis moving. */
+export const AHEAD_HOURS = 72
+
 /** The chart: Chaos on the left axis, Divines on the right (decided with the user: one
  *  chart shows when an item "rose" in Chaos only because the Divine moved), linear, UTC,
  *  lines broken at missing hours, and the outlook band (in Divines, on the right axis)
- *  past the latest hour. `chaosOnly` (Divine Orb): its Chaos line alone, the band in Chaos. */
+ *  past the latest hour. `chaosOnly` (Divine Orb): its Chaos line alone, the band in Chaos.
+ *  In the preview, `ahead` keeps the 3 days past the latest hour on the axis whether or not
+ *  there's a band, and `next` (the reveal: the hours after it) draws dotted on the same
+ *  chart, so opening the reveal only adds the lines (the user). */
 export function priceChartOption(
   t: ChartTokens,
   points: SeriesPoint[],
@@ -109,16 +116,42 @@ export function priceChartOption(
   band: BandPoint[] | null,
   launchAt?: number | null,
   chaosOnly = false,
+  { ahead = false, next = null }: { ahead?: boolean; next?: SeriesPoint[] | null } = {},
 ): EChartsCoreOption {
-  const option = chartOption(t, points, bounds, band, launchAt, chaosOnly)
-  return chaosOnly ? withoutDivine(option) : option
+  const built = chartOption(t, points, bounds, band, launchAt, chaosOnly, ahead, next)
+  const option = chaosOnly ? withoutDivine(built) : built
+  // Every series has an id, so the reveal's lines are added to the chart as it stands.
+  return { ...option, series: (option.series as { id?: string; name?: string }[]).map((s) => ({ ...s, id: s.id ?? s.name })) }
 }
 
 /** Divine Orb's chart: its price in Chaos alone, on one axis (a Divine is worth one Divine). */
 function withoutDivine(option: EChartsCoreOption): EChartsCoreOption {
-  const series = (option.series as { name?: string }[]).filter((s) => s.name !== 'Divine')
-  return { ...option, legend: { ...(option.legend as object), data: ['Chaos'] }, yAxis: [(option.yAxis as unknown[])[0]], series }
+  const series = (option.series as { name?: string; id?: string }[]).filter((s) => s.name !== 'Divine' && s.id !== 'next-divine')
+  const legend = ((option.legend as { data: string[] }).data ?? []).filter((n) => n !== 'Divine')
+  return { ...option, legend: { ...(option.legend as object), data: legend }, yAxis: [(option.yAxis as unknown[])[0]], series }
 }
+
+/** The reveal's hours on the chart: from the latest shown hour (so the lines join) to
+ *  `AHEAD_HOURS` past it, dotted, in each line's colour. */
+function nextSeries(t: ChartTokens, next: SeriesPoint[], from: number) {
+  const to = from + AHEAD_HOURS * HOUR
+  const shown = next.filter(([at]) => {
+    const ms = Date.parse(at)
+    return ms >= from && ms <= to
+  })
+  const dotted = (id: string, yAxisIndex: number, color: string, unit: 'chaos' | 'divine', get: (p: SeriesPoint) => number | null) => ({
+    ...line(NEXT, shown.map((p) => [p[0], get(p)])),
+    id,
+    yAxisIndex,
+    color,
+    lineStyle: { width: 2, type: 'dotted' },
+    tooltip: { valueFormatter: (v: number | null) => price(v, unit) },
+  })
+  return [dotted('next-chaos', 0, t.accent, 'chaos', (p) => p[1]), dotted('next-divine', 1, t.info, 'divine', (p) => p[2])]
+}
+
+/** The reveal's lines' name, in the legend. */
+export const NEXT = 'What came next'
 
 /** The outlook band's series, in `unit` on axis `yAxisIndex`: the range shaded, and the
  *  typical path dashed. Also drawn over the preview's reveal, to set the call against what came next. */
@@ -152,20 +185,34 @@ export function outlookBandSeries(t: ChartTokens, band: BandPoint[], yAxisIndex:
   ]
 }
 
-function chartOption(t: ChartTokens, points: SeriesPoint[], bounds: [number, number], band: BandPoint[] | null, launchAt: number | null | undefined, chaosOnly: boolean): EChartsCoreOption {
+function chartOption(
+  t: ChartTokens,
+  points: SeriesPoint[],
+  bounds: [number, number],
+  band: BandPoint[] | null,
+  launchAt: number | null | undefined,
+  chaosOnly: boolean,
+  ahead: boolean,
+  next: SeriesPoint[] | null,
+): EChartsCoreOption {
   const chaos = { ...line('Chaos', points.map(([at, c]) => [at, c])), yAxisIndex: 0, color: t.accent, lineStyle: { width: 2 }, tooltip: { valueFormatter: (v: number | null) => price(v, 'chaos') } }
   const divine = { ...line('Divine', points.map(([at, , d]) => [at, d])), yAxisIndex: 1, color: t.info, lineStyle: { width: 2 }, tooltip: { valueFormatter: (v: number | null) => price(v, 'divine') } }
-  const bandSeries = band ? (chaosOnly ? outlookBandSeries(t, band, 0, 'chaos') : outlookBandSeries(t, band, 1)) : []
+  const bandSeries = [
+    ...(band ? (chaosOnly ? outlookBandSeries(t, band, 0, 'chaos') : outlookBandSeries(t, band, 1)) : []),
+    ...(next ? nextSeries(t, next, bounds[1]) : []),
+  ]
   const axis = axisStyle(t)
-  if (launchAt != null) return sinceLaunch(t, { chaos, divine, bandSeries, axis, bounds, band, launchAt, first: latestFirst(points) })
+  const end = ahead ? bounds[1] + AHEAD_HOURS * HOUR : band ? band[band.length - 1]!.at : bounds[1]
+  const legend = { ...(baseOptions(t).legend as object), data: ['Chaos', 'Divine', ...(band ? ['Outlook range'] : []), ...(next ? [NEXT] : [])] }
+  if (launchAt != null) return sinceLaunch(t, { chaos, divine, bandSeries, axis, end, legend, launchAt, first: latestFirst(points) })
   return {
     ...baseOptions(t),
-    legend: { ...(baseOptions(t).legend as object), data: band ? ['Chaos', 'Divine', 'Outlook range'] : ['Chaos', 'Divine'] },
+    legend,
     grid: { left: 8, right: 8, top: 56, bottom: 8, containLabel: true },
     xAxis: {
       type: 'time',
       min: bounds[0],
-      max: band ? band[band.length - 1]!.at : bounds[1],
+      max: end,
       ...axis,
       // Hour labels carry their date: at phone width the axis hides overlapping labels and
       // the day labels go first, which left a row of bare "06:00"s.
@@ -198,15 +245,15 @@ type Parts = {
   divine: { data: unknown[] } & Record<string, unknown>
   bandSeries: ({ data: unknown[] } & Record<string, unknown>)[]
   axis: ReturnType<typeof axisStyle>
-  bounds: [number, number]
-  band: BandPoint[] | null
+  end: number
+  legend: object
   launchAt: number
   first: number | null
 }
 
 /** The launch fortnight's chart (the user): the x axis in days since the league's launch,
  *  not UTC dates, and the hours before the item first traded shaded as "Not traded yet". */
-function sinceLaunch(t: ChartTokens, { chaos, divine, bandSeries, axis, bounds, band, launchAt, first }: Parts): EChartsCoreOption {
+function sinceLaunch(t: ChartTokens, { chaos, divine, bandSeries, axis, end, legend, launchAt, first }: Parts): EChartsCoreOption {
   const days = (iso: string) => (Date.parse(iso) - launchAt) / DAY
   // Points are [iso, value], or { value: [iso, value] } for a lone hour's dot.
   const shift = (point: unknown): unknown => {
@@ -227,10 +274,9 @@ function sinceLaunch(t: ChartTokens, { chaos, divine, bandSeries, axis, bounds, 
         },
       }
     : {}
-  const end = band ? band[band.length - 1]!.at : bounds[1]
   return {
     ...baseOptions(t),
-    legend: { ...(baseOptions(t).legend as object), data: band ? ['Chaos', 'Divine', 'Outlook range'] : ['Chaos', 'Divine'] },
+    legend,
     grid: { left: 8, right: 8, top: 56, bottom: 24, containLabel: true },
     xAxis: {
       type: 'value',

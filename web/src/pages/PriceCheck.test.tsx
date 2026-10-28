@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SellHours } from '../api/client'
@@ -450,14 +450,19 @@ describe('Price check in the preview', () => {
     const panel = within(screen.getByRole('region', { name: 'What happened next' }))
     expect(await panel.findAllByText("The preview's data ends before then.")).toHaveLength(2)
     expect(paths()).toContain(`/api/preview/next/price-check/${EXALT}`)
-    expect(panel.getByRole('img')).toHaveAttribute('data-series', 'Day 2:27,What came next:3')
-    // Its chart takes the item chart's place (the user: one chart, not two).
+    // What came next is drawn dotted on the item's own chart (the user: one chart, nothing
+    // jumps): the range stays, the box stays under the chart, and no second chart appears.
     const block = within(screen.getByRole('region', { name: 'Price this league' }))
     expect(block.getAllByRole('img')).toHaveLength(1)
-    expect(block.queryByRole('radiogroup', { name: 'Range' })).toBeNull()
+    expect(panel.queryByRole('img')).toBeNull()
+    expect(block.getByRole('radiogroup', { name: 'Range' })).toBeInTheDocument()
+    const chart = block.getByRole('img')
+    expect(chart.compareDocumentPosition(screen.getByRole('region', { name: 'What happened next' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    await waitFor(() => expect(chart.getAttribute('data-series')).toMatch(/What came next:3,What came next:3$/))
+    expect(chart).toHaveAccessibleName(/what came next dotted/)
     fireEvent.click(panel.getByRole('button', { name: 'Hide what happened' }))
     expect(screen.queryByRole('group', { name: '1 day later' })).toBeNull()
-    expect(await block.findByRole('img', { name: /hourly price in Chaos/ })).toBeInTheDocument()
+    expect(block.getByRole('img').getAttribute('data-series')).not.toMatch(/What came next/)
   })
 
   it("judges the day's calls against what the price did", async () => {
@@ -472,9 +477,9 @@ describe('Price check in the preview', () => {
     expect(day.getByText('It fell: selling then paid. The call held.')).toBeInTheDocument()
     const days3 = within(screen.getByRole('group', { name: '3 days later' }))
     expect(days3.getByText('It fell: selling then would have paid. The call missed.')).toBeInTheDocument()
-    // The day's outlook band stays drawn over what came next: the cutoff, then 1 and 3 days on.
-    const chart = within(screen.getByRole('region', { name: 'What happened next' })).getByRole('img')
-    expect(chart.getAttribute('data-series')).toMatch(/,Outlook range:3,Outlook \(typical\):3$/)
-    expect(chart).toHaveAccessibleName(/under that day's outlook range/)
+    // The day's outlook band stays drawn, with what came next over it: the cutoff, then 3 days on.
+    const chart = within(screen.getByRole('region', { name: 'Price this league' })).getByRole('img')
+    expect(chart.getAttribute('data-series')).toMatch(/,Outlook range:3,Outlook \(typical\):3,What came next:73,What came next:73$/)
+    expect(chart).toHaveAccessibleName(/with the outlook range past the latest hour, and what came next dotted/)
   })
 })
