@@ -237,7 +237,9 @@ describe('Price check', () => {
     expect(screen.queryByText(/No Divine rate for these hours yet/)).toBeNull()
     expect(screen.getByText(/of the Chaos market's trading/)).toBeInTheDocument()
     expect(screen.queryByText('Divine market')).toBeNull()
-    expect(screen.getByText(/^Highest price at/)).toHaveTextContent('Highest price at 20:00 your time: 205.0c each')
+    const best = within(screen.getByRole('region', { name: 'Best time to sell' }))
+    expect(best.getByText('Highest price, your time').nextSibling).toHaveTextContent('20:00')
+    expect(best.getByText('205.0c')).toBeInTheDocument() // in Chaos
     expect(screen.queryByRole('heading', { name: 'At past launches' })).toBeNull()
   })
 
@@ -272,12 +274,26 @@ describe('Price check', () => {
       'Selling a stack',
       'At past launches',
     ])
-    // The stack seller moved from the Farming page, unchanged.
-    expect(screen.getByText(/of the Chaos market's trading/)).toHaveTextContent("10 Splinter of Xoph is under a minute of the Chaos market's trading")
-    // Best time to sell: from the last 24 hours' trading.
-    expect(screen.getByText(/traded \(about/)).toHaveTextContent('9,040 traded')
-    expect(screen.getByText(/^Most traded at/)).toHaveTextContent('Most traded at 20:00 your time (4,040 that hour)')
-    expect(screen.getByText(/^Highest price at/)).toHaveTextContent('Highest price at 20:00 your time')
+    // The stack seller: what to do first, then each market's hours and the stack's worth;
+    // the rest behind Details.
+    const selling = within(screen.getByRole('region', { name: 'Selling a stack' }))
+    expect(selling.getByText('Sell it as it is.').closest('p')).toHaveTextContent("Sell it as it is. 10 Splinter of Xoph is under a minute of the Chaos market's trading.")
+    const chaosMarket = within(selling.getByRole('region', { name: 'Chaos market' }))
+    expect(chaosMarket.getByText('Worth')).toBeInTheDocument()
+    expect(chaosMarket.queryByText('Trades an hour')).toBeNull()
+    fireEvent.click(chaosMarket.getByRole('button', { name: 'Details' }))
+    expect(chaosMarket.getByText('Trades an hour')).toBeInTheDocument()
+    expect(selling.queryByText(/Hours of trading: your stack/)).toBeNull()
+    fireEvent.click(selling.getByRole('button', { name: 'How this is worked out' }))
+    expect(selling.getByText(/Hours of trading: your stack/)).toBeInTheDocument()
+    // Best time to sell: the busiest and dearest hours up front, the totals behind Details.
+    const best = within(selling.getByRole('region', { name: 'Best time to sell' }))
+    expect(best.getByText('Most traded, your time').nextSibling).toHaveTextContent('20:00')
+    expect(best.getByText(/4,040 traded that hour/)).toBeInTheDocument()
+    expect(best.getByText('Highest price, your time').nextSibling).toHaveTextContent('20:00')
+    expect(best.queryByText(/traded \(about/)).toBeNull()
+    fireEvent.click(best.getByRole('button', { name: 'Details' }))
+    expect(best.getByText(/traded \(about/)).toHaveTextContent('9,040 traded')
     // At past launches: each window's typical price, against today's.
     const launch = within(screen.getByRole('heading', { name: 'At past launches' }).closest('section')!)
     expect(launch.getAllByText(/^Today it sells for/)).toHaveLength(2)
