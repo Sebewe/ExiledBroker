@@ -164,6 +164,25 @@ describe('priceChartOption', () => {
     expect(launch.series.find((x) => x.id === 'next-chaos')!.data[0]).toEqual([9 / 24, 14])
   })
 
+  it("leaves the launch hours' spike out of the price axes' range", () => {
+    // Day 1: the first hours trade at 10 times the later price.
+    const s: SeriesPoint[] = series(24).map(([t, c, d], i) => (i < 3 ? [t, c! * 10, d! * 10] : [t, c, d]))
+    const bounds = rangeBounds(s, '3d', at(0))!
+    const band = outlookBand(s, OUTLOOK, 200)
+    type O = { yAxis: { min?: number; max?: number }[] }
+    const option = priceChartOption(TOKENS, s, bounds, band, null, false, { launchedAt: T0 }) as O
+    // Chaos runs 16 to 33 after the first 6 hours; the spike (100+) is left out.
+    expect(option.yAxis[0]!.max).toBeLessThan(40)
+    expect(option.yAxis[0]!.min).toBeGreaterThan(10)
+    // The Divine axis fits the later prices and the band.
+    expect(option.yAxis[1]!.max).toBeGreaterThanOrEqual(band![band!.length - 1]!.high)
+    expect(option.yAxis[1]!.max).toBeLessThan(0.5)
+    // Without launch hours in view, the axes scale themselves.
+    const later = series(24, 100)
+    const plain = priceChartOption(TOKENS, later, rangeBounds(later, '3d', at(0))!, null, null, false, { launchedAt: T0 }) as O
+    expect(plain.yAxis[0]!.min).toBeUndefined()
+  })
+
   it('has no band series without a band', () => {
     const s = series(3)
     const option = priceChartOption(TOKENS, s, rangeBounds(s, '3d')!, null) as { series: unknown[] }
