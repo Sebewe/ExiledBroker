@@ -280,6 +280,8 @@ describe('Price check', () => {
     expect(selling.getByText('Sell it as it is.').closest('p')).toHaveTextContent("Sell it as it is. 10 Splinter of Xoph is under a minute of the Chaos market's trading.")
     const chaosMarket = within(selling.getByRole('region', { name: 'Chaos market' }))
     expect(chaosMarket.getByText('Worth')).toBeInTheDocument()
+    // Not the header's latest price: the card says which price it values the stack at.
+    expect(chaosMarket.getByText(/each, typical last 24 h$/)).toBeInTheDocument()
     expect(chaosMarket.queryByText('Trades an hour')).toBeNull()
     fireEvent.click(chaosMarket.getByRole('button', { name: 'Details' }))
     expect(chaosMarket.getByText('Trades an hour')).toBeInTheDocument()
