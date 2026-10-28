@@ -177,6 +177,11 @@ describe('priceChartOption', () => {
     // The Divine axis fits the later prices and the band.
     expect(option.yAxis[1]!.max).toBeGreaterThanOrEqual(band![band!.length - 1]!.high)
     expect(option.yAxis[1]!.max).toBeLessThan(0.5)
+    // What came next counts only for the hours the chart draws: its own launch hours don't.
+    const next: SeriesPoint[] = [...s, ...series(72, 24)]
+    const revealed = priceChartOption(TOKENS, s, bounds, band, null, false, { launchedAt: T0, ahead: true, next }) as O
+    expect(revealed.yAxis[0]!.max).toBeLessThan(120)
+    expect(revealed.yAxis[1]!.max).toBeLessThan(0.6)
     // Without launch hours in view, the axes scale themselves.
     const later = series(24, 100)
     const plain = priceChartOption(TOKENS, later, rangeBounds(later, '3d', at(0))!, null, null, false, { launchedAt: T0 }) as O
