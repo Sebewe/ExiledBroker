@@ -91,7 +91,7 @@ export function Meter({ label, value, hint }: { label: string; value: number | n
 }
 
 /** The card's odds and extra facts, closed by default (one toggle per card). */
-function Details({ children }: { children: ReactNode }) {
+export function Details({ children, label = 'Details' }: { children: ReactNode; label?: string }) {
   const [open, setOpen] = useState(false)
   const id = useId()
   return (
@@ -103,7 +103,7 @@ function Details({ children }: { children: ReactNode }) {
         onClick={() => setOpen(!open)}
         className="-my-1 flex min-h-8 w-fit cursor-pointer items-center gap-1 text-xs text-muted hover:text-accent"
       >
-        Details
+        {label}
         <ChevronDown aria-hidden className={`size-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       <div id={id} hidden={!open} className="flex flex-col gap-2">
