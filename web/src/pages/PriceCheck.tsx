@@ -402,9 +402,10 @@ function PriceChart({ item, info, reveal }: { item: PriceCheckItem; info: LiveLe
   // In the preview the axis keeps room for the next 3 days, so the reveal fits without moving it.
   const ahead = reveal && latestShown
   const next = ahead && revealed && nextQ.data ? nextQ.data.series : null
+  const launchedAt = info.launched_at ? Date.parse(info.launched_at) : null
   const build = useCallback(
-    (t: ChartTokens) => priceChartOption(t, points, bounds ?? [0, 0], band, range === 'launch' && bounds ? bounds[0] : null, chaosOnly, { ahead, next }),
-    [points, bounds, band, range, chaosOnly, ahead, next],
+    (t: ChartTokens) => priceChartOption(t, points, bounds ?? [0, 0], band, range === 'launch' && bounds ? bounds[0] : null, chaosOnly, { ahead, next, launchedAt }),
+    [points, bounds, band, range, chaosOnly, ahead, next, launchedAt],
   )
   const priced = points.filter(([, c, d]) => c != null || d != null).length
   return (

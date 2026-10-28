@@ -116,12 +116,46 @@ export function priceChartOption(
   band: BandPoint[] | null,
   launchAt?: number | null,
   chaosOnly = false,
-  { ahead = false, next = null }: { ahead?: boolean; next?: SeriesPoint[] | null } = {},
+  { ahead = false, next = null, launchedAt = null }: { ahead?: boolean; next?: SeriesPoint[] | null; launchedAt?: number | null } = {},
 ): EChartsCoreOption {
   const built = chartOption(t, points, bounds, band, launchAt, chaosOnly, ahead, next)
-  const option = chaosOnly ? withoutDivine(built) : built
+  const scaled = launchedAt == null ? built : withoutLaunchScale(built, points, band, next, launchedAt + LAUNCH_SCALE_HOURS * HOUR, chaosOnly)
+  const option = chaosOnly ? withoutDivine(scaled) : scaled
   // Every series has an id, so the reveal's lines are added to the chart as it stands.
   return { ...option, series: (option.series as { id?: string; name?: string }[]).map((s) => ({ ...s, id: s.id ?? s.name })) }
+}
+
+/** Hours after the launch left out of the price axes' range: the first hours' prices are
+ *  wild (a Divine leg at several times its later price), and on day 1 they set the scale
+ *  and squashed the rest of the line and the outlook band flat (the user, 2026-10-28). */
+export const LAUNCH_SCALE_HOURS = 6
+
+/** The y axes' range without the hours before `from`, when the chart shows any: each
+ *  axis fits its later prices, the outlook band and what came next, padded. A launch
+ *  spike then runs off the top instead of setting the scale. */
+function withoutLaunchScale(
+  option: EChartsCoreOption,
+  points: SeriesPoint[],
+  band: BandPoint[] | null,
+  next: SeriesPoint[] | null,
+  from: number,
+  chaosOnly: boolean,
+): EChartsCoreOption {
+  if (!points.some(([at, c, d]) => Date.parse(at) < from && (c != null || d != null))) return option
+  const later = points.filter(([at]) => Date.parse(at) >= from)
+  const values = (i: 1 | 2) => [...later, ...(next ?? [])].map((p) => p[i]).filter((v): v is number => v != null && Number.isFinite(v))
+  const bandValues = (band ?? []).flatMap((b) => [b.low, b.high, ...(b.typical == null ? [] : [b.typical])])
+  // The band is on the Chaos axis for Divine Orb, else on the Divine axis.
+  const axes = [values(1).concat(chaosOnly ? bandValues : []), values(2).concat(chaosOnly ? [] : bandValues)]
+  const yAxis = (option.yAxis as Record<string, unknown>[]).map((axis, i) => {
+    const vs = axes[i] ?? []
+    if (!vs.length) return axis
+    const lo = Math.min(...vs)
+    const hi = Math.max(...vs)
+    const pad = (hi - lo || Math.abs(hi) || 1) * 0.08
+    return { ...axis, min: Math.max(0, lo - pad), max: hi + pad }
+  })
+  return { ...option, yAxis }
 }
 
 /** Divine Orb's chart: its price in Chaos alone, on one axis (a Divine is worth one Divine). */
