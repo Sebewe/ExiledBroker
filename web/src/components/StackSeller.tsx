@@ -158,7 +158,7 @@ function MarketCard({
               <span className="num font-semibold">{worth}</span>
             </span>
             <span className="num text-xs text-muted" title="The median of the market's hourly average prices over the last 24 hours, not a live price">
-              {each} each
+              {each} each, typical last 24 h
             </span>
           </>
         )}
