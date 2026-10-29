@@ -20,7 +20,7 @@ import type { ChartTokens } from '../lib/chartOptions'
 import { count, pct, price, signedPct, tone } from '../lib/format'
 import { makeMoney, type Money } from '../lib/money'
 import {
-  hasDivine,
+  hasDivineMarket,
   BETWEEN_LAUNCHES,
   chartWindow,
   hasHistory,
@@ -398,8 +398,8 @@ function PriceChart({ item, info, reveal }: { item: PriceCheckItem; info: LiveLe
   const ahead = reveal && latestShown
   const next = ahead && revealed && nextQ.data ? nextQ.data.series : null
   const build = useCallback(
-    (t: ChartTokens) => priceChartOption(t, points, win?.bounds ?? [0, 0], band, win?.launchAt ?? 0, chaosOnly, { ahead, next }),
-    [points, win, band, chaosOnly, ahead, next],
+    (t: ChartTokens) => priceChartOption(t, points, win?.bounds ?? [0, 0], band, win?.launchAt ?? 0, chaosOnly, { ahead, next, rate: info.divine_chaos }),
+    [points, win, band, chaosOnly, ahead, next, info.divine_chaos],
   )
   const priced = points.filter(([, c, d]) => c != null || d != null).length
   return (
@@ -412,7 +412,7 @@ function PriceChart({ item, info, reveal }: { item: PriceCheckItem; info: LiveLe
             build={build}
             height={300}
             morph="window"
-            label={`${item.name}: hourly price in Chaos${chaosOnly ? '' : ' (left axis) and in Divines (right axis)'}, ${win.trailing ? 'the last 14 days' : "the league's first 14 days"}${band ? ', with the outlook range past the latest hour' : ''}${next ? ', and what came next dotted' : ''}`}
+            label={`${item.name}: hourly price in Chaos${chaosOnly ? '' : ', bought with Chaos and with Divines (at each hour\'s rate), with Divines at today\'s rate on the right axis'}, ${win.trailing ? 'the last 14 days' : "the league's first 14 days"}${band ? ', with the outlook range past the latest hour' : ''}${next ? ', and what came next dotted' : ''}`}
           />
         </div>
       )}
@@ -422,7 +422,14 @@ function PriceChart({ item, info, reveal }: { item: PriceCheckItem; info: LiveLe
       <ul className="flex max-w-3xl flex-col gap-1 text-xs text-faint">
         {priced === 1 && <li>Only one hour has traded so far: the lines start as the next hours are published.</li>}
         {chaosOnly && <li>Its own market's price: how many Chaos a Divine Orb traded for each hour, the rate the site converts every price with.</li>}
-        {!chaosOnly && !hasDivine(item.series) && <li>No Divine rate for these hours yet, so there's no Divine line: only its Chaos price.</li>}
+        {!chaosOnly && (hasDivineMarket(points) ? (
+          <li>
+            Both lines are in Chaos: Buy with Divines is its Divine market's price at each hour's Divine rate, so the line on top was the dearer way to buy it then. The right axis is the
+            same scale in Divines at today's rate.
+          </li>
+        ) : (
+          <li>It hasn't traded for Divines in these hours, so there's only its Chaos line.</li>
+        ))}
         {band && (
           <li>
             The shaded range past the latest hour is what past leagues did from this point, {chaosOnly ? 'in Chaos' : 'in Divines (right axis)'}; the dashed line is the typical

@@ -2213,7 +2213,7 @@
         "type": "object"
       },
       "PreviewItemNext": {
-        "description": "An item's whole series in the preview's league, from launch to `next_until`\n(day 10's end), for \"what happened next\" after the chosen day. Same points as\nPriceCheckItem.series: [hour, Chaos, Divines at that hour's rate].",
+        "description": "An item's whole series in the preview's league, from launch to `next_until`\n(day 10's end), for \"what happened next\" after the chosen day. Same points as\nPriceCheckItem.series: [hour, Chaos, Divines at that hour's rate, the Divine market\nin Chaos].",
         "properties": {
           "item_id": {
             "title": "Item Id",
@@ -2225,12 +2225,22 @@
           },
           "series": {
             "items": {
-              "maxItems": 3,
-              "minItems": 3,
+              "maxItems": 4,
+              "minItems": 4,
               "prefixItems": [
                 {
                   "format": "date-time",
                   "type": "string"
+                },
+                {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
                 },
                 {
                   "anyOf": [
@@ -2519,12 +2529,22 @@
           },
           "series": {
             "items": {
-              "maxItems": 3,
-              "minItems": 3,
+              "maxItems": 4,
+              "minItems": 4,
               "prefixItems": [
                 {
                   "format": "date-time",
                   "type": "string"
+                },
+                {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
                 },
                 {
                   "anyOf": [

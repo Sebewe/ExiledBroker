@@ -426,11 +426,14 @@ def index(con, league: str, settings: Settings | None = None) -> dict:
 
 def series(con, league: str, item_id: str) -> list[list]:
     """The item's traded hours over the hosted window: [hour, Chaos, Divines at the
-    hour's rate] (a primary-key range: league, item, time)."""
+    hour's rate, its Divine market's price in Chaos at the hour's rate (what buying it
+    with Divines cost, the Divines bought with Chaos)] (a primary-key range: league,
+    item, time)."""
     rows = db.rows(
         con,
         """
-        SELECT observed_at, chaos_price, chaos_price / nullif(divine_rate, 0)
+        SELECT observed_at, chaos_price, chaos_price / nullif(divine_rate, 0),
+          CASE WHEN divine_price > 0 AND divine_volume > 0 THEN divine_price * divine_rate END
         FROM cross_market_hour
         WHERE league_id = (SELECT id FROM league WHERE name = ?) AND item_id = ?
           AND chaos_price > 0 AND chaos_volume > 0
@@ -438,7 +441,7 @@ def series(con, league: str, item_id: str) -> list[list]:
         """,
         [league, item_id],
     )
-    return [[t.replace(tzinfo=UTC), _sig(c), _sig(d)] for t, c, d in rows]
+    return [[t.replace(tzinfo=UTC), _sig(c), _sig(d), _sig(x)] for t, c, d, x in rows]
 
 
 def last_day(con, league: str, latest: datetime, item_id: str) -> list[dict]:
@@ -680,7 +683,7 @@ def divine_outlook(con, day: float | None, thick: bool) -> dict:
 
 
 def divine_item(con, league: str, entry: dict, latest: datetime | None, day) -> dict:
-    """Divine Orb's view, in Chaos: its series (the Divine column empty: a Divine is
+    """Divine Orb's view, in Chaos: its series (the Divine columns empty: a Divine is
     worth one), no outlook, the Chaos market's stack inputs (price over the latest 24
     hours, units an hour, hourly swing and share of hours traded over the latest 3 days)
     and its last day's trading. The best-hour inputs are the same as any item's. Its
@@ -696,7 +699,7 @@ def divine_item(con, league: str, entry: dict, latest: datetime | None, day) -> 
         "unit": "chaos",
         "thick": False,
         "change_24h": None,
-        "series": [[t.replace(tzinfo=UTC), _sig(c), None] for t, c, _ in rows],
+        "series": [[t.replace(tzinfo=UTC), _sig(c), None, None] for t, c, _ in rows],
         "outlook": None,
         "stack": {"chaos": None, "divine": None},
         "launch_prices": None,

@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { Horizon, Outlook, SeriesPoint } from '../api/client'
 import { alpha, type ChartTokens } from './chartOptions'
-import { BETWEEN_LAUNCHES, chartWindow, dayLabel, inRange, isLater, latestHour, outlookBand, pathLabel, priceChartOption, reason, typicalPath } from './priceCheck'
+import { BETWEEN_LAUNCHES, CHAOS_LINE, chartWindow, DIVINE_LINE, dayLabel, inRange, isLater, latestHour, outlookBand, pathLabel, priceChartOption, reason, typicalPath } from './priceCheck'
 
 const H = 3_600_000
 const T0 = Date.parse('2026-10-01T00:00:00Z')
 const at = (h: number) => new Date(T0 + h * H).toISOString()
-/** `n` hours from launch, Chaos rising by 1 an hour, Divines at 1/200 of it. */
-const series = (n: number, from = 0): SeriesPoint[] => Array.from({ length: n }, (_, i) => [at(from + i), 10 + i, (10 + i) / 200])
+/** `n` hours from launch, Chaos rising by 1 an hour, Divines at 1/200 of it, and its Divine
+ *  market (in Chaos) 10% dearer. */
+const series = (n: number, from = 0): SeriesPoint[] => Array.from({ length: n }, (_, i) => [at(from + i), 10 + i, (10 + i) / 200, (10 + i) * 1.1])
 
 const horizon = (x: Partial<Horizon> = {}): Horizon => ({ verdict: 'sell', typical: -0.08, low: -0.12, high: 0.02, leagues: 4, basis: 'item', state: 'judged', ...x })
 const OUTLOOK: Outlook = { h24: horizon({ typical: -0.03, low: -0.09, high: 0.02 }), d3: horizon(), unit: 'divine' }
@@ -15,7 +16,7 @@ const TOKENS: ChartTokens = { text: '#e8eaf0', muted: '#a9afbd', faint: '#7c8293
 
 describe('chartWindow', () => {
   it("shows the league's first 14 days, from the launch, while the latest hour is in them", () => {
-    const s = [...series(100, 30), [at(130), null, null] as SeriesPoint]
+    const s = [...series(100, 30), [at(130), null, null, null] as SeriesPoint]
     expect(latestHour(s)).toBe(T0 + 129 * H)
     expect(chartWindow(s, at(0))).toEqual({ bounds: [T0, T0 + 129 * H], launchAt: T0, trailing: false })
     // Day 14's last hour: still from the launch.
@@ -52,13 +53,13 @@ describe('outlookBand', () => {
   })
 
   it('starts from the Chaos price at the Divine rate for an item with no Divine leg', () => {
-    const s: SeriesPoint[] = series(5).map(([t, c]) => [t, c, null])
+    const s: SeriesPoint[] = series(5).map(([t, c]) => [t, c, null, null])
     expect(outlookBand(s, OUTLOOK, 200)![0]!.low).toBeCloseTo(14 / 200)
     expect(outlookBand(s, OUTLOOK, null)).toBeNull()
   })
 
   it("moves Divine Orb's latest Chaos price by an outlook in Chaos", () => {
-    const s: SeriesPoint[] = series(5).map(([t, c]) => [t, c, null])
+    const s: SeriesPoint[] = series(5).map(([t, c]) => [t, c, null, null])
     const band = outlookBand(s, { ...OUTLOOK, unit: 'chaos' }, null)!
     expect(band[0]!.low).toBe(14)
     expect(band[2]!.high).toBeCloseTo(14 * 1.02)
@@ -109,9 +110,10 @@ describe('priceChartOption', () => {
       yAxis: { name: string; type: string }[]
       xAxis: { max: number }
     }
+    // Both markets on the Chaos axis, so the higher line is the dearer way to buy.
     expect(option.series.map((x) => [x.name, x.yAxisIndex])).toEqual([
-      ['Chaos', 0],
-      ['Divine', 1],
+      [CHAOS_LINE, 0],
+      [DIVINE_LINE, 0],
       ['band-low', 1],
       ['Outlook range', 1],
       ['Outlook (typical)', 1],
@@ -129,12 +131,12 @@ describe('priceChartOption', () => {
   })
 
   it("draws Divine Orb's band in Chaos, on its one axis", () => {
-    const s: SeriesPoint[] = series(10).map(([t, c]) => [t, c, null])
+    const s: SeriesPoint[] = series(10).map(([t, c]) => [t, c, null, null])
     const band = outlookBand(s, { ...OUTLOOK, unit: 'chaos' }, null)
     const option = priceChartOption(TOKENS, s, chartWindow(s, at(0))!.bounds, band, T0, true) as { series: { name: string; yAxisIndex: number }[]; yAxis: unknown[] }
     expect(option.yAxis).toHaveLength(1)
     expect(option.series.map((x) => [x.name, x.yAxisIndex])).toEqual([
-      ['Chaos', 0],
+      [CHAOS_LINE, 0],
       ['band-low', 0],
       ['Outlook range', 0],
       ['Outlook (typical)', 0],
@@ -148,46 +150,68 @@ describe('priceChartOption', () => {
     // Before the reveal: no band, but the axis already ends 3 days on, so opening it moves nothing.
     const closed = priceChartOption(TOKENS, s, bounds, null, T0, false, { ahead: true }) as O
     expect(closed.xAxis.max).toBe(81 / 24)
-    expect(closed.legend.data).toEqual(['Chaos', 'Divine'])
+    expect(closed.legend.data).toEqual([CHAOS_LINE, DIVINE_LINE])
     // Open: from the latest hour (so the lines join) to 3 days on; later hours are left out.
     const open = priceChartOption(TOKENS, s, bounds, null, T0, false, { ahead: true, next: series(100, 5) }) as O
     expect(open.xAxis.max).toBe(closed.xAxis.max)
     const next = open.series.filter((x) => x.name === 'What came next')
     expect(next.map((x) => [x.id, x.yAxisIndex, x.data.length, x.lineStyle?.type])).toEqual([
       ['next-chaos', 0, 73, 'dotted'],
-      ['next-divine', 1, 73, 'dotted'],
+      ['next-divine', 0, 73, 'dotted'],
     ])
-    expect(open.legend.data).toEqual(['Chaos', 'Divine', 'What came next'])
+    expect(open.legend.data).toEqual([CHAOS_LINE, DIVINE_LINE, 'What came next'])
     // Divine Orb: its Chaos line alone, then too.
     const chaosOnly = priceChartOption(TOKENS, s, bounds, null, T0, true, { ahead: true, next: series(100, 5) }) as O
-    expect(chaosOnly.series.map((x) => x.id ?? x.name)).toEqual(['Chaos', 'next-chaos'])
-    expect(chaosOnly.legend.data).toEqual(['Chaos', 'What came next'])
+    expect(chaosOnly.series.map((x) => x.id ?? x.name)).toEqual([CHAOS_LINE, 'next-chaos'])
+    expect(chaosOnly.legend.data).toEqual([CHAOS_LINE, 'What came next'])
     // On the days-since-launch axis, the dotted lines are in days too.
     expect(open.series.find((x) => x.id === 'next-chaos')!.data[0]).toEqual([9 / 24, 14])
   })
 
-  it("leaves the launch hours' spike out of the price axes' range", () => {
+  it("locks the Divine axis to the Chaos axis at today's rate, leaving the launch hours' spike out", () => {
     // Day 1: the first hours trade at 10 times the later price.
-    const s: SeriesPoint[] = series(24).map(([t, c, d], i) => (i < 3 ? [t, c! * 10, d! * 10] : [t, c, d]))
+    const s: SeriesPoint[] = series(24).map(([t, c, d, x], i) => (i < 3 ? [t, c! * 10, d! * 10, x! * 10] : [t, c, d, x]))
     const { bounds } = chartWindow(s, at(0))!
-    const band = outlookBand(s, OUTLOOK, 200)
-    type O = { yAxis: { min?: number; max?: number }[] }
-    const option = priceChartOption(TOKENS, s, bounds, band, T0) as O
-    // Chaos runs 16 to 33 after the first 6 hours; the spike (100+) is left out.
+    const band = outlookBand(s, OUTLOOK, 200)!
+    type O = { yAxis: { min: number; max: number; show?: boolean }[] }
+    const locked = (o: O) => {
+      expect(o.yAxis[1]!.min).toBeCloseTo(o.yAxis[0]!.min / 200)
+      expect(o.yAxis[1]!.max).toBeCloseTo(o.yAxis[0]!.max / 200)
+    }
+    const option = priceChartOption(TOKENS, s, bounds, band, T0, false, { rate: 200 }) as O
+    // Chaos runs 16 to 36 (its Divine market) after the first 6 hours; the spike (100+) is left out.
     expect(option.yAxis[0]!.max).toBeLessThan(40)
     expect(option.yAxis[0]!.min).toBeGreaterThan(10)
-    // The Divine axis fits the later prices and the band.
-    expect(option.yAxis[1]!.max).toBeGreaterThanOrEqual(band![band!.length - 1]!.high)
-    expect(option.yAxis[1]!.max).toBeLessThan(0.5)
-    // What came next counts only for the hours the chart draws: its own launch hours don't.
+    locked(option)
+    // The band (in Divines) fits on the locked Divine axis.
+    expect(option.yAxis[1]!.max).toBeGreaterThanOrEqual(band[band.length - 1]!.high)
+    // What came next counts only for the hours the chart draws, and both axes move together.
     const next: SeriesPoint[] = [...s, ...series(72, 24)]
-    const revealed = priceChartOption(TOKENS, s, bounds, band, T0, false, { ahead: true, next }) as O
-    expect(revealed.yAxis[0]!.max).toBeLessThan(120)
-    expect(revealed.yAxis[1]!.max).toBeLessThan(0.6)
-    // Without launch hours in view, the axes scale themselves.
+    const revealed = priceChartOption(TOKENS, s, bounds, band, T0, false, { ahead: true, next, rate: 200 }) as O
+    expect(revealed.yAxis[0]!.max).toBeLessThan(130)
+    expect(revealed.yAxis[0]!.max).toBeGreaterThan(option.yAxis[0]!.max)
+    locked(revealed)
+    // Without launch hours in view, the same lock.
     const later = series(24, 100)
-    const plain = priceChartOption(TOKENS, later, chartWindow(later, at(0))!.bounds, null, T0) as O
-    expect(plain.yAxis[0]!.min).toBeUndefined()
+    locked(priceChartOption(TOKENS, later, chartWindow(later, at(0))!.bounds, null, T0, false, { rate: 200 }) as O)
+    // No Divine rate yet: no Divine axis to show.
+    expect((priceChartOption(TOKENS, later, chartWindow(later, at(0))!.bounds, null, T0) as O).yAxis[1]!.show).toBe(false)
+  })
+
+  it('draws the dearer market on top: both lines in Chaos, the Divine market at each hour\'s rate', () => {
+    const s: SeriesPoint[] = [
+      [at(0), 10, 0.05, 12], // Divines dearer
+      [at(1), 10, 0.05, 8], // Chaos dearer
+      [at(2), 10, 0.05, null], // not traded for Divines
+    ]
+    type O = { series: { name: string; data: [number, number | null][] }[] }
+    const option = priceChartOption(TOKENS, s, chartWindow(s, at(0))!.bounds, null, T0, false, { rate: 200 }) as O
+    const values = (name: string) => option.series.find((x) => x.name === name)!.data.map(([, v]) => v)
+    expect(values(CHAOS_LINE)).toEqual([10, 10, 10])
+    expect(values(DIVINE_LINE)).toEqual([12, 8, null])
+    // A snapshot built before the Divine market was sent: no Divine line, nothing breaks.
+    const old = s.map(([t, c, d]) => [t, c, d]) as unknown as SeriesPoint[]
+    expect((priceChartOption(TOKENS, old, chartWindow(old, at(0))!.bounds, null, T0, false, { rate: 200 }) as O).series.find((x) => x.name === DIVINE_LINE)!.data.every(([, v]) => v == null)).toBe(true)
   })
 
   it('has no band series without a band', () => {

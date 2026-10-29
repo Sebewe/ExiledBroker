@@ -523,8 +523,9 @@ class PriceCheckItem(BaseModel):
     thick: bool  # finding 9's thick market (latest 3 days)
     change_24h: float | None  # in `unit`
     # Traded hours over the hosted window (launch fortnight + latest 14 days): [hour,
-    # Chaos, Divines at that hour's rate]; lines break where hours are missing.
-    series: list[tuple[datetime, float | None, float | None]]
+    # Chaos, Divines at that hour's rate, its Divine market's price in Chaos at that
+    # hour's rate]; lines break where hours are missing.
+    series: list[tuple[datetime, float | None, float | None, float | None]]
     outlook: PriceOutlook | None  # null before the first hour
     stack: StackMarkets
     launch_prices: LaunchPrices | None
@@ -599,12 +600,13 @@ class UsageStats(BaseModel):
 class PreviewItemNext(BaseModel):
     """An item's whole series in the preview's league, from launch to `next_until`
     (day 10's end), for "what happened next" after the chosen day. Same points as
-    PriceCheckItem.series: [hour, Chaos, Divines at that hour's rate]."""
+    PriceCheckItem.series: [hour, Chaos, Divines at that hour's rate, the Divine market
+    in Chaos]."""
 
     item_id: str
     name: str
     unit: Literal["divine", "chaos"]  # what its verdict judges in (Chaos for Divine Orb)
-    series: list[tuple[datetime, float | None, float | None]]
+    series: list[tuple[datetime, float | None, float | None, float | None]]
 
 
 class PreviewGameOrder(BaseModel):
