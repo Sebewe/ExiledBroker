@@ -102,15 +102,26 @@ export const hasDivineMarket = (series: SeriesPoint[]) => series.some((p) => div
 export const CHAOS_LINE = 'Buy with Chaos'
 export const DIVINE_LINE = 'Buy with Divines'
 
-/** How far above the highest Chaos price a Divine-market hour may sit and still set the
- *  scale: a thin Divine market has hours of a trade or two at many times the price
- *  (Orb of Alchemy at 40×), which squashed the chart flat. Those run off the top. */
+/** How far above its own typical hour (and above the highest Chaos price) a Divine-market
+ *  hour may sit and still set the scale: a thin Divine market has hours of a trade or two
+ *  at many times the price (Orb of Alchemy at 40×), which squashed the chart flat. Those
+ *  run off the top. Measured against its own median, since a cheap item's Divine market
+ *  is steadily 2–3 times its Chaos price, and that should stay on the chart. */
 export const DIVINE_SCALE_CAP = 3
 
-/** The highest Divine-market price that sets the scale, from the Chaos prices shown. */
+const median = (xs: number[]) => {
+  const s = [...xs].sort((a, b) => a - b)
+  const m = s.length >> 1
+  return s.length % 2 ? s[m]! : (s[m - 1]! + s[m]!) / 2
+}
+
+/** The highest Divine-market price that sets the scale. */
 function divineCap(points: SeriesPoint[]): number {
-  const chaos = points.map((p) => p[1]).filter((v): v is number => v != null && Number.isFinite(v))
-  return chaos.length ? DIVINE_SCALE_CAP * Math.max(...chaos) : Infinity
+  const finite = (v: number | null | undefined): v is number => v != null && Number.isFinite(v)
+  const chaos = points.map((p) => p[1]).filter(finite)
+  const divine = points.map(divineMarket).filter(finite)
+  if (!chaos.length && !divine.length) return Infinity
+  return DIVINE_SCALE_CAP * Math.max(chaos.length ? Math.max(...chaos) : 0, divine.length ? median(divine) : 0)
 }
 
 /** Whether any Divine-market hour shown runs off the top of the chart. */
