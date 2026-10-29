@@ -220,7 +220,7 @@ def test_the_list_and_an_item_without_paths(client, loaded):  # noqa: F811
     item = client.get(f"/api/price-check/{LEAGUE}/{item_id}").json()
     assert item["item_id"] == item_id and item["name"] == listed[item_id]["name"]
     assert item["series"] and item["series"][0][0].endswith("Z")
-    assert len(item["series"]) <= 30 and all(len(p) == 3 for p in item["series"])
+    assert len(item["series"]) <= 30 and all(len(p) == 4 for p in item["series"])
     assert item["outlook"]["unit"] == "divine"
     for h in ("h24", "d3"):  # nothing built: no history to judge by
         assert item["outlook"][h]["state"] == "no_history"
@@ -252,7 +252,7 @@ def test_divine_orb_has_its_own_view_in_chaos(client, loaded):  # noqa: F811
     assert {item["outlook"][h]["state"] for h in ("h24", "d3")} == {"no_history"}
     assert item["launch_prices"] is None and item["stack"]["divine"] is None
     assert len(item["series"]) == len(rows) > 0
-    assert all(c > 1 and d is None for _, c, d in item["series"])
+    assert all(c > 1 and d is None and x is None for _, c, d, x in item["series"])
     chaos = item["stack"]["chaos"]
     assert chaos["volume_h"] > 0 and 0 < chaos["hours_traded"] <= 1 and chaos["price"] > 1
     day = item["last_day"]

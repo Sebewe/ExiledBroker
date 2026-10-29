@@ -942,7 +942,8 @@ export interface components {
          * PreviewItemNext
          * @description An item's whole series in the preview's league, from launch to `next_until`
          *     (day 10's end), for "what happened next" after the chosen day. Same points as
-         *     PriceCheckItem.series: [hour, Chaos, Divines at that hour's rate].
+         *     PriceCheckItem.series: [hour, Chaos, Divines at that hour's rate, the Divine market
+         *     in Chaos].
          */
         PreviewItemNext: {
             /** Item Id */
@@ -952,6 +953,7 @@ export interface components {
             /** Series */
             series: [
                 string,
+                number | null,
                 number | null,
                 number | null
             ][];
@@ -1036,6 +1038,7 @@ export interface components {
             /** Series */
             series: [
                 string,
+                number | null,
                 number | null,
                 number | null
             ][];

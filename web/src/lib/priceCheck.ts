@@ -91,17 +91,28 @@ function anchorChaos(series: SeriesPoint[]): number | null {
   return null
 }
 
-/** Whether a series has any price in Divines. */
-export const hasDivine = (series: SeriesPoint[]) => series.some(([, , d]) => d != null)
+
+/** The item's Divine market in Chaos at the hour's rate (null in a snapshot built before it was sent). */
+const divineMarket = (p: SeriesPoint): number | null => p[3] ?? null
+
+/** Whether a series has any hour bought with Divines. */
+export const hasDivineMarket = (series: SeriesPoint[]) => series.some((p) => divineMarket(p) != null)
+
+/** The chart's two lines: the two ways to buy the item, both in Chaos. */
+export const CHAOS_LINE = 'Buy with Chaos'
+export const DIVINE_LINE = 'Buy with Divines'
 
 /** Hours past the latest hour the chart makes room for: the outlook's 3 days, so the band
  *  and the preview's "what came next" fit without the axis moving. */
 export const AHEAD_HOURS = 72
 
-/** The chart: Chaos on the left axis, Divines on the right (decided with the user: one
- *  chart shows when an item "rose" in Chaos only because the Divine moved), linear, the x axis in days since
- *  the league's launch, lines broken at missing hours, and the outlook band (in Divines, on the right axis)
- *  past the latest hour. `chaosOnly` (Divine Orb): its Chaos line alone, the band in Chaos.
+/** The chart: the item's two markets on one Chaos axis, its Chaos market and its Divine
+ *  market at each hour's Divine rate, so the line on top is the dearer way to buy it then
+ *  (the user, 2026-10-29: one line jumping below the other misled). The Divine axis on the
+ *  right is the same scale at today's rate (`rate`), locked to the Chaos axis however it
+ *  rescales, and carries the outlook band past the latest hour. Linear, the x axis in days
+ *  since the league's launch, lines broken at missing hours. `chaosOnly` (Divine Orb): its
+ *  Chaos line alone, the band in Chaos.
  *  In the preview, `ahead` keeps the 3 days past the latest hour on the axis whether or not
  *  there's a band, and `next` (the reveal: the hours after it) draws dotted on the same
  *  chart, so opening the reveal only adds the lines (the user). */
@@ -112,12 +123,12 @@ export function priceChartOption(
   band: BandPoint[] | null,
   launchAt: number,
   chaosOnly = false,
-  { ahead = false, next = null }: { ahead?: boolean; next?: SeriesPoint[] | null } = {},
+  { ahead = false, next = null, rate = null }: { ahead?: boolean; next?: SeriesPoint[] | null; rate?: number | null } = {},
 ): EChartsCoreOption {
   const built = chartOption(t, points, bounds, band, launchAt, chaosOnly, ahead, next)
   // Only the hours the chart draws of what came next count towards the scale.
   const drawn = next && nextShown(next, bounds[1])
-  const scaled = withoutLaunchScale(built, points, band, drawn, launchAt + LAUNCH_SCALE_HOURS * HOUR, chaosOnly)
+  const scaled = alignedAxes(built, points, band, drawn, launchAt + LAUNCH_SCALE_HOURS * HOUR, chaosOnly, rate)
   const option = chaosOnly ? withoutDivine(scaled) : scaled
   // Every series has an id, so the reveal's lines are added to the chart as it stands.
   return { ...option, series: (option.series as { id?: string; name?: string }[]).map((s) => ({ ...s, id: s.id ?? s.name })) }
@@ -128,38 +139,43 @@ export function priceChartOption(
  *  and squashed the rest of the line and the outlook band flat (the user, 2026-10-28). */
 export const LAUNCH_SCALE_HOURS = 6
 
-/** The y axes' range without the hours before `from`, when the chart shows any: each
- *  axis fits its later prices, the outlook band and what came next, padded. A launch
- *  spike then runs off the top instead of setting the scale. */
-function withoutLaunchScale(
+/** The y axes' range: the Chaos axis fits both lines, what came next and the outlook band
+ *  (in Chaos at `rate`), padded, and the Divine axis is the same range over `rate`, so the
+ *  two never drift apart (the user). The hours before `from` are left out when the chart
+ *  shows any: a launch spike runs off the top instead of setting the scale. Without a
+ *  rate, the Divine axis is hidden. */
+function alignedAxes(
   option: EChartsCoreOption,
   points: SeriesPoint[],
   band: BandPoint[] | null,
   next: SeriesPoint[] | null,
   from: number,
   chaosOnly: boolean,
+  rate: number | null,
 ): EChartsCoreOption {
-  if (!points.some(([at, c, d]) => Date.parse(at) < from && (c != null || d != null))) return option
-  const later = points.filter(([at]) => Date.parse(at) >= from)
-  const values = (i: 1 | 2) => [...later, ...(next ?? [])].map((p) => p[i]).filter((v): v is number => v != null && Number.isFinite(v))
-  const bandValues = (band ?? []).flatMap((b) => [b.low, b.high, ...(b.typical == null ? [] : [b.typical])])
-  // The band is on the Chaos axis for Divine Orb, else on the Divine axis.
-  const axes = [values(1).concat(chaosOnly ? bandValues : []), values(2).concat(chaosOnly ? [] : bandValues)]
-  const yAxis = (option.yAxis as Record<string, unknown>[]).map((axis, i) => {
-    const vs = axes[i] ?? []
-    if (!vs.length) return axis
-    const lo = Math.min(...vs)
-    const hi = Math.max(...vs)
-    const pad = (hi - lo || Math.abs(hi) || 1) * 0.08
-    return { ...axis, min: Math.max(0, lo - pad), max: hi + pad }
-  })
-  return { ...option, yAxis }
+  const early = points.some((p) => Date.parse(p[0]) < from && (p[1] != null || divineMarket(p) != null))
+  const shown = early ? points.filter(([at]) => Date.parse(at) >= from) : points
+  // The band is in Chaos for Divine Orb, else in Divines.
+  const toChaos = chaosOnly ? 1 : (rate ?? NaN)
+  const bandValues = (band ?? []).flatMap((b) => [b.low, b.high, ...(b.typical == null ? [] : [b.typical])]).map((v) => v * toChaos)
+  const vs = [...shown, ...(next ?? [])]
+    .flatMap((p) => [p[1], divineMarket(p)])
+    .concat(bandValues)
+    .filter((v): v is number => v != null && Number.isFinite(v))
+  const [left, right] = option.yAxis as Record<string, unknown>[]
+  const divineAxis = (min?: number, max?: number) => (rate && !chaosOnly ? { ...right, min, max } : { ...right, show: false })
+  if (!vs.length) return { ...option, yAxis: [left, divineAxis()] }
+  const lo = Math.min(...vs)
+  const hi = Math.max(...vs)
+  const pad = (hi - lo || Math.abs(hi) || 1) * 0.08
+  const [min, max] = [Math.max(0, lo - pad), hi + pad]
+  return { ...option, yAxis: [{ ...left, min, max }, divineAxis(rate ? min / rate : undefined, rate ? max / rate : undefined)] }
 }
 
 /** Divine Orb's chart: its price in Chaos alone, on one axis (a Divine is worth one Divine). */
 function withoutDivine(option: EChartsCoreOption): EChartsCoreOption {
-  const series = (option.series as { name?: string; id?: string }[]).filter((s) => s.name !== 'Divine' && s.id !== 'next-divine')
-  const legend = ((option.legend as { data: string[] }).data ?? []).filter((n) => n !== 'Divine')
+  const series = (option.series as { name?: string; id?: string }[]).filter((s) => s.name !== DIVINE_LINE && s.id !== 'next-divine')
+  const legend = ((option.legend as { data: string[] }).data ?? []).filter((n) => n !== DIVINE_LINE)
   return { ...option, legend: { ...(option.legend as object), data: legend }, yAxis: [(option.yAxis as unknown[])[0]], series }
 }
 
@@ -175,15 +191,15 @@ function nextShown(next: SeriesPoint[], from: number): SeriesPoint[] {
 
 function nextSeries(t: ChartTokens, next: SeriesPoint[], from: number) {
   const shown = nextShown(next, from)
-  const dotted = (id: string, yAxisIndex: number, color: string, unit: 'chaos' | 'divine', get: (p: SeriesPoint) => number | null) => ({
+  const dotted = (id: string, color: string, get: (p: SeriesPoint) => number | null) => ({
     ...line(NEXT, shown.map((p) => [p[0], get(p)])),
     id,
-    yAxisIndex,
+    yAxisIndex: 0,
     color,
     lineStyle: { width: 2, type: 'dotted' },
-    tooltip: { valueFormatter: (v: number | null) => price(v, unit) },
+    tooltip: { valueFormatter: (v: number | null) => price(v, 'chaos') },
   })
-  return [dotted('next-chaos', 0, t.accent, 'chaos', (p) => p[1]), dotted('next-divine', 1, t.info, 'divine', (p) => p[2])]
+  return [dotted('next-chaos', t.accent, (p) => p[1]), dotted('next-divine', t.info, divineMarket)]
 }
 
 /** The reveal's lines' name, in the legend. */
@@ -231,21 +247,22 @@ function chartOption(
   ahead: boolean,
   next: SeriesPoint[] | null,
 ): EChartsCoreOption {
-  const chaos = { ...line('Chaos', points.map(([at, c]) => [at, c])), yAxisIndex: 0, color: t.accent, lineStyle: { width: 2 }, tooltip: { valueFormatter: (v: number | null) => price(v, 'chaos') } }
-  const divine = { ...line('Divine', points.map(([at, , d]) => [at, d])), yAxisIndex: 1, color: t.info, lineStyle: { width: 2 }, tooltip: { valueFormatter: (v: number | null) => price(v, 'divine') } }
+  const inChaos = { valueFormatter: (v: number | null) => price(v, 'chaos') }
+  const chaos = { ...line(CHAOS_LINE, points.map(([at, c]) => [at, c])), yAxisIndex: 0, color: t.accent, lineStyle: { width: 2 }, tooltip: inChaos }
+  const divine = { ...line(DIVINE_LINE, points.map((p) => [p[0], divineMarket(p)])), yAxisIndex: 0, color: t.info, lineStyle: { width: 2 }, tooltip: inChaos }
   const bandSeries = [
     ...(band ? (chaosOnly ? outlookBandSeries(t, band, 0, 'chaos') : outlookBandSeries(t, band, 1)) : []),
     ...(next ? nextSeries(t, next, bounds[1]) : []),
   ]
   const axis = axisStyle(t)
   const end = ahead ? bounds[1] + AHEAD_HOURS * HOUR : band ? band[band.length - 1]!.at : bounds[1]
-  const legend = { ...(baseOptions(t).legend as object), data: ['Chaos', 'Divine', ...(band ? ['Outlook range'] : []), ...(next ? [NEXT] : [])] }
+  const legend = { ...(baseOptions(t).legend as object), data: [CHAOS_LINE, DIVINE_LINE, ...(band ? ['Outlook range'] : []), ...(next ? [NEXT] : [])] }
   return sinceLaunch(t, { chaos, divine, bandSeries, axis, start: bounds[0], end, legend, launchAt, first: latestFirst(points) })
 }
 
 /** The first hour with a price, in ms, or null. */
 function latestFirst(points: SeriesPoint[]): number | null {
-  const p = points.find(([, c, d]) => c != null || d != null)
+  const p = points.find((p) => p[1] != null || divineMarket(p) != null)
   return p ? Date.parse(p[0]) : null
 }
 

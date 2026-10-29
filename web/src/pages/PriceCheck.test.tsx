@@ -88,7 +88,7 @@ const INDEX: PriceCheckIndex = {
 const horizon = (x: Partial<Horizon> = {}): Horizon => ({ verdict: 'sell', typical: -0.08, low: -0.12, high: 0.02, leagues: 4, basis: 'item', state: 'judged', ...x })
 /** Hourly from launch to the latest hour (10 days), Chaos 1.4, Divines at 1/200. */
 const hourly = (hours: number, divine = true): SeriesPoint[] =>
-  Array.from({ length: hours }, (_, i) => [iso(LATEST - (hours - 1 - i) * HOUR), 1.4, divine ? 0.007 : null])
+  Array.from({ length: hours }, (_, i) => [iso(LATEST - (hours - 1 - i) * HOUR), 1.4, divine ? 0.007 : null, divine ? 1.5 : null])
 const flat = Array(24).fill(0)
 const HOURS: SellHours = {
   phase: 'd7_14',
@@ -209,7 +209,7 @@ describe('Price check', () => {
       label: 'Currency',
       unit: 'chaos',
       change_24h: 0.02,
-      series: hourly(240).map(([t]) => [t, 200, null]),
+      series: hourly(240).map(([t]) => [t, 200, null, null]),
       outlook: null,
       stack: { chaos: { price: 200, volume_h: 400, sigma_h: 0.01, hours_traded: 1 }, divine: null },
       launch_prices: null,
@@ -233,8 +233,8 @@ describe('Price check', () => {
     expect(verdict.getByText(/has no call of its own/)).toBeInTheDocument()
     expect(verdict.queryByText('No clear signal')).toBeNull()
     const chart = screen.getByRole('img', { name: /hourly price in Chaos, the league's first 14 days/ })
-    expect(chart.dataset.series).toBe('Chaos:240')
-    expect(screen.queryByText(/No Divine rate for these hours yet/)).toBeNull()
+    expect(chart.dataset.series).toBe('Buy with Chaos:240')
+    expect(screen.queryByText(/hasn't traded for Divines in these hours/)).toBeNull()
     expect(screen.getByText(/of the Chaos market's trading/)).toBeInTheDocument()
     expect(screen.queryByText('Divine market')).toBeNull()
     const best = within(screen.getByRole('region', { name: 'Best time to sell' }))
@@ -310,9 +310,10 @@ describe('Price check', () => {
     serve(live())
     renderPage(`/price-check?item=${SPLINTER}`)
     // The league is 10 days old: all 240 hours, from the launch.
-    const chart = await screen.findByRole('img', { name: /hourly price in Chaos \(left axis\) and in Divines \(right axis\), the league's first 14 days, with the outlook range/ })
-    expect(chart.dataset.series).toBe('Chaos:240,Divine:240,band-low:3,Outlook range:3,Outlook (typical):3')
+    const chart = await screen.findByRole('img', { name: /hourly price in Chaos, bought with Chaos and with Divines \(at each hour's rate\), with Divines at today's rate on the right axis, the league's first 14 days, with the outlook range/ })
+    expect(chart.dataset.series).toBe('Buy with Chaos:240,Buy with Divines:240,band-low:3,Outlook range:3,Outlook (typical):3')
     expect(screen.queryByRole('radiogroup', { name: 'Range' })).toBeNull()
+    expect(screen.getByText(/the line on top was the dearer way to buy it then/)).toBeInTheDocument()
   })
 
   it('charts the latest 14 days once the league is past day 14', async () => {
@@ -320,10 +321,10 @@ describe('Price check', () => {
     serve({ ...live({ ...ITEM, series: hourly(480) }), '/api/status': status([{ ...league(LATEST), launched_at: iso(LATEST - 479 * HOUR) }]) })
     renderPage(`/price-check?item=${SPLINTER}`)
     const chart = await screen.findByRole('img', { name: /, the last 14 days, with the outlook range/ })
-    expect(chart.dataset.series).toMatch(/^Chaos:336,Divine:336,band-low:3/)
+    expect(chart.dataset.series).toMatch(/^Buy with Chaos:336,Buy with Divines:336,band-low:3/)
   })
 
-  it('has no Divine line without a Divine rate, and no verdict for an item without history', async () => {
+  it('has no Divine line without Divine trades, and no verdict for an item without history', async () => {
     const none = horizon({ verdict: 'none', state: 'no_history', typical: null, low: null, high: null, leagues: 0 })
     const item: PriceCheckItem = {
       ...ITEM,
@@ -334,14 +335,14 @@ describe('Price check', () => {
     }
     serve(live(item))
     renderPage(`/price-check?item=${SPLINTER}`)
-    expect(await screen.findByText(/No Divine rate for these hours yet, so there's no Divine line/)).toBeInTheDocument()
+    expect(await screen.findByText(/It hasn't traded for Divines in these hours, so there's only its Chaos line/)).toBeInTheDocument()
     expect(screen.getByText(/hasn't traded against Divines lately/)).toBeInTheDocument() // the stack's Divine market
     const verdict = within(screen.getByRole('region', { name: 'Verdict' }))
     expect(verdict.getAllByText('No clear signal')).toHaveLength(2)
     expect(verdict.getAllByText(/nothing to judge by/)).toHaveLength(2)
     expect(verdict.getByText(/A verdict needs at least two past leagues/)).toBeInTheDocument()
     expect(verdict.queryByRole('img')).toBeNull() // no path to draw
-    expect(screen.getByRole('img', { name: /hourly price/ }).dataset.series).toBe('Chaos:240,Divine:240') // no band
+    expect(screen.getByRole('img', { name: /hourly price/ }).dataset.series).toBe('Buy with Chaos:240,Buy with Divines:240') // no band
     expect(screen.getByText(/No past league's launch has this item yet/)).toBeInTheDocument()
   })
 
@@ -354,7 +355,7 @@ describe('Price check', () => {
     expect(verdict.queryByText('Sell now')).toBeNull()
     expect(verdict.queryByText('No clear signal')).toBeNull()
     expect(verdict.queryByRole('img')).toBeNull()
-    expect(screen.getByRole('img', { name: /hourly price/ }).dataset.series).toBe('Chaos:240,Divine:240')
+    expect(screen.getByRole('img', { name: /hourly price/ }).dataset.series).toBe('Buy with Chaos:240,Buy with Divines:240')
     expect(screen.getByRole('region', { name: 'Selling a stack' })).toBeInTheDocument()
   })
 
@@ -375,7 +376,7 @@ describe('Price check', () => {
     serve(live({ ...ITEM, series: hourly(1) }))
     renderPage(`/price-check?item=${SPLINTER}`)
     expect(await screen.findByText(/Only one hour has traded so far/)).toBeInTheDocument()
-    expect(screen.getByRole('img', { name: /hourly price/ }).dataset.series).toMatch(/^Chaos:1,Divine:1,/)
+    expect(screen.getByRole('img', { name: /hourly price/ }).dataset.series).toMatch(/^Buy with Chaos:1,Buy with Divines:1,/)
   })
 
   it('says when the item has not traded yet', async () => {
