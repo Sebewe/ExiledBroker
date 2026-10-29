@@ -208,6 +208,11 @@ describe('priceChartOption', () => {
     expect(option.series.find((x) => x.name === DIVINE_LINE)!.data[12]![1]).toBe(900) // still drawn
     expect(divineOffScale(s)).toBe(true)
     expect(divineOffScale(series(24))).toBe(false)
+    // A cheap item's Divine market steadily 4 times its Chaos price stays on the chart.
+    const cheap: SeriesPoint[] = series(24).map((p, i) => [p[0], p[1], p[2], p[1]! * (i % 2 ? 4 : 5)])
+    expect(divineOffScale(cheap)).toBe(false)
+    const fit = priceChartOption(TOKENS, cheap, chartWindow(cheap, at(0))!.bounds, null, T0, false, { rate: 200 }) as O
+    expect(fit.yAxis[0]!.max).toBeGreaterThanOrEqual(33 * 5)
   })
 
   it('draws the dearer market on top: both lines in Chaos, the Divine market at each hour\'s rate', () => {
