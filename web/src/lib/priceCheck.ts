@@ -119,7 +119,9 @@ export function priceChartOption(
   { ahead = false, next = null, launchedAt = null }: { ahead?: boolean; next?: SeriesPoint[] | null; launchedAt?: number | null } = {},
 ): EChartsCoreOption {
   const built = chartOption(t, points, bounds, band, launchAt, chaosOnly, ahead, next)
-  const scaled = launchedAt == null ? built : withoutLaunchScale(built, points, band, next, launchedAt + LAUNCH_SCALE_HOURS * HOUR, chaosOnly)
+  // Only the hours the chart draws of what came next count towards the scale.
+  const drawn = next && nextShown(next, bounds[1])
+  const scaled = launchedAt == null ? built : withoutLaunchScale(built, points, band, drawn, launchedAt + LAUNCH_SCALE_HOURS * HOUR, chaosOnly)
   const option = chaosOnly ? withoutDivine(scaled) : scaled
   // Every series has an id, so the reveal's lines are added to the chart as it stands.
   return { ...option, series: (option.series as { id?: string; name?: string }[]).map((s) => ({ ...s, id: s.id ?? s.name })) }
@@ -167,12 +169,16 @@ function withoutDivine(option: EChartsCoreOption): EChartsCoreOption {
 
 /** The reveal's hours on the chart: from the latest shown hour (so the lines join) to
  *  `AHEAD_HOURS` past it, dotted, in each line's colour. */
-function nextSeries(t: ChartTokens, next: SeriesPoint[], from: number) {
+function nextShown(next: SeriesPoint[], from: number): SeriesPoint[] {
   const to = from + AHEAD_HOURS * HOUR
-  const shown = next.filter(([at]) => {
+  return next.filter(([at]) => {
     const ms = Date.parse(at)
     return ms >= from && ms <= to
   })
+}
+
+function nextSeries(t: ChartTokens, next: SeriesPoint[], from: number) {
+  const shown = nextShown(next, from)
   const dotted = (id: string, yAxisIndex: number, color: string, unit: 'chaos' | 'divine', get: (p: SeriesPoint) => number | null) => ({
     ...line(NEXT, shown.map((p) => [p[0], get(p)])),
     id,
