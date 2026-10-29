@@ -20,6 +20,7 @@ import type { ChartTokens } from '../lib/chartOptions'
 import { count, pct, price, signedPct, tone } from '../lib/format'
 import { makeMoney, type Money } from '../lib/money'
 import {
+  divineOffScale,
   hasDivineMarket,
   BETWEEN_LAUNCHES,
   chartWindow,
@@ -430,6 +431,9 @@ function PriceChart({ item, info, reveal }: { item: PriceCheckItem; info: LiveLe
         ) : (
           <li>It hasn't traded for Divines in these hours, so there's only its Chaos line.</li>
         ))}
+        {!chaosOnly && divineOffScale(points) && (
+          <li>A few Divine-market hours were far above its Chaos price (a trade or two in a thin market) and run off the top of the chart.</li>
+        )}
         {band && (
           <li>
             The shaded range past the latest hour is what past leagues did from this point, {chaosOnly ? 'in Chaos' : 'in Divines (right axis)'}; the dashed line is the typical
