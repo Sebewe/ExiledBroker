@@ -316,6 +316,12 @@ describe('Price check', () => {
     expect(screen.getByText(/the line on top was the dearer way to buy it then/)).toBeInTheDocument()
   })
 
+  it("says when a thin Divine market's hours run off the top", async () => {
+    serve(live({ ...ITEM, series: hourly(240).map((p, i) => (i === 100 ? [p[0], p[1], p[2], 60] : p)) }))
+    renderPage(`/price-check?item=${SPLINTER}`)
+    expect(await screen.findByText(/A few Divine-market hours were far above its Chaos price/)).toBeInTheDocument()
+  })
+
   it('charts the latest 14 days once the league is past day 14', async () => {
     // Day 20: the launch fortnight is behind it.
     serve({ ...live({ ...ITEM, series: hourly(480) }), '/api/status': status([{ ...league(LATEST), launched_at: iso(LATEST - 479 * HOUR) }]) })
@@ -463,11 +469,11 @@ describe('Price check in the preview', () => {
     expect(panel.queryByRole('img')).toBeNull()
     const chart = block.getByRole('img')
     expect(chart.compareDocumentPosition(screen.getByRole('region', { name: 'What happened next' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    await waitFor(() => expect(chart.getAttribute('data-series')).toMatch(/What came next:3,What came next:3$/))
+    await waitFor(() => expect(chart.getAttribute('data-series')).toMatch(/Next: buy with Chaos:3,Next: buy with Divines:3$/))
     expect(chart).toHaveAccessibleName(/what came next dotted/)
     fireEvent.click(panel.getByRole('button', { name: 'Hide what happened' }))
     expect(screen.queryByRole('group', { name: '1 day later' })).toBeNull()
-    expect(block.getByRole('img').getAttribute('data-series')).not.toMatch(/What came next/)
+    expect(block.getByRole('img').getAttribute('data-series')).not.toMatch(/Next: buy with/)
   })
 
   it("judges the day's calls against what the price did", async () => {
@@ -484,7 +490,7 @@ describe('Price check in the preview', () => {
     expect(days3.getByText('It fell: selling then would have paid. The call missed.')).toBeInTheDocument()
     // The day's outlook band stays drawn, with what came next over it: the cutoff, then 3 days on.
     const chart = within(screen.getByRole('region', { name: 'Price this league' })).getByRole('img')
-    expect(chart.getAttribute('data-series')).toMatch(/,Outlook range:3,Outlook \(typical\):3,What came next:73,What came next:73$/)
+    expect(chart.getAttribute('data-series')).toMatch(/,Outlook range:3,Outlook \(typical\):3,Next: buy with Chaos:73,Next: buy with Divines:73$/)
     expect(chart).toHaveAccessibleName(/with the outlook range past the latest hour, and what came next dotted/)
   })
 })

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Horizon, Outlook, SeriesPoint } from '../api/client'
 import { alpha, type ChartTokens } from './chartOptions'
-import { BETWEEN_LAUNCHES, CHAOS_LINE, chartWindow, DIVINE_LINE, dayLabel, inRange, isLater, latestHour, outlookBand, pathLabel, priceChartOption, reason, typicalPath } from './priceCheck'
+import { BETWEEN_LAUNCHES, CHAOS_LINE, chartWindow, DIVINE_LINE, divineOffScale, NEXT_CHAOS, NEXT_DIVINE, dayLabel, inRange, isLater, latestHour, outlookBand, pathLabel, priceChartOption, reason, typicalPath } from './priceCheck'
 
 const H = 3_600_000
 const T0 = Date.parse('2026-10-01T00:00:00Z')
@@ -154,16 +154,17 @@ describe('priceChartOption', () => {
     // Open: from the latest hour (so the lines join) to 3 days on; later hours are left out.
     const open = priceChartOption(TOKENS, s, bounds, null, T0, false, { ahead: true, next: series(100, 5) }) as O
     expect(open.xAxis.max).toBe(closed.xAxis.max)
-    const next = open.series.filter((x) => x.name === 'What came next')
+    // One name for each market, so the legend and the tooltip tell them apart.
+    const next = open.series.filter((x) => x.name === NEXT_CHAOS || x.name === NEXT_DIVINE)
     expect(next.map((x) => [x.id, x.yAxisIndex, x.data.length, x.lineStyle?.type])).toEqual([
       ['next-chaos', 0, 73, 'dotted'],
       ['next-divine', 0, 73, 'dotted'],
     ])
-    expect(open.legend.data).toEqual([CHAOS_LINE, DIVINE_LINE, 'What came next'])
+    expect(open.legend.data).toEqual([CHAOS_LINE, DIVINE_LINE, NEXT_CHAOS, NEXT_DIVINE])
     // Divine Orb: its Chaos line alone, then too.
     const chaosOnly = priceChartOption(TOKENS, s, bounds, null, T0, true, { ahead: true, next: series(100, 5) }) as O
     expect(chaosOnly.series.map((x) => x.id ?? x.name)).toEqual([CHAOS_LINE, 'next-chaos'])
-    expect(chaosOnly.legend.data).toEqual([CHAOS_LINE, 'What came next'])
+    expect(chaosOnly.legend.data).toEqual([CHAOS_LINE, NEXT_CHAOS])
     // On the days-since-launch axis, the dotted lines are in days too.
     expect(open.series.find((x) => x.id === 'next-chaos')!.data[0]).toEqual([9 / 24, 14])
   })
@@ -196,6 +197,17 @@ describe('priceChartOption', () => {
     locked(priceChartOption(TOKENS, later, chartWindow(later, at(0))!.bounds, null, T0, false, { rate: 200 }) as O)
     // No Divine rate yet: no Divine axis to show.
     expect((priceChartOption(TOKENS, later, chartWindow(later, at(0))!.bounds, null, T0) as O).yAxis[1]!.show).toBe(false)
+  })
+
+  it("lets a thin Divine market's odd hours run off the top instead of setting the scale", () => {
+    // Chaos 10 to 33; one Divine-market hour at 40 times the price.
+    const s: SeriesPoint[] = series(24).map((p, i) => (i === 12 ? [p[0], p[1], p[2], 900] : p))
+    type O = { yAxis: { min: number; max: number }[]; series: { name: string; data: [number, number | null][] }[] }
+    const option = priceChartOption(TOKENS, s, chartWindow(s, at(0))!.bounds, null, T0, false, { rate: 200 }) as O
+    expect(option.yAxis[0]!.max).toBeLessThan(50)
+    expect(option.series.find((x) => x.name === DIVINE_LINE)!.data[12]![1]).toBe(900) // still drawn
+    expect(divineOffScale(s)).toBe(true)
+    expect(divineOffScale(series(24))).toBe(false)
   })
 
   it('draws the dearer market on top: both lines in Chaos, the Divine market at each hour\'s rate', () => {

@@ -102,6 +102,23 @@ export const hasDivineMarket = (series: SeriesPoint[]) => series.some((p) => div
 export const CHAOS_LINE = 'Buy with Chaos'
 export const DIVINE_LINE = 'Buy with Divines'
 
+/** How far above the highest Chaos price a Divine-market hour may sit and still set the
+ *  scale: a thin Divine market has hours of a trade or two at many times the price
+ *  (Orb of Alchemy at 40×), which squashed the chart flat. Those run off the top. */
+export const DIVINE_SCALE_CAP = 3
+
+/** The highest Divine-market price that sets the scale, from the Chaos prices shown. */
+function divineCap(points: SeriesPoint[]): number {
+  const chaos = points.map((p) => p[1]).filter((v): v is number => v != null && Number.isFinite(v))
+  return chaos.length ? DIVINE_SCALE_CAP * Math.max(...chaos) : Infinity
+}
+
+/** Whether any Divine-market hour shown runs off the top of the chart. */
+export const divineOffScale = (points: SeriesPoint[]) => {
+  const cap = divineCap(points)
+  return points.some((p) => (divineMarket(p) ?? 0) > cap)
+}
+
 /** Hours past the latest hour the chart makes room for: the outlook's 3 days, so the band
  *  and the preview's "what came next" fit without the axis moving. */
 export const AHEAD_HOURS = 72
@@ -142,8 +159,8 @@ export const LAUNCH_SCALE_HOURS = 6
 /** The y axes' range: the Chaos axis fits both lines, what came next and the outlook band
  *  (in Chaos at `rate`), padded, and the Divine axis is the same range over `rate`, so the
  *  two never drift apart (the user). The hours before `from` are left out when the chart
- *  shows any: a launch spike runs off the top instead of setting the scale. Without a
- *  rate, the Divine axis is hidden. */
+ *  shows any: a launch spike runs off the top instead of setting the scale; so do
+ *  Divine-market hours past `DIVINE_SCALE_CAP`. Without a rate, the Divine axis is hidden. */
 function alignedAxes(
   option: EChartsCoreOption,
   points: SeriesPoint[],
@@ -158,8 +175,10 @@ function alignedAxes(
   // The band is in Chaos for Divine Orb, else in Divines.
   const toChaos = chaosOnly ? 1 : (rate ?? NaN)
   const bandValues = (band ?? []).flatMap((b) => [b.low, b.high, ...(b.typical == null ? [] : [b.typical])]).map((v) => v * toChaos)
-  const vs = [...shown, ...(next ?? [])]
-    .flatMap((p) => [p[1], divineMarket(p)])
+  const all = [...shown, ...(next ?? [])]
+  const cap = divineCap(all)
+  const vs = all
+    .flatMap((p) => [p[1], (divineMarket(p) ?? Infinity) <= cap ? divineMarket(p) : null])
     .concat(bandValues)
     .filter((v): v is number => v != null && Number.isFinite(v))
   const [left, right] = option.yAxis as Record<string, unknown>[]
@@ -175,7 +194,7 @@ function alignedAxes(
 /** Divine Orb's chart: its price in Chaos alone, on one axis (a Divine is worth one Divine). */
 function withoutDivine(option: EChartsCoreOption): EChartsCoreOption {
   const series = (option.series as { name?: string; id?: string }[]).filter((s) => s.name !== DIVINE_LINE && s.id !== 'next-divine')
-  const legend = ((option.legend as { data: string[] }).data ?? []).filter((n) => n !== DIVINE_LINE)
+  const legend = ((option.legend as { data: string[] }).data ?? []).filter((n) => n !== DIVINE_LINE && n !== NEXT_DIVINE)
   return { ...option, legend: { ...(option.legend as object), data: legend }, yAxis: [(option.yAxis as unknown[])[0]], series }
 }
 
@@ -191,19 +210,20 @@ function nextShown(next: SeriesPoint[], from: number): SeriesPoint[] {
 
 function nextSeries(t: ChartTokens, next: SeriesPoint[], from: number) {
   const shown = nextShown(next, from)
-  const dotted = (id: string, color: string, get: (p: SeriesPoint) => number | null) => ({
-    ...line(NEXT, shown.map((p) => [p[0], get(p)])),
+  const dotted = (id: string, name: string, color: string, get: (p: SeriesPoint) => number | null) => ({
+    ...line(name, shown.map((p) => [p[0], get(p)])),
     id,
     yAxisIndex: 0,
     color,
     lineStyle: { width: 2, type: 'dotted' },
     tooltip: { valueFormatter: (v: number | null) => price(v, 'chaos') },
   })
-  return [dotted('next-chaos', t.accent, (p) => p[1]), dotted('next-divine', t.info, divineMarket)]
+  return [dotted('next-chaos', NEXT_CHAOS, t.accent, (p) => p[1]), dotted('next-divine', NEXT_DIVINE, t.info, divineMarket)]
 }
 
-/** The reveal's lines' name, in the legend. */
-export const NEXT = 'What came next'
+/** The reveal's lines' names, in the legend and the tooltip: one for each market. */
+export const NEXT_CHAOS = 'Next: buy with Chaos'
+export const NEXT_DIVINE = 'Next: buy with Divines'
 
 /** The outlook band's series, in `unit` on axis `yAxisIndex`: the range shaded, and the
  *  typical path dashed. Also drawn over the preview's reveal, to set the call against what came next. */
@@ -256,7 +276,7 @@ function chartOption(
   ]
   const axis = axisStyle(t)
   const end = ahead ? bounds[1] + AHEAD_HOURS * HOUR : band ? band[band.length - 1]!.at : bounds[1]
-  const legend = { ...(baseOptions(t).legend as object), data: [CHAOS_LINE, DIVINE_LINE, ...(band ? ['Outlook range'] : []), ...(next ? [NEXT] : [])] }
+  const legend = { ...(baseOptions(t).legend as object), data: [CHAOS_LINE, DIVINE_LINE, ...(band ? ['Outlook range'] : []), ...(next ? [NEXT_CHAOS, NEXT_DIVINE] : [])] }
   return sinceLaunch(t, { chaos, divine, bandSeries, axis, start: bounds[0], end, legend, launchAt, first: latestFirst(points) })
 }
 
