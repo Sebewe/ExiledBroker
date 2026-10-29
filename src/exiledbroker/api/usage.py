@@ -59,7 +59,6 @@ FEATURES = [
     "recap-pin",  # Market recap: pinned a look-back
     "launch-pick",  # Launch: opened a pick's details
     "price-check-item",  # Price check: looked an item up
-    "price-check-range",  # Price check: changed the chart's range
     "price-check-stack",  # Price check: priced a stack
     # The pre-launch preview (docs/preview.md)
     "preview-day",  # picked another day of the rewound league

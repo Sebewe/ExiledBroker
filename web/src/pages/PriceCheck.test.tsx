@@ -232,8 +232,8 @@ describe('Price check', () => {
     const verdict = within(screen.getByRole('region', { name: 'Verdict' }))
     expect(verdict.getByText(/has no call of its own/)).toBeInTheDocument()
     expect(verdict.queryByText('No clear signal')).toBeNull()
-    const chart = screen.getByRole('img', { name: /hourly price in Chaos, 3 days/ })
-    expect(chart.dataset.series).toBe('Chaos:72')
+    const chart = screen.getByRole('img', { name: /hourly price in Chaos, the league's first 14 days/ })
+    expect(chart.dataset.series).toBe('Chaos:240')
     expect(screen.queryByText(/No Divine rate for these hours yet/)).toBeNull()
     expect(screen.getByText(/of the Chaos market's trading/)).toBeInTheDocument()
     expect(screen.queryByText('Divine market')).toBeNull()
@@ -306,18 +306,21 @@ describe('Price check', () => {
     expect(day.getByText('Sell now').className).not.toMatch(/positive|negative/)
   })
 
-  it('charts 3 days by default, with the band past the last hour; 14 days and the launch fortnight on request', async () => {
+  it("charts the league's first 14 days with the band past the last hour, then the latest 14, with no range picker", async () => {
     serve(live())
     renderPage(`/price-check?item=${SPLINTER}`)
-    const chart = await screen.findByRole('img', { name: /hourly price in Chaos \(left axis\) and in Divines \(right axis\), 3 days, with the outlook range/ })
-    expect(chart.dataset.series).toBe('Chaos:72,Divine:72,band-low:3,Outlook range:3,Outlook (typical):3')
-    expect(screen.getByRole('radio', { name: '3 days' })).toHaveAttribute('aria-checked', 'true')
-    fireEvent.click(screen.getByRole('radio', { name: '14 days' }))
-    // The league is 10 days old: 14 days shows all 240 hours.
-    expect(screen.getByRole('img', { name: /14 days/ }).dataset.series).toMatch(/^Chaos:240,Divine:240,band-low/)
-    fireEvent.click(screen.getByRole('radio', { name: 'Launch fortnight' }))
-    expect(screen.getByRole('img', { name: /launch fortnight/ }).dataset.series).toMatch(/^Chaos:240,/)
-    expect(screen.getByTestId('where')).toHaveTextContent('range=launch')
+    // The league is 10 days old: all 240 hours, from the launch.
+    const chart = await screen.findByRole('img', { name: /hourly price in Chaos \(left axis\) and in Divines \(right axis\), the league's first 14 days, with the outlook range/ })
+    expect(chart.dataset.series).toBe('Chaos:240,Divine:240,band-low:3,Outlook range:3,Outlook (typical):3')
+    expect(screen.queryByRole('radiogroup', { name: 'Range' })).toBeNull()
+  })
+
+  it('charts the latest 14 days once the league is past day 14', async () => {
+    // Day 20: the launch fortnight is behind it.
+    serve({ ...live({ ...ITEM, series: hourly(480) }), '/api/status': status([{ ...league(LATEST), launched_at: iso(LATEST - 479 * HOUR) }]) })
+    renderPage(`/price-check?item=${SPLINTER}`)
+    const chart = await screen.findByRole('img', { name: /, the last 14 days, with the outlook range/ })
+    expect(chart.dataset.series).toMatch(/^Chaos:336,Divine:336,band-low:3/)
   })
 
   it('has no Divine line without a Divine rate, and no verdict for an item without history', async () => {
@@ -338,7 +341,7 @@ describe('Price check', () => {
     expect(verdict.getAllByText(/nothing to judge by/)).toHaveLength(2)
     expect(verdict.getByText(/A verdict needs at least two past leagues/)).toBeInTheDocument()
     expect(verdict.queryByRole('img')).toBeNull() // no path to draw
-    expect(screen.getByRole('img', { name: /hourly price/ }).dataset.series).toBe('Chaos:72,Divine:72') // no band
+    expect(screen.getByRole('img', { name: /hourly price/ }).dataset.series).toBe('Chaos:240,Divine:240') // no band
     expect(screen.getByText(/No past league's launch has this item yet/)).toBeInTheDocument()
   })
 
@@ -351,7 +354,7 @@ describe('Price check', () => {
     expect(verdict.queryByText('Sell now')).toBeNull()
     expect(verdict.queryByText('No clear signal')).toBeNull()
     expect(verdict.queryByRole('img')).toBeNull()
-    expect(screen.getByRole('img', { name: /hourly price/ }).dataset.series).toBe('Chaos:72,Divine:72')
+    expect(screen.getByRole('img', { name: /hourly price/ }).dataset.series).toBe('Chaos:240,Divine:240')
     expect(screen.getByRole('region', { name: 'Selling a stack' })).toBeInTheDocument()
   })
 
@@ -375,10 +378,10 @@ describe('Price check', () => {
     expect(screen.getByRole('img', { name: /hourly price/ }).dataset.series).toMatch(/^Chaos:1,Divine:1,/)
   })
 
-  it('says when the item has not traded in the range', async () => {
+  it('says when the item has not traded yet', async () => {
     serve(live({ ...ITEM, series: [] }))
     renderPage(`/price-check?item=${SPLINTER}`)
-    expect(await screen.findByText("Splinter of Xoph hasn't traded in this range yet.")).toBeInTheDocument()
+    expect(await screen.findByText("Splinter of Xoph hasn't traded this league yet.")).toBeInTheDocument()
   })
 
   it("says when an item isn't one we price", async () => {
@@ -453,11 +456,10 @@ describe('Price check in the preview', () => {
     expect(await panel.findAllByText("The preview's data ends before then.")).toHaveLength(2)
     expect(paths()).toContain(`/api/preview/next/price-check/${EXALT}`)
     // What came next is drawn dotted on the item's own chart (the user: one chart, nothing
-    // jumps): the range stays, the box stays under the chart, and no second chart appears.
+    // jumps): the box stays under the chart, and no second chart appears.
     const block = within(screen.getByRole('region', { name: 'Price this league' }))
     expect(block.getAllByRole('img')).toHaveLength(1)
     expect(panel.queryByRole('img')).toBeNull()
-    expect(block.getByRole('radiogroup', { name: 'Range' })).toBeInTheDocument()
     const chart = block.getByRole('img')
     expect(chart.compareDocumentPosition(screen.getByRole('region', { name: 'What happened next' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     await waitFor(() => expect(chart.getAttribute('data-series')).toMatch(/What came next:3,What came next:3$/))

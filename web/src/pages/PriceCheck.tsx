@@ -4,7 +4,7 @@ import { Link, useSearchParams } from 'react-router'
 import { ApiError, type LiveLeague } from '../api/client'
 import type { Horizon, PriceCheckIndex, PriceCheckItem, PriceCheckListItem, Verdict } from '../api/client'
 import { useLeagues, usePreviewItemNext, usePriceCheck, usePriceCheckItem, useServerNow, useStatus } from '../api/queries'
-import { NumberField, Segmented, Select, Toolbar } from '../components/Controls'
+import { NumberField, Select, Toolbar } from '../components/Controls'
 import { FreshnessBanner } from '../components/Freshness'
 import { ItemSearch } from '../components/ItemSearch'
 import { LazyChart } from '../components/LazyChart'
@@ -22,6 +22,7 @@ import { makeMoney, type Money } from '../lib/money'
 import {
   hasDivine,
   BETWEEN_LAUNCHES,
+  chartWindow,
   hasHistory,
   inRange,
   isLater,
@@ -29,12 +30,9 @@ import {
   pathLabel,
   type PathPoint,
   priceChartOption,
-  RANGES,
-  rangeBounds,
   reason,
   VERDICT_SHORT,
   VERDICT_WORD,
-  type Range,
   typicalPath,
 } from '../lib/priceCheck'
 import { usePreview } from '../lib/preview'
@@ -235,7 +233,7 @@ function ItemView({
   const preview = usePreview()
   const [params] = useSearchParams()
   const movers = new URLSearchParams(params)
-  for (const k of ['item', 'range', 'qty']) movers.delete(k)
+  for (const k of ['item', 'qty']) movers.delete(k)
   const back = (
     <Link to={{ search: movers.toString() }} className="inline-flex items-center gap-1 self-start text-sm text-accent hover:text-accent-strong">
       <ArrowLeft aria-hidden className="size-4" /> Back to the list
@@ -387,44 +385,34 @@ function PathSpark({ path }: { path: PathPoint[] }) {
  *  above moves (the user: no new chart, no jumping). */
 function PriceChart({ item, info, reveal }: { item: PriceCheckItem; info: LiveLeague; reveal: boolean }) {
   const [revealed, setRevealed] = useState(false)
-  const [rangeParam, setRange] = useParam<Range>('range', '3d')
-  const range: Range = rangeParam in RANGES ? rangeParam : '3d'
   const nextQ = usePreviewItemNext(item.item_id, reveal && revealed)
-  const { bounds, points, band, latestShown } = useMemo(() => {
-    const bounds = rangeBounds(item.series, range, info.launched_at)
-    const points = bounds ? inRange(item.series, bounds) : []
-    // The band continues the latest hour, so it's shown only on ranges that end there.
-    const latestShown = bounds != null && points.length > 0 && points[points.length - 1]![0] === lastPricedHour(item)
+  const { win, points, band, latestShown } = useMemo(() => {
+    const win = chartWindow(item.series, info.launched_at)
+    const points = win ? inRange(item.series, win.bounds) : []
+    const latestShown = win != null && points.length > 0 && points[points.length - 1]![0] === lastPricedHour(item)
     const band = latestShown ? outlookBand(item.series, item.outlook, info.divine_chaos) : null
-    return { bounds, points, band, latestShown }
-  }, [item, range, info.launched_at, info.divine_chaos])
+    return { win, points, band, latestShown }
+  }, [item, info.launched_at, info.divine_chaos])
   const chaosOnly = item.unit === 'chaos'
   // In the preview the axis keeps room for the next 3 days, so the reveal fits without moving it.
   const ahead = reveal && latestShown
   const next = ahead && revealed && nextQ.data ? nextQ.data.series : null
-  const launchedAt = info.launched_at ? Date.parse(info.launched_at) : null
   const build = useCallback(
-    (t: ChartTokens) => priceChartOption(t, points, bounds ?? [0, 0], band, range === 'launch' && bounds ? bounds[0] : null, chaosOnly, { ahead, next, launchedAt }),
-    [points, bounds, band, range, chaosOnly, ahead, next, launchedAt],
+    (t: ChartTokens) => priceChartOption(t, points, win?.bounds ?? [0, 0], band, win?.launchAt ?? 0, chaosOnly, { ahead, next }),
+    [points, win, band, chaosOnly, ahead, next],
   )
   const priced = points.filter(([, c, d]) => c != null || d != null).length
   return (
     <Block id="chart" title="Price this league" icon={LineChart}>
-      <div className="flex">
-        <Segmented label="Range" value={range} options={Object.keys(RANGES) as Range[]} onChange={(r) => {
-            trackFeature('price-check-range')
-            setRange(r)
-          }} format={(r) => RANGES[r]} />
-      </div>
-      {!bounds || priced === 0 ? (
-        <Empty>{item.name} hasn't traded in this range yet.</Empty>
+      {!win || priced === 0 ? (
+        <Empty>{item.name} {win?.trailing ? "hasn't traded in the last 14 days." : "hasn't traded this league yet."}</Empty>
       ) : (
         <div className="rounded-lg border border-border bg-surface p-3">
           <LazyChart
             build={build}
             height={300}
-            morph={range}
-            label={`${item.name}: hourly price in Chaos${chaosOnly ? '' : ' (left axis) and in Divines (right axis)'}, ${RANGES[range].toLowerCase()}${band ? ', with the outlook range past the latest hour' : ''}${next ? ', and what came next dotted' : ''}`}
+            morph="window"
+            label={`${item.name}: hourly price in Chaos${chaosOnly ? '' : ' (left axis) and in Divines (right axis)'}, ${win.trailing ? 'the last 14 days' : "the league's first 14 days"}${band ? ', with the outlook range past the latest hour' : ''}${next ? ', and what came next dotted' : ''}`}
           />
         </div>
       )}
@@ -442,7 +430,7 @@ function PriceChart({ item, info, reveal }: { item: PriceCheckItem; info: LiveLe
           </li>
         )}
         {next && <li>The dotted lines are what its price did next, over the 3 days the outlook covers.</li>}
-        <li>Hourly, UTC. Lines break at hours with no trades.</li>
+        <li>Hourly, by days since the league started: its first 14 days, then the latest 14. Lines break at hours with no trades.</li>
       </ul>
     </Block>
   )
