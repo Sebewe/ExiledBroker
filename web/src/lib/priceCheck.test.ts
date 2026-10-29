@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Horizon, Outlook, SeriesPoint } from '../api/client'
 import { alpha, type ChartTokens } from './chartOptions'
-import { BETWEEN_LAUNCHES, dayLabel, inRange, isLater, latestHour, outlookBand, pathLabel, priceChartOption, rangeBounds, reason, typicalPath } from './priceCheck'
+import { BETWEEN_LAUNCHES, chartWindow, dayLabel, inRange, isLater, latestHour, outlookBand, pathLabel, priceChartOption, reason, typicalPath } from './priceCheck'
 
 const H = 3_600_000
 const T0 = Date.parse('2026-10-01T00:00:00Z')
@@ -13,35 +13,30 @@ const horizon = (x: Partial<Horizon> = {}): Horizon => ({ verdict: 'sell', typic
 const OUTLOOK: Outlook = { h24: horizon({ typical: -0.03, low: -0.09, high: 0.02 }), d3: horizon(), unit: 'divine' }
 const TOKENS: ChartTokens = { text: '#e8eaf0', muted: '#a9afbd', faint: '#7c8293', border: '#3a404e', surface: '#252933', surface2: '#2d323e', accent: '#e3ac72', info: '#93b8f5' }
 
-describe('ranges', () => {
-  it('shows the latest 3 or 14 days, ending at the latest priced hour', () => {
-    const s = [...series(400), [at(400), null, null] as SeriesPoint]
-    expect(latestHour(s)).toBe(T0 + 399 * H)
-    expect(inRange(s, rangeBounds(s, '3d')!)).toHaveLength(72)
-    expect(inRange(s, rangeBounds(s, '14d')!)).toHaveLength(336)
+describe('chartWindow', () => {
+  it("shows the league's first 14 days, from the launch, while the latest hour is in them", () => {
+    const s = [...series(100, 30), [at(130), null, null] as SeriesPoint]
+    expect(latestHour(s)).toBe(T0 + 129 * H)
+    expect(chartWindow(s, at(0))).toEqual({ bounds: [T0, T0 + 129 * H], launchAt: T0, trailing: false })
+    // Day 14's last hour: still from the launch.
+    expect(chartWindow(series(336), at(0))!.bounds).toEqual([T0, T0 + 335 * H])
   })
 
-  it("shows the launch fortnight from the league's launch, across the gap to the latest days", () => {
+  it('then the latest 14 days, across the gap after the launch fortnight', () => {
     // The hosted window: the launch fortnight, then the latest 14 days.
     const s = [...series(336), ...series(336, 2000)]
-    const launch = inRange(s, rangeBounds(s, 'launch', at(0))!)
-    expect(launch).toHaveLength(336)
-    expect(launch[0]![0]).toBe(at(0))
-    expect(inRange(s, rangeBounds(s, '3d')!)[0]![0]).toBe(at(2000 + 336 - 72))
+    const win = chartWindow(s, at(0))!
+    expect(win).toMatchObject({ launchAt: T0, trailing: true })
+    expect(inRange(s, win.bounds)).toHaveLength(336)
+    expect(inRange(s, win.bounds)[0]![0]).toBe(at(2000))
+    // An hour past day 14: the window slides by an hour.
+    expect(chartWindow(series(337), at(0))!.bounds).toEqual([T0 + H, T0 + 336 * H])
   })
 
-  it('takes whatever there is in a young league, even one hour', () => {
-    const s = series(1)
-    for (const r of ['3d', '14d', 'launch'] as const) expect(inRange(s, rangeBounds(s, r, at(0))!)).toHaveLength(1)
-    expect(rangeBounds([], '3d')).toBeNull()
-  })
-
-  it("never starts before the league's launch, so a young league's chart isn't mostly empty", () => {
-    const s = series(30)
-    expect(rangeBounds(s, '3d', at(0))).toEqual([T0, T0 + 29 * H])
-    expect(rangeBounds(s, '14d', at(0))).toEqual([T0, T0 + 29 * H])
-    // Three days in, the latest 72 hours as before.
-    expect(rangeBounds(series(100), '3d', at(0))![0]).toBe(T0 + 28 * H)
+  it('takes whatever there is in a young league, even one hour, and counts from the first hour without a launch', () => {
+    expect(inRange(series(1), chartWindow(series(1), at(0))!.bounds)).toHaveLength(1)
+    expect(chartWindow(series(5, 3))!.launchAt).toBe(T0 + 3 * H)
+    expect(chartWindow([])).toBeNull()
   })
 })
 
@@ -76,13 +71,13 @@ describe('outlookBand', () => {
 })
 
 describe('priceChartOption', () => {
-  it('in the launch fortnight, counts days since launch and shades the hours before the first trade', () => {
+  it('counts days since launch and shades the hours before the first trade', () => {
     // The item first traded 30 hours after launch.
     const s = series(100, 30)
-    const bounds = rangeBounds(s, 'launch', at(0))!
+    const { bounds } = chartWindow(s, at(0))!
     type Axis = { type: string; min: number; max: number; name: string; axisLabel: { formatter: (v: number) => string } }
     type S = { data: ([number, number | null] | { value: [number, number | null] })[]; markArea?: { data: [{ xAxis: number }, { xAxis: number }][] } }
-    const option = priceChartOption(TOKENS, inRange(s, bounds), bounds, null, bounds[0]) as { xAxis: Axis; series: S[] }
+    const option = priceChartOption(TOKENS, inRange(s, bounds), bounds, null, T0) as { xAxis: Axis; series: S[] }
     expect(option.xAxis.type).toBe('value')
     expect(option.xAxis.name).toBe('Days since league start')
     expect(option.xAxis.min).toBe(0)
@@ -93,14 +88,23 @@ describe('priceChartOption', () => {
     expect(option.series[0]!.markArea!.data).toEqual([[{ xAxis: 0 }, { xAxis: 30 / 24 }]])
     // Traded from the first hours: nothing to shade.
     const early = series(100)
-    expect((priceChartOption(TOKENS, early, rangeBounds(early, 'launch', at(0))!, null, T0) as { series: S[] }).series[0]!.markArea).toBeUndefined()
+    expect((priceChartOption(TOKENS, early, chartWindow(early, at(0))!.bounds, null, T0) as { series: S[] }).series[0]!.markArea).toBeUndefined()
+    // Past day 14: still days since launch, from the window's first hour, nothing shaded.
+    const later = series(400, 30)
+    const win = chartWindow(later, at(0))!
+    const trailing = priceChartOption(TOKENS, inRange(later, win.bounds), win.bounds, null, T0) as { xAxis: Axis; series: S[] }
+    expect(trailing.xAxis.name).toBe('Days since league start')
+    expect(trailing.xAxis.min).toBeCloseTo((430 - 336) / 24)
+    expect(trailing.xAxis.max).toBeCloseTo(429 / 24)
+    expect(trailing.xAxis.axisLabel.formatter(15)).toBe('Day 15')
+    expect(trailing.series[0]!.markArea).toBeUndefined()
     expect(dayLabel(2 + 5 / 24)).toBe('Day 2 · 05h')
     expect(dayLabel(3)).toBe('Day 3')
   })
 
   it('puts Chaos on the left axis and Divines and the band on the right, in token colours', () => {
     const s = series(10)
-    const option = priceChartOption(TOKENS, s, rangeBounds(s, '3d')!, outlookBand(s, OUTLOOK, 200)) as {
+    const option = priceChartOption(TOKENS, s, chartWindow(s, at(0))!.bounds, outlookBand(s, OUTLOOK, 200), T0) as {
       series: { name: string; yAxisIndex: number; color?: string }[]
       yAxis: { name: string; type: string }[]
       xAxis: { max: number }
@@ -117,7 +121,7 @@ describe('priceChartOption', () => {
       ['Chaos', 'value'],
       ['Divine', 'value'],
     ]) // linear: log is only ever an opt-in
-    expect(option.xAxis.max).toBe(T0 + 81 * H) // the axis runs on to the band's end
+    expect(option.xAxis.max).toBe(81 / 24) // the axis runs on to the band's end
     // Every colour is a token's (or a token's at an opacity): none hard-coded.
     const hexes = JSON.stringify(option).match(/#[0-9a-f]{6}/gi) ?? []
     expect(hexes.filter((h) => !Object.values(TOKENS).includes(h))).toEqual([])
@@ -127,7 +131,7 @@ describe('priceChartOption', () => {
   it("draws Divine Orb's band in Chaos, on its one axis", () => {
     const s: SeriesPoint[] = series(10).map(([t, c]) => [t, c, null])
     const band = outlookBand(s, { ...OUTLOOK, unit: 'chaos' }, null)
-    const option = priceChartOption(TOKENS, s, rangeBounds(s, '3d')!, band, null, true) as { series: { name: string; yAxisIndex: number }[]; yAxis: unknown[] }
+    const option = priceChartOption(TOKENS, s, chartWindow(s, at(0))!.bounds, band, T0, true) as { series: { name: string; yAxisIndex: number }[]; yAxis: unknown[] }
     expect(option.yAxis).toHaveLength(1)
     expect(option.series.map((x) => [x.name, x.yAxisIndex])).toEqual([
       ['Chaos', 0],
@@ -139,14 +143,14 @@ describe('priceChartOption', () => {
 
   it("in the preview, keeps 3 days' room past the latest hour and draws what came next dotted on it", () => {
     const s = series(10)
-    const bounds = rangeBounds(s, '3d')!
+    const { bounds } = chartWindow(s, at(0))!
     type O = { series: { name: string; id?: string; yAxisIndex: number; data: unknown[]; lineStyle?: { type?: string } }[]; xAxis: { max: number }; legend: { data: string[] } }
     // Before the reveal: no band, but the axis already ends 3 days on, so opening it moves nothing.
-    const closed = priceChartOption(TOKENS, s, bounds, null, null, false, { ahead: true }) as O
-    expect(closed.xAxis.max).toBe(T0 + 81 * H)
+    const closed = priceChartOption(TOKENS, s, bounds, null, T0, false, { ahead: true }) as O
+    expect(closed.xAxis.max).toBe(81 / 24)
     expect(closed.legend.data).toEqual(['Chaos', 'Divine'])
     // Open: from the latest hour (so the lines join) to 3 days on; later hours are left out.
-    const open = priceChartOption(TOKENS, s, bounds, null, null, false, { ahead: true, next: series(100, 5) }) as O
+    const open = priceChartOption(TOKENS, s, bounds, null, T0, false, { ahead: true, next: series(100, 5) }) as O
     expect(open.xAxis.max).toBe(closed.xAxis.max)
     const next = open.series.filter((x) => x.name === 'What came next')
     expect(next.map((x) => [x.id, x.yAxisIndex, x.data.length, x.lineStyle?.type])).toEqual([
@@ -155,22 +159,20 @@ describe('priceChartOption', () => {
     ])
     expect(open.legend.data).toEqual(['Chaos', 'Divine', 'What came next'])
     // Divine Orb: its Chaos line alone, then too.
-    const chaosOnly = priceChartOption(TOKENS, s, bounds, null, null, true, { ahead: true, next: series(100, 5) }) as O
+    const chaosOnly = priceChartOption(TOKENS, s, bounds, null, T0, true, { ahead: true, next: series(100, 5) }) as O
     expect(chaosOnly.series.map((x) => x.id ?? x.name)).toEqual(['Chaos', 'next-chaos'])
     expect(chaosOnly.legend.data).toEqual(['Chaos', 'What came next'])
-    // In the launch fortnight's days-since-launch axis, the dotted lines are in days too.
-    const launch = priceChartOption(TOKENS, s, rangeBounds(s, 'launch', at(0))!, null, T0, false, { ahead: true, next: series(100, 5) }) as O
-    expect(launch.xAxis.max).toBe(81 / 24)
-    expect(launch.series.find((x) => x.id === 'next-chaos')!.data[0]).toEqual([9 / 24, 14])
+    // On the days-since-launch axis, the dotted lines are in days too.
+    expect(open.series.find((x) => x.id === 'next-chaos')!.data[0]).toEqual([9 / 24, 14])
   })
 
   it("leaves the launch hours' spike out of the price axes' range", () => {
     // Day 1: the first hours trade at 10 times the later price.
     const s: SeriesPoint[] = series(24).map(([t, c, d], i) => (i < 3 ? [t, c! * 10, d! * 10] : [t, c, d]))
-    const bounds = rangeBounds(s, '3d', at(0))!
+    const { bounds } = chartWindow(s, at(0))!
     const band = outlookBand(s, OUTLOOK, 200)
     type O = { yAxis: { min?: number; max?: number }[] }
-    const option = priceChartOption(TOKENS, s, bounds, band, null, false, { launchedAt: T0 }) as O
+    const option = priceChartOption(TOKENS, s, bounds, band, T0) as O
     // Chaos runs 16 to 33 after the first 6 hours; the spike (100+) is left out.
     expect(option.yAxis[0]!.max).toBeLessThan(40)
     expect(option.yAxis[0]!.min).toBeGreaterThan(10)
@@ -179,18 +181,18 @@ describe('priceChartOption', () => {
     expect(option.yAxis[1]!.max).toBeLessThan(0.5)
     // What came next counts only for the hours the chart draws: its own launch hours don't.
     const next: SeriesPoint[] = [...s, ...series(72, 24)]
-    const revealed = priceChartOption(TOKENS, s, bounds, band, null, false, { launchedAt: T0, ahead: true, next }) as O
+    const revealed = priceChartOption(TOKENS, s, bounds, band, T0, false, { ahead: true, next }) as O
     expect(revealed.yAxis[0]!.max).toBeLessThan(120)
     expect(revealed.yAxis[1]!.max).toBeLessThan(0.6)
     // Without launch hours in view, the axes scale themselves.
     const later = series(24, 100)
-    const plain = priceChartOption(TOKENS, later, rangeBounds(later, '3d', at(0))!, null, null, false, { launchedAt: T0 }) as O
+    const plain = priceChartOption(TOKENS, later, chartWindow(later, at(0))!.bounds, null, T0) as O
     expect(plain.yAxis[0]!.min).toBeUndefined()
   })
 
   it('has no band series without a band', () => {
     const s = series(3)
-    const option = priceChartOption(TOKENS, s, rangeBounds(s, '3d')!, null) as { series: unknown[] }
+    const option = priceChartOption(TOKENS, s, chartWindow(s, at(0))!.bounds, null, T0) as { series: unknown[] }
     expect(option.series).toHaveLength(2)
   })
 })

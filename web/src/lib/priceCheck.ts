@@ -3,11 +3,8 @@ import type { Horizon, Outlook, SeriesPoint, Verdict } from '../api/client'
 import { alpha, axisStyle, baseOptions, HOUR, line, type ChartTokens } from './chartOptions'
 import { price, signedPct } from './format'
 
-// The Price check page's pure parts (docs/price-check.md): the chart's ranges, the outlook
+// The Price check page's pure parts (docs/price-check.md): the chart's window, the outlook
 // band past the last hour, the chart's option, and the verdict in words.
-
-export type Range = '3d' | '14d' | 'launch'
-export const RANGES: Record<Range, string> = { '3d': '3 days', '14d': '14 days', launch: 'Launch fortnight' }
 
 const DAY = 24 * HOUR
 
@@ -20,22 +17,21 @@ export function latestHour(series: SeriesPoint[]): number | null {
   return null
 }
 
-/** The hours a range shows, [from, to] in ms: the latest 3 or 14 days, or the league's first
- *  14 days (from `launchedAt`, else the series' first hour). Null without any price. */
-export function rangeBounds(series: SeriesPoint[], range: Range, launchedAt?: string | null): [number, number] | null {
+/** Days the chart shows: no range picker (the user, 2026-10-29). */
+export const WINDOW_DAYS = 14
+
+export type ChartWindow = { bounds: [number, number]; launchAt: number; trailing: boolean }
+
+/** The hours the chart shows, [from, to] in ms: the league's first 14 days while the latest
+ *  hour is in them, then the latest 14 days. With the launch hour the x axis counts days
+ *  from (`launchedAt`, else the series' first hour). Null without any price. */
+export function chartWindow(series: SeriesPoint[], launchedAt?: string | null): ChartWindow | null {
   const latest = latestHour(series)
   if (latest == null) return null
-  if (range === 'launch') {
-    const start = launchedAt ? Date.parse(launchedAt) : Date.parse(series[0]![0])
-    // Floor to the hour: the series is hourly.
-    const from = Math.floor(start / HOUR) * HOUR
-    return [from, Math.min(latest, from + 14 * DAY - HOUR)]
-  }
-  const days = range === '3d' ? 3 : 14
-  const from = latest - days * DAY + HOUR
-  // Never before the league launched: early on, most of the range would be empty.
-  const launch = launchedAt ? Math.floor(Date.parse(launchedAt) / HOUR) * HOUR : -Infinity
-  return [Math.min(latest, Math.max(from, launch)), latest]
+  // Floor to the hour: the series is hourly.
+  const launchAt = Math.floor((launchedAt ? Date.parse(launchedAt) : Date.parse(series[0]![0])) / HOUR) * HOUR
+  const from = latest - WINDOW_DAYS * DAY + HOUR
+  return { bounds: [Math.min(latest, Math.max(from, launchAt)), latest], launchAt, trailing: from > launchAt }
 }
 
 export function inRange(series: SeriesPoint[], [from, to]: [number, number]): SeriesPoint[] {
@@ -103,8 +99,8 @@ export const hasDivine = (series: SeriesPoint[]) => series.some(([, , d]) => d !
 export const AHEAD_HOURS = 72
 
 /** The chart: Chaos on the left axis, Divines on the right (decided with the user: one
- *  chart shows when an item "rose" in Chaos only because the Divine moved), linear, UTC,
- *  lines broken at missing hours, and the outlook band (in Divines, on the right axis)
+ *  chart shows when an item "rose" in Chaos only because the Divine moved), linear, the x axis in days since
+ *  the league's launch, lines broken at missing hours, and the outlook band (in Divines, on the right axis)
  *  past the latest hour. `chaosOnly` (Divine Orb): its Chaos line alone, the band in Chaos.
  *  In the preview, `ahead` keeps the 3 days past the latest hour on the axis whether or not
  *  there's a band, and `next` (the reveal: the hours after it) draws dotted on the same
@@ -114,14 +110,14 @@ export function priceChartOption(
   points: SeriesPoint[],
   bounds: [number, number],
   band: BandPoint[] | null,
-  launchAt?: number | null,
+  launchAt: number,
   chaosOnly = false,
-  { ahead = false, next = null, launchedAt = null }: { ahead?: boolean; next?: SeriesPoint[] | null; launchedAt?: number | null } = {},
+  { ahead = false, next = null }: { ahead?: boolean; next?: SeriesPoint[] | null } = {},
 ): EChartsCoreOption {
   const built = chartOption(t, points, bounds, band, launchAt, chaosOnly, ahead, next)
   // Only the hours the chart draws of what came next count towards the scale.
   const drawn = next && nextShown(next, bounds[1])
-  const scaled = launchedAt == null ? built : withoutLaunchScale(built, points, band, drawn, launchedAt + LAUNCH_SCALE_HOURS * HOUR, chaosOnly)
+  const scaled = withoutLaunchScale(built, points, band, drawn, launchAt + LAUNCH_SCALE_HOURS * HOUR, chaosOnly)
   const option = chaosOnly ? withoutDivine(scaled) : scaled
   // Every series has an id, so the reveal's lines are added to the chart as it stands.
   return { ...option, series: (option.series as { id?: string; name?: string }[]).map((s) => ({ ...s, id: s.id ?? s.name })) }
@@ -230,7 +226,7 @@ function chartOption(
   points: SeriesPoint[],
   bounds: [number, number],
   band: BandPoint[] | null,
-  launchAt: number | null | undefined,
+  launchAt: number,
   chaosOnly: boolean,
   ahead: boolean,
   next: SeriesPoint[] | null,
@@ -244,27 +240,7 @@ function chartOption(
   const axis = axisStyle(t)
   const end = ahead ? bounds[1] + AHEAD_HOURS * HOUR : band ? band[band.length - 1]!.at : bounds[1]
   const legend = { ...(baseOptions(t).legend as object), data: ['Chaos', 'Divine', ...(band ? ['Outlook range'] : []), ...(next ? [NEXT] : [])] }
-  if (launchAt != null) return sinceLaunch(t, { chaos, divine, bandSeries, axis, end, legend, launchAt, first: latestFirst(points) })
-  return {
-    ...baseOptions(t),
-    legend,
-    grid: { left: 8, right: 8, top: 56, bottom: 8, containLabel: true },
-    xAxis: {
-      type: 'time',
-      min: bounds[0],
-      max: end,
-      ...axis,
-      // Hour labels carry their date: at phone width the axis hides overlapping labels and
-      // the day labels go first, which left a row of bare "06:00"s.
-      axisLabel: { ...axis.axisLabel, formatter: { day: '{d} {MMM}', hour: '{HH}:{mm}\n{d} {MMM}', minute: '{HH}:{mm}\n{d} {MMM}' } },
-      splitLine: { show: false },
-    },
-    yAxis: [
-      { type: 'value', name: 'Chaos', position: 'left', scale: true, ...axis, axisLabel: { ...axis.axisLabel, formatter: (v: number) => price(v, 'chaos') } },
-      { type: 'value', name: 'Divine', position: 'right', scale: true, ...axis, splitLine: { show: false }, axisLabel: { ...axis.axisLabel, formatter: (v: number) => price(v, 'divine') } },
-    ],
-    series: [chaos, divine, ...bandSeries],
-  }
+  return sinceLaunch(t, { chaos, divine, bandSeries, axis, start: bounds[0], end, legend, launchAt, first: latestFirst(points) })
 }
 
 /** The first hour with a price, in ms, or null. */
@@ -285,15 +261,17 @@ type Parts = {
   divine: { data: unknown[] } & Record<string, unknown>
   bandSeries: ({ data: unknown[] } & Record<string, unknown>)[]
   axis: ReturnType<typeof axisStyle>
+  start: number
   end: number
   legend: object
   launchAt: number
   first: number | null
 }
 
-/** The launch fortnight's chart (the user): the x axis in days since the league's launch,
- *  not UTC dates, and the hours before the item first traded shaded as "Not traded yet". */
-function sinceLaunch(t: ChartTokens, { chaos, divine, bandSeries, axis, end, legend, launchAt, first }: Parts): EChartsCoreOption {
+/** The x axis in days since the league's launch, not UTC dates, always (the user,
+ *  2026-10-29); from the launch, the hours before the item first traded shaded as "Not
+ *  traded yet". */
+function sinceLaunch(t: ChartTokens, { chaos, divine, bandSeries, axis, start, end, legend, launchAt, first }: Parts): EChartsCoreOption {
   const days = (iso: string) => (Date.parse(iso) - launchAt) / DAY
   // Points are [iso, value], or { value: [iso, value] } for a lone hour's dot.
   const shift = (point: unknown): unknown => {
@@ -303,7 +281,7 @@ function sinceLaunch(t: ChartTokens, { chaos, divine, bandSeries, axis, end, leg
   }
   const remap = <S extends { data: unknown[] }>(s: S): S => ({ ...s, data: s.data.map(shift) })
   // An item that first traded after the launch's first hours: show that stretch as empty, on purpose.
-  const late = first != null && first - launchAt > 2 * HOUR
+  const late = start <= launchAt && first != null && first - launchAt > 2 * HOUR
   const notYet = late
     ? {
         markArea: {
@@ -323,12 +301,13 @@ function sinceLaunch(t: ChartTokens, { chaos, divine, bandSeries, axis, end, leg
       name: 'Days since league start',
       nameLocation: 'middle',
       nameGap: 28,
-      min: 0,
+      min: Math.max(0, (start - launchAt) / DAY),
       max: Math.max((end - launchAt) / DAY, 1),
       interval: 1,
       ...axis,
       splitLine: { show: false },
-      // Whole days only: ECharts also labels the axis's end, the latest hour (day 7.958…).
+      // Whole days only: ECharts also labels the axis's ends, the window's first and latest
+      // hours (day 7.958…).
       axisLabel: { ...axis.axisLabel, formatter: (v: number) => (Math.abs(v - Math.round(v)) < 1e-6 ? `Day ${Math.round(v)}` : '') },
       axisPointer: { label: { formatter: ({ value }: { value: number }) => dayLabel(value) } },
     },

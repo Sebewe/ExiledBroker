@@ -22,7 +22,6 @@ export type Feature =
   | 'recap-pin'
   | 'launch-pick'
   | 'price-check-item'
-  | 'price-check-range'
   | 'price-check-stack'
   // The pre-launch preview (docs/preview.md)
   | 'preview-day' // picked another day of the rewound league
