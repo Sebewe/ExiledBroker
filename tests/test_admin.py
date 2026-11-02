@@ -41,8 +41,11 @@ def test_refuses_without_the_token(admin):
 
 def test_a_short_token_is_refused_at_startup(monkeypatch):
     monkeypatch.setenv("EB_ADMIN_TOKEN", "hunter2")
-    with pytest.raises(ValidationError, match="at least 32"):
+    with pytest.raises(ValidationError, match="at least 8") as e:
         Settings()
+    assert "hunter2" not in str(e.value)  # the rejected token never reaches the logs
+    monkeypatch.setenv("EB_ADMIN_TOKEN", "hunter22")
+    assert Settings().admin_token.get_secret_value() == "hunter22"
     monkeypatch.setenv("EB_ADMIN_TOKEN", "")  # set but empty: off
     assert Settings().admin_token is None
 
