@@ -46,7 +46,7 @@ What the last four switches on disk show (Settlers → Mercenaries → Keepers �
 
 ### 3. Railway project (setup)
 
-- [ ] Project with Railway's Postgres template, plus `web` and `pipeline` services pointing their config-as-code at `deploy/railway/web.json` / `pipeline.json`.
+- [x] **Live 2026-11-02.** Project with Railway's Postgres template, plus `web` and `pipeline` services from the GitHub repo. Railway has deprecated config-as-code (new services can't opt in), so `deploy/railway/web.json` / `pipeline.json` are only the reference: each service's settings were set by hand to match them (Dockerfile builder; web: healthcheck `/api/health`, restart on failure; pipeline: start `eb pipeline run`, cron `6 * * * *`). Both have `EB_DATABASE_URL=${{Postgres.DATABASE_URL}}` and `EB_NEXT_LEAGUE_START=2026-11-13`; the secrets below are still to add.
 - [ ] Variables:
   - web: `EB_DATABASE_URL`, and `EB_ADMIN_TOKEN` (32+ random characters, sealed) for the admin page ([admin.md](admin.md));
   - pipeline: `EB_DATABASE_URL` (both set to Postgres's private URL), `EB_BACKUP_URL` = Supabase's session-pooler URL, sealed ([supabase.md](supabase.md#the-connection-string)), and `EB_HEALTHCHECK_URL` = the healthchecks.io ping URL, sealed (item 5);
@@ -54,12 +54,12 @@ What the last four switches on disk show (Settlers → Mercenaries → Keepers �
 - [x] **Domain on Cloudflare (2026-10-25).** `exiledbroker.trade` and `www` are proxied `AAAA 100::` placeholder records (Cloudflare's "no origin" address, until launch: then the root record points at Railway, section 7). SSL/TLS is Full (strict), Always Use HTTPS is on, and a redirect rule sends `www` to the root domain (301, path and query kept). HSTS is off until the site is live. Until the Worker is deployed the domain answers 522 (no origin).
 - [ ] Deploy the Worker once the web service is up: `ORIGIN` in `deploy/cloudflare/wrangler.toml` (the route is already `exiledbroker.trade/*`), `npx wrangler login` (interactive, the user) and `npx wrangler deploy`.
 - [ ] Optional: Cloudflare Access (free) on `/admin*` and `/api/admin*` in front of the admin token ([admin.md](admin.md#once-deployed)).
-- [ ] Railway waits for CI before deploying a push to `main` (decided 2026-10-23: turn on "Wait for CI" on both app services).
+- [x] Railway waits for CI before deploying a push to `main` ("Wait for CI" on both app services, 2026-11-02).
 - ~~Go live first on the current league (Allflame) as a demo people can try.~~ Replaced 2026-10-26: go live with the **pre-launch preview** (section 11), Allflame rewound to its first week. The next league launches 2026-11-13 (PST); its name and time aren't announced yet. Set `EB_NEXT_LEAGUE` and the full `EB_NEXT_LEAGUE_START` on both services once they're out.
 
 ### 4. Seed, then catch up (first run)
 
-- [ ] A seed command loads the server's Postgres from the local data: the live league's site rows, the reduced history, the Launch picks, and the live window's raw pages. It sends nothing to GGG.
+- [x] (2026-11-02, `eb site seed --hosted` through a temporary TCP proxy on Postgres, removed afterwards) A seed command loads the server's Postgres from the local data: the live league's site rows, the reduced history, the Launch picks, and the live window's raw pages. It sends nothing to GGG.
 - [ ] The first pass then fetches only the hours after the local copy's last hour. Watch it run and check that its `ingest_run` row has one request per missing hour.
 - [ ] Afterwards: take the pipeline down for a few hours, bring it back, and check it fetches exactly the missed hours.
 - [ ] The backup: the first pass's log ends with "Backup: …" adding the hours since Supabase's seed (2026-10-22 18:00), then one hour a pass. After a day, Supabase's Usage page shows well under 1 MB of egress a day.
@@ -79,7 +79,7 @@ What the last four switches on disk show (Settlers → Mercenaries → Keepers �
 
 What tens of thousands of visitors at once would do, and the fixes: [hosting.md](hosting.md#a-traffic-spike-a-streamer-or-a-video). The code side is done (2026-10-25: edge caching in the Worker, `?v=` on table URLs, `no-store` by default, one computation per key, a slim item cache, settings no longer rebuilt per request). At launch:
 
-- [ ] **Point the domain at Railway.** Add `exiledbroker.trade` as a custom domain on the web service, then replace the root `AAAA 100::` record with the proxied CNAME Railway shows (`www` can stay a placeholder: the redirect rule answers it). Failing open, and assets bypassing the Worker, both go to the DNS target, so it must be the real origin. Keep `ORIGIN` set to the `*.up.railway.app` address.
+- [x] **Point the domain at Railway** (2026-11-02, through Railway's Domain Connect with Cloudflare: a proxied root CNAME and the `_railway-verify` TXT; `www` still redirects). Add `exiledbroker.trade` as a custom domain on the web service, then replace the root `AAAA 100::` record with the proxied CNAME Railway shows (`www` can stay a placeholder: the redirect rule answers it). Failing open, and assets bypassing the Worker, both go to the DNS target, so it must be the real origin. Keep `ORIGIN` set to the `*.up.railway.app` address.
 - [ ] **Assets bypass the Worker:** Workers Routes, add `exiledbroker.trade/assets/*` with Worker **None**. The CDN serves them (immutable for a year) without counting against the Worker's 100,000 requests a day.
 - [ ] **The route fails open** (Workers Routes, the route's request limit failure mode), so a spent quota sends visitors to Railway instead of an error.
 - [ ] **Check the cache works:** `curl -sI "https://exiledbroker.trade/api/missed/<league>?v=<data_version>"` twice: the second shows `cf-cache-status: HIT`; an asset shows `HIT` too; `/api/health` shows `no-store` and is never a hit.
