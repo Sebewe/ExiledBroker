@@ -48,7 +48,7 @@ What the last four switches on disk show (Settlers → Mercenaries → Keepers �
 
 - [x] **Live 2026-11-02.** Project with Railway's Postgres template, plus `web` and `pipeline` services from the GitHub repo. Railway has deprecated config-as-code (new services can't opt in), so `deploy/railway/web.json` / `pipeline.json` are only the reference: each service's settings were set by hand to match them (Dockerfile builder; web: healthcheck `/api/health`, restart on failure; pipeline: start `eb pipeline run`, cron `6 * * * *`). Both have `EB_DATABASE_URL=${{Postgres.DATABASE_URL}}` and `EB_NEXT_LEAGUE_START=2026-11-13`; the secrets below are still to add.
 - [ ] Variables:
-  - web: `EB_DATABASE_URL`, and `EB_ADMIN_TOKEN` (32+ random characters, sealed) for the admin page ([admin.md](admin.md));
+  - web: `EB_DATABASE_URL`, and `EB_ADMIN_TOKEN` (8+ characters, sealed) for the admin page ([admin.md](admin.md));
   - pipeline: `EB_DATABASE_URL` (both set to Postgres's private URL), `EB_BACKUP_URL` = Supabase's session-pooler URL, sealed ([supabase.md](supabase.md#the-connection-string)), and `EB_HEALTHCHECK_URL` = the healthchecks.io ping URL, sealed (item 5);
   - **both** services: `EB_NEXT_LEAGUE_START=2026-11-13` now (the date is all GGG has announced: it turns the pre-launch preview on, section 11, and the pipeline ignores a date alone), then `EB_NEXT_LEAGUE` and the full time once they're announced (the web service shows the countdown, the pipeline switches leagues).
 - [x] **Domain on Cloudflare (2026-10-25).** `exiledbroker.trade` and `www` are proxied `AAAA 100::` placeholder records (Cloudflare's "no origin" address, until launch: then the root record points at Railway, section 7). SSL/TLS is Full (strict), Always Use HTTPS is on, and a redirect rule sends `www` to the root domain (301, path and query kept). HSTS is off until the site is live. Until the Worker is deployed the domain answers 522 (no origin).
@@ -104,7 +104,7 @@ The code side is done (2026-10-26, [security.md](security.md)): the Worker refus
 - [ ] **Bot Fight Mode** (Security > Bots) on, and "Block AI bots" on. Then check the uptime monitor (section 5) still gets 200 from `/api/status`; if it's challenged, turn Bot Fight Mode off (the free plan can't exempt one client).
 - [ ] **Emergency lever, know where it is:** Security > Settings > Security level "I'm under attack" puts a browser check in front of every visitor. Turn it on only during an attack: it also stops the uptime monitor.
 - [ ] **GitHub:** Settings > Code security, turn on Dependabot alerts (free), so a vulnerable dependency is reported. Run `pip-audit` and `npm audit` once more before flipping DNS.
-- [ ] **Admin panel** (when it ships): `EB_ADMIN_TOKEN` on the web service, 32+ random bytes, sealed. Optionally Cloudflare Access (Zero Trust, free up to 50 users) on `/admin*` and `/api/admin*`.
+- [ ] **Admin panel** (when it ships): `EB_ADMIN_TOKEN` on the web service, 8+ characters, sealed. Optionally Cloudflare Access (Zero Trust, free up to 50 users) on `/admin*` and `/api/admin*`.
 
 ### 9. Launch day (the next league)
 

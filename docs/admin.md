@@ -11,8 +11,8 @@
 
 No user system: one token.
 
-- **Server:** `EB_ADMIN_TOKEN`, at least 32 characters (shorter refuses to start). Generate one with `python -c 'import secrets; print(secrets.token_urlsafe(32))'`. Unset or empty, every `/api/admin/*` route answers 404, as if it didn't exist.
-- **Requests:** `Authorization: Bearer <token>`, compared in constant time. A wrong or missing token gets 401 before the database is touched, so guessing costs nothing but the request (and at 32 random bytes it can't succeed). The Worker's per-IP rate limit on `/api/*` covers it too.
+- **Server:** `EB_ADMIN_TOKEN`, at least 8 characters (shorter refuses to start, without echoing the value into the logs; it only guards the usage counts and pipeline health, decided 2026-11-02). Generate one with `python -c 'import secrets; print(secrets.token_urlsafe(32))'`. Unset or empty, every `/api/admin/*` route answers 404, as if it didn't exist.
+- **Requests:** `Authorization: Bearer <token>`, compared in constant time. A wrong or missing token gets 401 before the database is touched, so guessing costs nothing but the request (and the rate limits make guessing a random token slow). The Worker's per-IP rate limit on `/api/*` covers it too.
 - **Browser:** the page asks for the token and keeps it in `sessionStorage` (this tab only, gone when it closes; "Sign out" clears it). The overview is never written to the site's saved query cache (`lib/persist.ts` keeps only the status and the current version's tables) and is dropped from memory when the page is left. The page adds `noindex`.
 - **Caching:** responses are `Cache-Control: no-store, private`, so neither browsers nor Cloudflare's edge keep them.
 

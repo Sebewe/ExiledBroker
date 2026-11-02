@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from exiledbroker import __version__
 
-ADMIN_TOKEN_MIN = 32
+ADMIN_TOKEN_MIN = 8
 
 
 def _repo_root() -> Path | None:
@@ -44,7 +44,11 @@ def _default_card_rewards() -> Path:
 class Settings(BaseSettings):
     """Runtime settings, overridable via EB_* environment variables or a .env file."""
 
-    model_config = SettingsConfigDict(env_prefix="EB_", env_file=".env", extra="ignore")
+    # hide_input_in_errors: a rejected value (a token, a database URL with its password)
+    # never reaches the startup error, and so never Railway's logs.
+    model_config = SettingsConfigDict(
+        env_prefix="EB_", env_file=".env", extra="ignore", hide_input_in_errors=True
+    )
 
     data_dir: Path = Field(default_factory=_default_data_dir)
     # Manual include/exclude lists for the core drop pool (committed, edit by hand).
@@ -158,7 +162,8 @@ class Settings(BaseSettings):
     @field_validator("admin_token")
     @classmethod
     def _long_admin_token(cls, v: SecretStr | None) -> SecretStr | None:
-        """A short token could be guessed: refuse to start rather than serve with one."""
+        """A very short token is a typo, not a password: refuse to start rather than serve with one.
+        It only guards the usage counts and pipeline health, so 8 characters is enough."""
         if v is None or not v.get_secret_value():
             return None  # set but empty: off
         if len(v.get_secret_value()) < ADMIN_TOKEN_MIN:
