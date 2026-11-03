@@ -3255,6 +3255,18 @@
             "title": "Stored",
             "type": "boolean"
           },
+          "today": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Today"
+          },
           "total": {
             "$ref": "#/components/schemas/UsageTotal"
           }

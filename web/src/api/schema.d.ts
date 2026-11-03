@@ -1271,6 +1271,8 @@ export interface components {
             periods: components["schemas"]["UsagePeriod"][];
             /** Stored */
             stored: boolean;
+            /** Today */
+            today?: string | null;
             total: components["schemas"]["UsageTotal"];
         };
         /** UsageTotal */

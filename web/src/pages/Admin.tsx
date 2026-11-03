@@ -1,17 +1,22 @@
 import { useQuery } from '@tanstack/react-query'
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { api, ApiError, unwrap, type AdminOverview, type PipelineLeague, type UsageEvent, type UsageStats } from '../api/client'
+import { LazyChart } from '../components/LazyChart'
 import { Notice } from '../components/Notice'
 import { Skeleton } from '../components/QueryState'
 import { PageHeader, Section } from '../components/Section'
 import { Stat } from '../components/Stat'
+import type { ChartTokens } from '../lib/chartOptions'
 import { count, duration, utcHour } from '../lib/format'
+import { localStart, trafficOption } from '../lib/trafficChart'
 
 // The owner's page (docs/admin.md): not linked anywhere, and empty without the token
 // (EB_ADMIN_TOKEN on the server). The token is kept for this tab only (sessionStorage),
 // and nothing here is saved with the site's query cache (lib/persist keeps only the
-// status and the current data version's tables). Plain tables, no charts, so the
-// page's chunk stays a few kB.
+// status and the current data version's tables). One chart (traffic per day), through
+// the lazy chart chunk the other pages share, so this page's own chunk stays a few kB.
+// Days are UTC dates, like every time on the site: west of UTC, today's row starts in
+// the evening, so the page says when the current day began on this browser's clock.
 
 const KEY = 'eb-admin-token'
 const REFRESH = 5 * 60_000
@@ -186,6 +191,7 @@ function Usage({ data }: { data: UsageStats }) {
         <Stat label="Page views, all time" value={count(data.total.views)} hint={data.total.since ? `Since ${data.total.since}` : undefined} />
         <Stat label="Visitor-days, all time" value={count(data.total.visitor_days)} hint="Each visitor counted once a day" />
       </div>
+      <Traffic days={data.days} today={data.today ?? null} />
       <div className="grid gap-6 lg:grid-cols-2">
         <Table title="Months" head={['Month', 'Visitors', 'Returning']} empty="Nothing counted yet." rows={data.periods.length}>
           {[...data.periods].reverse().map((p) => (
@@ -199,10 +205,13 @@ function Usage({ data }: { data: UsageStats }) {
             </tr>
           ))}
         </Table>
-        <Table title="Last 30 days" head={['Day', 'Visitors', 'Views']} empty="No days stored yet." rows={data.days.length}>
+        <Table title="Last 30 days" head={['Day (UTC)', 'Visitors', 'Views']} empty="No days stored yet." rows={data.days.length}>
           {[...data.days].reverse().map((d) => (
             <tr key={d.day} className="border-t border-border">
-              <td className="px-3 py-1.5">{d.day}</td>
+              <td className="px-3 py-1.5">
+                {d.day}
+                {d.day === data.today && <span className="text-muted"> (today so far)</span>}
+              </td>
               <td className={TD}>{count(d.visitors)}</td>
               <td className={TD}>{count(d.views)}</td>
             </tr>
@@ -211,6 +220,29 @@ function Usage({ data }: { data: UsageStats }) {
         <EventTable title="Pages" events={pages} prefix="page:" />
         <EventTable title="Features" events={features} prefix="feature:" />
       </div>
+    </div>
+  )
+}
+
+function Traffic({ days, today }: { days: UsageStats['days']; today: string | null }) {
+  const build = useCallback((t: ChartTokens) => trafficOption(t, days, today), [days, today])
+  return (
+    <div className="flex min-w-0 flex-col gap-2">
+      <h3 className="font-semibold">Traffic, last 30 days</h3>
+      {days.length === 0 ? (
+        <p className="text-sm text-muted">No days stored yet.</p>
+      ) : (
+        <>
+          <div className="rounded-lg border border-border bg-surface p-3">
+            <LazyChart build={build} height={240} label={`The site's visitors and page views per UTC day, ${days.length === 1 ? 'one day' : `${days.length} days`}`} />
+          </div>
+          {today && (
+            <p className="text-xs text-faint">
+              Days are UTC. Today ({today}) began at {localStart(today)} your time, and its counts are still coming in.
+            </p>
+          )}
+        </>
+      )}
     </div>
   )
 }

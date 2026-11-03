@@ -3,7 +3,18 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AdminOverview, PipelineLeague, UsageStats } from '../api/client'
+import type { ChartTokens } from '../lib/chartOptions'
 import Admin from './Admin'
+
+// ECharts needs a canvas, which jsdom hasn't got: stand in for the chart, building its
+// option so a broken one still fails here, and expose its days and series.
+vi.mock('../components/Chart', () => ({
+  default: ({ build, label }: { build: (t: ChartTokens) => { xAxis: { data: string[] }; series: { name: string; data: (number | null)[] }[] }; label: string }) => {
+    const t = { text: '', muted: '', faint: '', border: '', surface: '', surface2: '', accent: '#e3ac72', info: '#93b8f5' }
+    const option = build(t)
+    return <div role="img" aria-label={label} data-days={option.xAxis.data.join('|')} data-series={option.series.map((s) => `${s.name}:${s.data.map((v) => v ?? '-').join(',')}`).join(';')} />
+  },
+}))
 
 const TOKEN = 'x'.repeat(40)
 
@@ -88,7 +99,12 @@ describe('Admin', () => {
           { period: '2026-09', visitors: 80, returning: 12, finished: true },
           { period: '2026-10', visitors: 321, returning: 45, finished: false },
         ],
-        days: [{ day: '2026-10-26', views: 77, visitors: 31 }],
+        today: '2026-10-27',
+        days: [
+          { day: '2026-10-25', views: 40, visitors: 12 },
+          { day: '2026-10-26', views: 77, visitors: 31 },
+          { day: '2026-10-27', views: 3, visitors: 2 },
+        ],
         events: [
           { event: 'page:/launch', views: 900, visitors: 300, views_recent: 500, visitors_recent: 200 },
           { event: 'feature:price-check-item', views: 60, visitors: 20, views_recent: 40, visitors_recent: 15 },
@@ -104,6 +120,12 @@ describe('Admin', () => {
     expect(screen.getByText('/launch')).toBeInTheDocument()
     expect(screen.getByText('price-check-item')).toBeInTheDocument()
     expect(screen.getByText('2026-10-26')).toBeInTheDocument()
+    // The server's today is a UTC day, marked as still being counted, never "tomorrow".
+    expect(screen.getByText('(today so far)').parentElement).toHaveTextContent('2026-10-27')
+    expect(screen.getByText(/Days are UTC\. Today \(2026-10-27\) began at/)).toBeInTheDocument()
+    const chart = await screen.findByRole('img', { name: /visitors and page views per UTC day, 3 days/ })
+    expect(chart).toHaveAttribute('data-days', 'Oct 25|Oct 26|Oct 27 (so far)')
+    expect(chart).toHaveAttribute('data-series', 'Visitors:12,31,-;Visitors:-,31,2;Page views:40,77,-;Page views:-,77,3')
   })
 
   it('handles no counts yet and counting switched off', async () => {
@@ -111,6 +133,8 @@ describe('Admin', () => {
     const { unmount } = renderAdmin()
     signIn()
     expect(await screen.findByText('Nothing counted yet.')).toBeInTheDocument()
+    expect(screen.getAllByText('No days stored yet.')).toHaveLength(2) // the chart and the table
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
     expect(screen.getAllByText('None used yet.')).toHaveLength(2) // pages and features
     unmount()
     serve({ now: NOW, data_version: null, pipeline: [] }, 'off')

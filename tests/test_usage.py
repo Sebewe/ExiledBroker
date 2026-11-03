@@ -226,6 +226,8 @@ def test_the_beacon_and_the_stats(app_client):
     assert ok.headers["cache-control"] == "no-store, private"
     stats = ok.json()
     assert stats["total"] == {"views": 2, "visitor_days": 1, "since": None}
+    # Days go out as UTC dates, the latest being the server's today.
+    assert stats["days"] == [{"day": stats["today"], "views": 2, "visitors": 1}]
     assert stats["events"] == [
         {
             "event": "page:/launch",
@@ -245,3 +247,115 @@ def test_no_stats_without_a_key(tmp_path, monkeypatch):
     client = TestClient(app_module.create_app(web_dist=tmp_path / "none"))
     assert client.get("/api/stats", headers={"authorization": "Bearer "}).status_code == 404
     assert Settings().admin_token is None
+
+
+# --- Days are UTC, and the 30-day window ----------------------------------------------
+
+
+def test_days_are_utc_dates(connect):
+    """The admin page's "visit tomorrow": just after midnight UTC, a visit is on the new
+    UTC day while it's still the evening before west of UTC. The row is today's for the
+    server, never later than the `today` the stats send."""
+    clock = Clock(datetime(2026, 11, 3, 0, 5, tzinfo=UTC))  # 19:05 on Nov 2 in New York
+    u = usage.Usage(connect, clock=clock)
+    u.record("page:/", "1.1.1.1", UA)
+    stats = u.stats()
+    assert stats["today"] == date(2026, 11, 3)
+    assert stats["days"] == [{"day": date(2026, 11, 3), "views": 1, "visitors": 1}]
+
+
+def test_a_visit_either_side_of_midnight_counts_on_both_days(connect):
+    clock = Clock(datetime(2026, 10, 30, 23, 59, tzinfo=UTC))
+    u = usage.Usage(connect, clock=clock)
+    u.record("page:/", "1.1.1.1", UA)
+    clock.at += timedelta(minutes=2)  # Oct 31, 00:01: not flushed in between
+    u.record("page:/", "1.1.1.1", UA)
+    u.record("page:/", "1.1.1.1", UA)
+    stats = u.stats()
+    assert stats["days"] == [
+        {"day": date(2026, 10, 30), "views": 1, "visitors": 1},
+        {"day": date(2026, 10, 31), "views": 2, "visitors": 1},
+    ]
+    assert stats["total"]["visitor_days"] == 2
+    assert stats["periods"][-1]["returning"] == 1  # seen on two days of October
+
+
+def test_counts_add_up_across_flushes(connect):
+    """Each flush adds its counts to the day's row; a visitor already seen today adds
+    views but isn't a new visitor, whether the first visit was flushed or not."""
+    u = usage.Usage(connect, clock=Clock())
+    u.record("page:/", "1.1.1.1", UA)
+    u.flush()
+    u.record("page:/", "1.1.1.1", UA)
+    u.record("page:/", "2.2.2.2", UA)
+    u.flush()
+    u.record("page:/launch", "2.2.2.2", UA)
+    stats = u.stats()
+    assert stats["days"] == [{"day": DAY.date(), "views": 4, "visitors": 2}]
+    assert stats["total"] == {"views": 4, "visitor_days": 2, "since": DAY.date()}
+    assert {e["event"]: (e["views"], e["visitors"]) for e in stats["events"]} == {
+        "page:/": (3, 2),
+        "page:/launch": (1, 1),
+    }
+
+
+def test_the_window_has_every_day_and_drops_old_ones(connect):
+    clock = Clock(datetime(2026, 10, 1, 12, tzinfo=UTC))
+    u = usage.Usage(connect, clock=clock)
+    u.record("page:/", "1.1.1.1", UA)
+    u.record("feature:theme", "1.1.1.1", UA)
+    u.flush()
+    clock.at = datetime(2026, 11, 2, 12, tzinfo=UTC)  # 32 days on: Oct 1 is out of the window
+    u.record("page:/", "1.1.1.1", UA)
+    u.flush()
+    clock.at = datetime(2026, 11, 5, 12, tzinfo=UTC)
+    u.record("page:/", "2.2.2.2", UA)
+    stats = u.stats()
+    days = stats["days"]
+    # From the first counted day in the window to today, nobody-came days as zeros.
+    assert [d["day"] for d in days] == [date(2026, 11, d) for d in range(2, 6)]
+    assert [(d["views"], d["visitors"]) for d in days] == [(1, 1), (0, 0), (0, 0), (1, 1)]
+    # All time still counts Oct 1; the recent figures don't.
+    assert stats["total"] == {"views": 3, "visitor_days": 3, "since": date(2026, 10, 1)}
+    theme = next(e for e in stats["events"] if e["event"] == "feature:theme")
+    assert (theme["views"], theme["views_recent"], theme["visitors_recent"]) == (1, 0, 0)
+    page = next(e for e in stats["events"] if e["event"] == "page:/")
+    assert (page["views"], page["views_recent"], page["visitors_recent"]) == (3, 2, 2)
+
+
+def test_quiet_days_up_to_today_are_zeros(connect):
+    clock = Clock(datetime(2026, 10, 26, 12, tzinfo=UTC))
+    u = usage.Usage(connect, clock=clock)
+    u.record("page:/", "1.1.1.1", UA)
+    u.flush()
+    clock.at += timedelta(days=2)
+    assert [(str(d["day"]), d["views"]) for d in u.stats()["days"]] == [
+        ("2026-10-26", 1),
+        ("2026-10-27", 0),
+        ("2026-10-28", 0),
+    ]
+
+
+def test_nothing_counted_has_no_days(connect):
+    stats = usage.Usage(connect, clock=Clock()).stats()
+    assert stats["days"] == [] and stats["total"]["since"] is None
+    assert stats["periods"] == [
+        {"period": "2026-10", "visitors": 0, "returning": 0, "finished": False}
+    ]
+
+
+def test_counts_in_memory_have_the_same_days():
+    """Without a database (local `eb serve`) the page still gets its days."""
+    clock = Clock(datetime(2026, 10, 26, 23, 30, tzinfo=UTC))
+    u = usage.Usage(None, clock=clock)
+    u.record("page:/", "1.1.1.1", UA)
+    clock.at += timedelta(hours=1)
+    u.record("page:/", "1.1.1.1", UA)
+    u.record("feature:league", "1.1.1.1", UA)
+    stats = u.stats()
+    assert stats["stored"] is False and stats["today"] == date(2026, 10, 27)
+    assert stats["days"] == [
+        {"day": date(2026, 10, 26), "views": 1, "visitors": 1},
+        {"day": date(2026, 10, 27), "views": 1, "visitors": 1},
+    ]
+    assert stats["total"] == {"views": 2, "visitor_days": 2}

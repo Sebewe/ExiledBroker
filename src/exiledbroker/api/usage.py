@@ -316,13 +316,14 @@ class Usage:
     def stats(self, days: int = 30) -> dict:
         """The counts so far (written ones plus those still in memory)."""
         if self.connect is None:
-            return self._memory_stats()
+            return self._memory_stats(days)
         self.flush()
         today = self.clock().date()
         with self.connect() as con:
             return read_stats(con, today, period_of(today, self.period), days)
 
-    def _memory_stats(self) -> dict:
+    def _memory_stats(self, days: int = 30) -> dict:
+        today = self.clock().date()
         with self._lock:
             events = {}
             for (_, event), n in self._views.items():
@@ -330,20 +331,43 @@ class Usage:
                 e["views"] += n
             for (_, event), n in self._visitors.items():
                 events[event]["visitors"] += n
+            daily = [
+                (d, n, self._visitors.get((d, e), 0))
+                for (d, e), n in self._views.items()
+                if e == SITE
+            ]
         site = events.pop(SITE, {"views": 0, "visitors": 0})
         return {
             "stored": False,
+            "today": today,
             "total": {"views": site["views"], "visitor_days": site["visitors"]},
             "periods": [],
-            "days": [],
+            "days": every_day(daily, today, days),
             "events": sorted(events.values(), key=lambda e: (-e["views"], e["event"])),
         }
+
+
+def every_day(daily: list[tuple], today: date, days: int = 30) -> list[dict]:
+    """The site's (day, views, visitors) rows as one row per day, oldest first, from the
+    first counted day of the last `days` (UTC) days to today: a day nobody visited is a
+    zero, not a missing row, so the chart doesn't draw a line across it."""
+    counted = {d: (int(n), int(u)) for d, n, u in daily}
+    if not counted:
+        return []
+    first = max(min(counted), today - timedelta(days=days - 1))
+    out = []
+    for i in range((today - first).days + 1):
+        day = first + timedelta(days=i)
+        n, u = counted.get(day, (0, 0))
+        out.append({"day": day, "views": n, "visitors": u})
+    return out
 
 
 def read_stats(con, today: date, current: str, days: int = 30) -> dict:
     """Totals, each period's visitors and returning visitors, the last `days` days and
     each page's and feature's use (all time, and `_recent`: the last `days` days). A
-    few small aggregates."""
+    few small aggregates. Days are UTC dates: `today` is the server's, sent along so the
+    page can mark the day still being counted (west of UTC it starts in the evening)."""
     since = today - timedelta(days=days - 1)
     total = db.rows(
         con,
@@ -376,9 +400,10 @@ def read_stats(con, today: date, current: str, days: int = 30) -> dict:
     )
     return {
         "stored": True,
+        "today": today,
         "total": {"views": int(total[0]), "visitor_days": int(total[1]), "since": total[2]},
         "periods": sorted(periods, key=lambda p: p["period"]),
-        "days": [{"day": d, "views": int(n), "visitors": int(u)} for d, n, u in sorted(daily)],
+        "days": every_day(daily, today, days),
         "events": sorted(
             (
                 {
