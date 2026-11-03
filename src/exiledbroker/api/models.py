@@ -588,9 +588,10 @@ class UsageEvent(BaseModel):
 
 class UsageStats(BaseModel):
     stored: bool  # false: counts kept in memory only (no EB_DATABASE_URL)
+    today: date | None = None  # the server's day (UTC): the one still being counted
     total: UsageTotal
     periods: list[UsagePeriod]
-    days: list[UsageDay]  # the whole site, the last 30 days
+    days: list[UsageDay]  # the whole site, each UTC day of the last 30 (0 when none)
     events: list[UsageEvent]
 
 

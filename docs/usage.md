@@ -74,12 +74,17 @@ curl -s -H "Authorization: Bearer $EB_ADMIN_TOKEN" https://exiledbroker.trade/ap
 ```json
 {
   "stored": true,
+  "today": "2026-10-26",
   "total": {"views": 1234, "visitor_days": 456, "since": "2026-10-26"},
   "periods": [{"period": "2026-10", "visitors": 210, "returning": 64, "finished": false}],
   "days": [{"day": "2026-10-26", "views": 80, "visitors": 31}],
   "events": [{"event": "page:/", "views": 900, "visitors": 300, "views_recent": 400, "visitors_recent": 150}]
 }
 ```
+
+Days are UTC dates (the server's clock); `today` is the one still being counted, and `days`
+has a row for every day from the first counted one in the window to today (zeros for a
+quiet day).
 
 For a resume: `periods[].visitors` is monthly unique visitors (as near as an IP and
 browser pair can tell: people behind one NAT with the same browser count once, a phone

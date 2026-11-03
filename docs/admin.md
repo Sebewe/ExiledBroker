@@ -5,7 +5,8 @@
 ## What it shows
 
 - **Pipeline**, per league, from `ingest_run` (one row per live update, failed or not, kept 90 days; `services/pipeline_health.summary`): when it last ran and last succeeded, the latest hour loaded, the latest run's state and error, and over the past 24 hours the runs and failures, median run time, requests, bytes downloaded and hours added. It warns when the latest update failed or nothing has succeeded for 2 hours.
-- **Usage**, from `/api/stats` (the cookie-free counts, [usage.md](usage.md)): this month's visitors and returning visitors (seen on 2+ days of the month; there is no per-day returning figure), all-time views and visitor-days, each month, the last 30 days, and each page's and feature's use in the recent window and all time. Plain tables, no charts. The admin page's own visits aren't counted.
+- **Usage**, from `/api/stats` (the cookie-free counts, [usage.md](usage.md)): this month's visitors and returning visitors (seen on 2+ days of the month; there is no per-day returning figure), all-time views and visitor-days, each month, a traffic chart and table of the last 30 days (visitors and page views per day, a quiet day as a zero), and each page's and feature's use in the recent window and all time. The admin page's own visits aren't counted.
+- **Days are UTC dates**, like every time on the site. West of UTC a new day starts in the evening (00:00 UTC is 7 PM in New York), so the latest row can look like tomorrow: the API sends its own `today`, the table marks that row "today so far", the chart dashes the line into it, and the page says when the current UTC day began on the browser's clock (2026-11-03: the owner saw a "visit tomorrow" just after midnight UTC).
 
 ## Access
 
@@ -18,7 +19,7 @@ No user system: one token.
 
 ## Cost
 
-The page's code is its own lazy chunk (~2 kB gzipped); nobody else downloads it. The overview is read from the database on each request (a couple of aggregates over a few thousand `ingest_run` rows), only for the admin, and the page refreshes it every 5 minutes while open. It isn't precomputed or cached, unlike the public endpoints, because only one person can ask for it.
+The page's code is its own lazy chunk (~4 kB gzipped); nobody else downloads it. Its chart uses the ECharts chunk the other pages already load lazily. The overview is read from the database on each request (a couple of aggregates over a few thousand `ingest_run` rows), only for the admin, and the page refreshes it every 5 minutes while open. It isn't precomputed or cached, unlike the public endpoints, because only one person can ask for it.
 
 ## Once deployed
 
