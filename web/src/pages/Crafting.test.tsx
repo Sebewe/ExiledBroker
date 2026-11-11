@@ -26,7 +26,9 @@ describe('Crafting', () => {
 
   it('blocks a third prefix', () => {
     renderPage('?mod=feasting_fiends&mod=renewal')
-    expect((screen.getByRole('button', { name: /Rotten Claws/ }) as HTMLButtonElement).disabled).toBe(true)
+    const third = screen.getByRole('button', { name: /Rotten Claws/ }) as HTMLButtonElement
+    expect(third.disabled).toBe(true)
+    expect(third.title).toBe('A jewel has at most 2 prefixes.')
   })
 
   it('shows the steps of the method you pick', () => {

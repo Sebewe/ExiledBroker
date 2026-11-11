@@ -485,6 +485,9 @@ export const ACTION_LABEL: Record<Action, string> = {
   fracture: 'Fracturing Orb',
 }
 
+/** Orbs that start a step over: after one of these, the same step comes round again. */
+const REROLLS = new Set<Action>(['alteration', 'chaos', 'scour', 'restart'])
+
 export interface Step {
   action: Action
   label: string
@@ -530,8 +533,10 @@ export function stepsOf(plan: Plan): Step[] {
       gains: plan.targets.filter((_, i) => gained & (1 << i)).map((m) => m.name),
       onMiss: missAction
         ? missAction === action
-          ? 'If it misses: use another one'
-          : `If it misses: ${ACTION_LABEL[missAction]}`
+          ? 'If it misses: use another'
+          : REROLLS.has(missAction)
+            ? `If it misses: ${ACTION_LABEL[missAction]}, then try again`
+            : `If it misses: ${ACTION_LABEL[missAction]} next`
         : null,
     })
     if (!onward) break

@@ -31,7 +31,8 @@ function ModButton({
 }: {
   mod: ClusterMod
   selected: boolean
-  blocked: boolean
+  /** Why it can't be added, if it can't. */
+  blocked: string | null
   onToggle: () => void
 }) {
   const state = selected
@@ -43,7 +44,8 @@ function ModButton({
     <button
       type="button"
       aria-pressed={selected}
-      disabled={blocked}
+      disabled={!!blocked}
+      title={blocked ?? undefined}
       onClick={onToggle}
       className={`flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-left text-sm disabled:cursor-not-allowed ${state}`}
     >
@@ -65,12 +67,13 @@ function Picker({ side, selection, toggle }: { side: Side; selection: string[]; 
       <h3 className="text-sm font-semibold capitalize">{side}es</h3>
       {CLUSTER_MODS.filter((m) => m.side === side && !m.filler).map((mod) => {
         const selected = selection.includes(mod.id)
+        const check = validate([...selection, mod.id])
         return (
           <ModButton
             key={mod.id}
             mod={mod}
             selected={selected}
-            blocked={!selected && !validate([...selection, mod.id]).ok}
+            blocked={selected || check.ok ? null : check.reason}
             onToggle={() => toggle(mod.id)}
           />
         )
@@ -104,7 +107,7 @@ function Steps({ plan }: { plan: PlanResult }) {
           <p className="num mt-1 text-muted">
             {step.chance >= 0.999
               ? 'Always works.'
-              : `${(step.chance * 100).toFixed(step.chance < 0.1 ? 1 : 0)}% per use, about ${Math.ceil(step.tries)} uses`}
+              : `${(step.chance * 100).toFixed(step.chance < 0.1 ? 1 : 0)}% chance per try, about ${Math.ceil(step.tries)} tries`}
             {step.onMiss ? ` · ${step.onMiss}` : ''}
           </p>
         </li>
