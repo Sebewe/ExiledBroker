@@ -172,3 +172,4 @@ Why things are the way they are, grouped by topic and dated. Add new decisions u
 | 2026-10-21 | **Python ≥ 3.11 with plain venv + pip** (uv isn't installed here); `pyproject.toml` is tool-agnostic, so uv can be adopted later. |
 | 2026-10-22 | **CI on GitHub Actions** (lint, tests, a Postgres 17 job), only on the free `ubuntu-latest` runner; superseded runs are cancelled. |
 | 2026-10-22 | **Tests never touch `data/`.** `tests/conftest.py` points the default data directory at a temp dir before any fixture runs. Added after a fixture without `EB_DATA_DIR` reached the real database through `sync_live` and shrank Mirage's loaded hours to 30 (reloaded from the pages on disk, totals identical). |
+| 2026-11-08 | **A crafting advisor for one Large Cluster Jewel, in the browser.** `/crafting` (docs/crafting.md) solves crafting routes client-side, so it adds no endpoint against the no-free-form-arguments rule; unlinked from the menu while it is an experiment. |

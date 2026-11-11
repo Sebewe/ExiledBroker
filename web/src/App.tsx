@@ -14,6 +14,7 @@ const About = lazy(() => import('./pages/About'))
 const Admin = lazy(() => import('./pages/Admin')) // the owner's, not linked anywhere
 const Backtest = lazy(() => import('./pages/Backtest'))
 const Conversions = lazy(() => import('./pages/Conversions'))
+const Crafting = lazy(() => import('./pages/Crafting')) // an experiment, not linked anywhere yet
 const Journal = lazy(() => import('./pages/research/Journal'))
 const Launch = lazy(() => import('./pages/Launch'))
 const Method = lazy(() => import('./pages/research/Method'))
@@ -47,6 +48,7 @@ export default function App() {
             <Route path="cards" element={<Navigate to="/#cards" replace />} />
             <Route path="launch" element={<Launch />} />
             <Route path="price-check" element={<PriceCheck />} />
+            <Route path="crafting" element={<Crafting />} />
             <Route path="portfolio" element={<Portfolio />} />
             {/* Retired: its stack seller is on Price check now. */}
             <Route path="farming" element={<Navigate to="/price-check" replace />} />
